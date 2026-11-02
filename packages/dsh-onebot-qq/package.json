@@ -1,0 +1,54 @@
+{
+  "name": "dsh-onebot-qq",
+  "version": "0.1.0",
+  "description": "OneBot v11 QQ bridge for DeepSeek Harness: connect NapCat / SnowLuma / Lagrange with a web panel and persisted, fully configurable connection settings.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "docs/*.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["slots"],
+      "external": ["react"]
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-plugin.ps1"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "onebot",
+    "qq",
+    "napcat",
+    "snowluma"
+  ]
+}

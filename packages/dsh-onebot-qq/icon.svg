@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="QQ OneBot connection">
+  <defs>
+    <linearGradient id="qqg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2f7ce0"/>
+      <stop offset="1" stop-color="#1b4f9c"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#qqg)"/>
+  <path d="M18 24.5c0-4.14 3.36-7.5 7.5-7.5h13c4.14 0 7.5 3.36 7.5 7.5v7c0 4.14-3.36 7.5-7.5 7.5H29l-7.2 5.4c-1 .75-2.3.04-2.3-1.2V32.9A7.5 7.5 0 0 1 18 31.5z" fill="#fff"/>
+  <circle cx="25.5" cy="28.5" r="2.4" fill="#2f7ce0"/>
+  <circle cx="32" cy="28.5" r="2.4" fill="#2f7ce0"/>
+  <circle cx="38.5" cy="28.5" r="2.4" fill="#2f7ce0"/>
+  <path d="M45.5 39.5a8.5 8.5 0 0 0-5.6 2.12l-2.36-2.36a3 3 0 1 0-1.42 1.42l2.42 2.42a8.5 8.5 0 1 0 6.96-3.6z" fill="#9fd0ff" opacity=".95"/>
+</svg>

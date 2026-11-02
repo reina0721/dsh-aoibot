@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "QQ 连接（OneBot v11）",
+    "description": "通过 OneBot v11 连接 NapCat / SnowLuma / Lagrange 等 QQ 网关：连接管理、账号核验、事件感知、消息收发，全部参数可在面板配置并持久化。"
+  }
+}

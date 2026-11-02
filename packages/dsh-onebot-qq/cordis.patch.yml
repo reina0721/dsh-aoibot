@@ -1,0 +1,7 @@
+# dsh-onebot-qq bundle patch
+#
+# 只插入插件本体（宿主半边 src/host.js + 网页半边 client.js 由 DSH 的
+# dsh.client 清单自动加载）。插件自带面板与配置，不需要额外 preset 行。
+- insert:
+    - id: onebot-qq
+      name: dsh-onebot-qq

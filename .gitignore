@@ -1,0 +1,16 @@
+# 临时/分析文件
+.ctx/
+*.log
+node_modules/
+
+# 测试与验证产物
+tmp/
+verify-out/
+test-results/
+*.tmp
+
+# 编辑器/系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
