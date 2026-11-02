@@ -66,7 +66,11 @@ SOFTWARE.
   palette, accent presets, radius, shadow, density/font-scale/content-width/motion policy), the
   Motion Foundation semantics in `docs/motion-foundation.md` and `packages/design-system/src/motion.css`
   (`content.enter`, `content.swap`, `viewport.reveal`, `feedback.enter/exit`, `progress.trickle`,
-  reduced-motion policy), the appearance preference model in `surfaces/src/preferences-model.ts`, and
+  reduced-motion policy), the appearance preference model in `surfaces/src/preferences-model.ts`,
+  the persistent settings shell in `surfaces/plugins/settings/routes/layout.tsx` and
+  `settings-layout-shell.tsx` (fixed sidebar/header, only the right-hand `data-route-content` swaps),
+  the category/control/preview composition in `category-sections.tsx` / `setting-previews.tsx`
+  (theme tiles, accent choices, density/font/width previews, appearance feedback), and
   the layout/component archetypes in `packages/surface-foundation` / `packages/ui-adapter`
   (PageHeader, Panel/Card, StatusPill, soft Tabs, StateSurface, Skeleton, FeedbackPresence).
 - What was **not** copied: no Tailwind/HeroUI/React source, no CSS files and no runtime dependency from
@@ -82,12 +86,14 @@ SOFTWARE.
 - Upstream: <https://github.com/deepseek-ai/deepseek-harness>
 - License: MIT, Copyright (c) 2026 DeepSeek
 - Reused: the bundle/client-plugin contract (`dsh.bundle.patch`, `dsh.client`, `window.__ModuleLoader__`
-  registration), the DSH web UI theme tokens (`--dsw-alias-*`, `--dsw-radius-*`, `--dsw-font-*`) and the
-  UI/UX rules from the shipped `dsh-client-ui-ux` / `dsh-responsive-ui` skills and `docs/web-styling.md`,
-  `docs/ui-radius.md`. No DSH source files are copied into this package. The panel's visual/motion layer
-  intentionally goes beyond the shipped "字重 ≤500 / 只用 DSH 主题色" baseline per the owner's request to
-  follow console-web: display/heading weights and the console-web palette live in token variables only,
-  and all motion still honors `prefers-reduced-motion` / `ui.motion=reduced|off`.
+  registration), the DSH web UI theme tokens (`--dsw-alias-*`, `--dsw-radius-*`, `--dsw-font-*`), the
+  public client theme service (`ctx.theme.getTheme()/setTheme()` + `theme/change`, used by the optional
+  "系统设置 → 主题" shortcut; the plugin stores no second theme preference) and the UI/UX rules from the
+  shipped `dsh-client-ui-ux` / `dsh-responsive-ui` skills and `docs/web-styling.md`, `docs/ui-radius.md`.
+  No DSH source files are copied into this package. The panel's visual/motion layer intentionally goes
+  beyond the shipped "字重 ≤500 / 只用 DSH 主题色" baseline per the owner's request to follow console-web:
+  display/heading weights and the console-web palette live in token variables only, and all motion still
+  honors `prefers-reduced-motion` / `ui.motion=reduced|off`.
 
 ```
 MIT License

@@ -1,6 +1,6 @@
 {
   "name": "dsh-onebot-qq",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "OneBot v11 QQ bridge for DeepSeek Harness: connect NapCat / SnowLuma / Lagrange with a web panel and persisted, fully configurable connection settings.",
   "license": "MIT",
   "private": true,
@@ -31,7 +31,7 @@
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["slots"],
+      "inject": ["slots", "theme"],
       "external": ["react"]
     }
   },

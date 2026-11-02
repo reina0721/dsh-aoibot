@@ -14,7 +14,24 @@
     "tabPillMoved": true,
     "messagesFilled": true,
     "configNav": true,
-    "configPrefsVisible": true,
+    "configGroupSwapOnly": true,
+    "configShellStable": true,
+    "configGroupContentChanged": true,
+    "settingsTab": true,
+    "settingsCategories": true,
+    "settingsThemeCards": true,
+    "settingsNoSavebar": true,
+    "settingsCategoryNav": true,
+    "settingsCategorySwapOnly": true,
+    "settingsShellStable": true,
+    "settingsMotionPreview": true,
+    "settingsThemeAvailable": true,
+    "themeDarkApplied": true,
+    "themeLightApplied": true,
+    "themeSyncedBack": true,
+    "settingsImmediateDensity": true,
+    "settingsNoDirtySavebar": true,
+    "settingsContrast": true,
     "logsRendered": true,
     "aboutRendered": true,
     "fadeUpApplied": true,
@@ -30,6 +47,7 @@
     "darkThemeDetected": true,
     "darkRootBg": "rgb(13, 17, 28)",
     "narrowNoHorizontalOverflow": true,
+    "narrowSettingsNoOverflow": true,
     "hasHeaderEyebrow": true,
     "hasStatusPill": true,
     "hasLoginNickname": true,
@@ -60,7 +78,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "full",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -92,7 +111,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "full",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -104,6 +124,192 @@
       "clientWidth": 1440,
       "rootScrollWidth": 1160,
       "rootClientWidth": 1160
+    },
+    "configGroupSwap": {
+      "page": "ob-enter-fade",
+      "scrollY": 0,
+      "header": "配置",
+      "active": "事件",
+      "pageAnimations": [
+        {
+          "name": "ob-content-fade",
+          "start": 10922.87899996154
+        }
+      ],
+      "animations": [
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn on"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn on"
+        },
+        {
+          "name": "ob-breathe",
+          "duration": 2400,
+          "targetClass": "ob-dot"
+        },
+        {
+          "name": "ob-ping",
+          "duration": 1800,
+          "targetClass": "ob-dot"
+        },
+        {
+          "name": "ob-content-fade",
+          "duration": 180,
+          "targetClass": "ob-enter-fade"
+        },
+        {
+          "name": "ob-swap-in",
+          "duration": 180,
+          "targetClass": "ob-settings-pane ob-swap"
+        }
+      ],
+      "text": "事件\n\n事件接收、过滤与缓冲。事件是后续认知/记忆插件的输入。\n\n接收并缓存事件\n内存缓冲条数\n包含机器人自己发的消息\n消息事件\n通知事件（撤回/戳一戳/群成员变化等）\n请求事件（加好友/加群）\n元事件（心跳/生命周期）\n私聊消息\n群聊消息\n忽略这些 QQ 号\n忽略这些群号\n原始事件截断上限\nbytes\n事件落盘（JSONL）\n事件文件名\n事件文件上限\nMB\n保存与重置\n\n保存会规范化字段并把非法值回退为默认值；恢复默认会立即写盘，需要确认。\n\n快捷键：Ctrl + S 保存。分组切换只替换右侧内容，页头与导航保持不动。\n\n保存配置\n撤销改动\n恢复默认"
+    },
+    "settings": {
+      "contentClass": "ob-enter-fade",
+      "contentAnimations": [
+        {
+          "name": "ob-content-fade",
+          "duration": 180,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-fade"
+        }
+      ],
+      "revealAnimations": 0,
+      "totalAnimations": 4,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "default",
+        "data-contrast": "standard"
+      },
+      "revealed": 0,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 324, 0)",
+      "pillWidth": "106px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "settingsCategorySwap": {
+      "page": "ob-enter-fade",
+      "scrollY": 0,
+      "header": "系统设置",
+      "active": "动效",
+      "pageAnimations": [
+        {
+          "name": "ob-content-fade",
+          "start": 12372.820999938995
+        }
+      ],
+      "animations": [
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn on"
+        },
+        {
+          "name": "",
+          "duration": 120,
+          "targetClass": "ob-settings-nav-btn on"
+        },
+        {
+          "name": "ob-breathe",
+          "duration": 2400,
+          "targetClass": "ob-dot"
+        },
+        {
+          "name": "ob-ping",
+          "duration": 1800,
+          "targetClass": "ob-dot"
+        },
+        {
+          "name": "ob-content-fade",
+          "duration": 180,
+          "targetClass": "ob-enter-fade"
+        },
+        {
+          "name": "ob-swap-in",
+          "duration": 180,
+          "targetClass": "ob-settings-pane ob-swap"
+        },
+        {
+          "name": "ob-swap-in",
+          "duration": 180,
+          "targetClass": "ob-swap"
+        }
+      ],
+      "text": "动效\n\n动效模式与页面转场；设置分类切换始终只做淡入。\n\n已保存\n动效与转场\n\n动效模式与页面转场；配置/系统设置内部切换始终只做淡入。\n\n动效模式\n\n减少/关闭会停用进场、切换、数字滚动等动画；页面内容仍然可用。\n\n跟随系统（推荐）\n始终开启\n减少动效\n关闭动效\n页面切换动画\n\n只控制标签页内容切换；关闭后其它动效（悬停、状态脉冲等）仍保留。\n\n默认（轻抬升 + 淡入）\n淡入（无位移）\n自右轻移入\n自下轻移入\n自上轻移入\n关闭切换动画\n\n轻微上移 + 淡入（推荐）\n\n预览内容切换\n\n配置/系统设置内部切换使用同一套淡入，不做整页滑动。\n\n播放预览\n内容切换预览 1\n\n即时保存：每次修改都会写入服务端配置，不需要再点保存；主题通过 DSH theme service 切换。当前动效模式 full · 对比度 标准 · 主题 跟随系统。"
+    },
+    "theme": {
+      "darkTheme": {
+        "dark": true,
+        "rootBg": "rgb(13, 17, 28)",
+        "themeText": "外观\n\nDSH 全局主题、本面板的强调色与对比度。\n\n已保存\n主题与强调色\n\n主题是 DSH 全局设置；强调色与对比度只影响本面板。\n\nDSH 主题\n\n浅色 / 深色 / 跟随系统；作用范围是整个 DSH，而不仅是本面板。\n\n浅色\n深色\n跟随系统\n当前渲染：深色\n与 DSH 自带外观设置同步，改动立即作用于整个 DSH。\n强调色\n\n只影响本面板的品牌色/选中态/焦点环；不改变 DSH 其它界面。\n\n紫（console-web 默认）\n蓝\n绿\n橙\n跟随 DSH 主题（黑白）\n对比度\n\n提高本面板的边框与文字对比度；「跟随系统」读取 prefers-contrast。\n\n跟随系统\n标准\n高对比度\n\n即时保存：每次修改都会写入服务端配置，不需要再点保存；主题通过 DSH theme service 切换。当前动效模式 full · 对比度 标准 · 主题 深色。"
+      },
+      "lightTheme": {
+        "dark": false,
+        "rootBg": "rgb(246, 247, 251)"
+      }
+    },
+    "autoSave": {
+      "ui": {
+        "refreshMs": 1000,
+        "eventPageSize": 50,
+        "logPageSize": 100,
+        "accent": "purple",
+        "density": "compact",
+        "fontScale": "standard",
+        "contentWidth": "wide",
+        "motion": "system",
+        "pageTransition": "default",
+        "contrast": "system"
+      },
+      "saveUiState": {
+        "savebar": false,
+        "dirtyText": false,
+        "statusText": "已保存 · 17:54:23",
+        "densityAttr": "compact"
+      }
+    },
+    "contrast": {
+      "contrastSnap": {
+        "attr": "high",
+        "border": "rgb(188, 197, 211)"
+      },
+      "standardBorder": "rgb(228, 231, 238)"
     },
     "fadeUp": {
       "contentClass": "ob-enter-up",
@@ -124,7 +330,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "full",
-        "data-page-transition": "fade-up"
+        "data-page-transition": "fade-up",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -156,7 +363,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "reduced",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -176,7 +384,8 @@
         "data-font-scale": "large",
         "data-content-width": "standard",
         "data-motion": "full",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "primaryBg": "rgb(37, 99, 235)",
       "tabHeight": "30px",
@@ -207,7 +416,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "full",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -239,7 +449,8 @@
         "data-font-scale": "standard",
         "data-content-width": "wide",
         "data-motion": "full",
-        "data-page-transition": "default"
+        "data-page-transition": "default",
+        "data-contrast": "standard"
       },
       "revealed": 5,
       "pendingReveal": 0,
@@ -251,6 +462,17 @@
       "clientWidth": 360,
       "rootScrollWidth": 304,
       "rootClientWidth": 304
+    },
+    "narrowSettings": {
+      "scrollWidth": 360,
+      "clientWidth": 360,
+      "categories": [
+        "外观",
+        "布局与字号",
+        "数据与刷新",
+        "动效",
+        "重置与说明"
+      ]
     }
   },
   "screenshots": [
@@ -258,12 +480,17 @@
     "02-connect.png",
     "03-messages.png",
     "04-config.png",
+    "07-settings-appearance.png",
+    "08-settings-motion.png",
+    "09-settings-dark.png",
     "05-logs.png",
     "06-about.png",
     "07-reduced-motion.png",
     "11-prefs-blue-compact.png",
     "08-dark-overview.png",
+    "09-dark-settings.png",
     "09-dark-config.png",
-    "10-narrow-overview.png"
+    "10-narrow-overview.png",
+    "10b-narrow-settings.png"
   ]
 }

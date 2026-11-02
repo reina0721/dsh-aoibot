@@ -79,14 +79,16 @@ export const DEFAULTS = {
     refreshMs: 2000,
     eventPageSize: 50,
     logPageSize: 100,
-    // 以下外观/动效偏好全部由面板「界面」分组读写并持久化；client.js 不写死这些值。
-    // 取值与 console-web 的 appearance preferences 对齐（accent/density/fontScale/motion/pageTransition）。
+    // 以下外观/动效偏好全部由面板「系统设置」页读写并持久化；client.js 不写死这些值。
+    // 取值与 console-web 的 appearance preferences 对齐（accent/density/fontScale/motion/pageTransition/contrast）。
+    // 主题（浅色/深色/跟随系统）不在这里：它由 DSH 自己的 theme 偏好持有，面板只提供快捷入口。
     accent: 'purple', // purple | blue | green | orange | inherit
     density: 'standard', // compact | standard | comfortable
     fontScale: 'standard', // small | standard | large
     contentWidth: 'wide', // standard(72rem) | wide(100rem) | auto
     motion: 'system', // system | full | reduced | off
     pageTransition: 'default', // default | fade | fade-slide | fade-up | fade-down | none
+    contrast: 'system', // system | standard | high
   },
   security: {
     // 面板「高级」里透传任意 OneBot action（调试用，默认关）
@@ -213,8 +215,8 @@ export const CONFIG_GROUPS = [
   },
   {
     id: 'ui',
-    title: '界面',
-    description: '面板刷新、列表分页与外观偏好。外观偏好保存后立即生效，不需要重连。',
+    title: '界面偏好',
+    description: '状态轮询、列表分页与面板外观/动效偏好。外观偏好由「系统设置」页展示，保存后立即生效，不需要重连。',
     fields: [
       { path: 'ui.refreshMs', label: '状态刷新间隔', type: 'number', default: 2000, min: 500, max: 60000, step: 250, unit: 'ms' },
       { path: 'ui.eventPageSize', label: '事件列表每页条数', type: 'number', default: 50, min: 10, max: 500, step: 10 },
@@ -229,6 +231,15 @@ export const CONFIG_GROUPS = [
           { value: 'inherit', label: '跟随 DSH 主题（黑白）' },
         ],
         help: '只影响本面板的品牌色/选中态/焦点环；不改变 DSH 其它界面。',
+      },
+      {
+        path: 'ui.contrast', label: '对比度', type: 'select', default: 'system',
+        options: [
+          { value: 'system', label: '跟随系统' },
+          { value: 'standard', label: '标准' },
+          { value: 'high', label: '高对比度' },
+        ],
+        help: '提高本面板的边框与文字对比度；「跟随系统」读取 prefers-contrast。',
       },
       {
         path: 'ui.density', label: '界面密度', type: 'select', default: 'standard',
@@ -475,6 +486,7 @@ export function normalizeConfig(raw) {
       contentWidth: pickEnum(merged.ui?.contentWidth, DEFAULTS.ui.contentWidth, ['standard', 'wide', 'auto']),
       motion: pickEnum(merged.ui?.motion, DEFAULTS.ui.motion, ['system', 'full', 'reduced', 'off']),
       pageTransition: pickEnum(merged.ui?.pageTransition, DEFAULTS.ui.pageTransition, ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']),
+      contrast: pickEnum(merged.ui?.contrast, DEFAULTS.ui.contrast, ['system', 'standard', 'high']),
     },
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),

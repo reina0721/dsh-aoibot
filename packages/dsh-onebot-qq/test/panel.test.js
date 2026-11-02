@@ -54,7 +54,7 @@ test('module loader：id 与 factory 形状正确', () => {
 })
 
 test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
-  assert.deepEqual(panel.inject, ['slots'])
+  assert.deepEqual(panel.inject, ['slots', 'theme'])
   assert.equal(typeof panel.apply, 'function')
   assert.equal(typeof panel.OneBotPage, 'function')
   assert.equal(typeof panel.OneBotIcon, 'function')
@@ -82,6 +82,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
     'describeProbe',
     'describeDetect',
     'resolveMotionMode',
+    'resolveContrast',
     'motionCategories',
     'motionDisabled',
     'shouldAnimate',
@@ -90,6 +91,9 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
     'easeOutCubic',
     'nextPresence',
     'pageTransitionClass',
+    'contentTransitionFor',
+    'applyConfigPatch',
+    'settingsSections',
     'accentValues',
     'fontScalePercent',
     'densityMetrics',
@@ -99,16 +103,20 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
     'splitBufferValue',
     'formatCount',
     'formatNumberList',
+    'bindClientTheme',
   ]) {
     assert.equal(typeof panel[name], 'function', name + ' 应该是导出的函数')
   }
+  assert.equal(typeof panel.SettingsTab, 'function', '系统设置组件应导出')
+  assert.equal(typeof panel.SettingsShell, 'function', '持久设置壳组件应导出')
   assert.equal(typeof panel.TOKEN_CSS, 'string')
   assert.equal(typeof panel.MOTION_CSS, 'string')
   assert.equal(typeof panel.ACCENT_TOKENS, 'object')
   assert.equal(typeof panel.DEFAULT_UI, 'object')
+  assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'config', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'config', 'settings', 'logs', 'about'],
   )
 })
 
@@ -193,7 +201,7 @@ test('OneBotPage：无网关/无 document 时可安全渲染加载骨架', () =>
   assert.equal(icon.props.name, 'message', '侧栏图标应渲染消息图标')
 })
 
-test('六个标签页：无数据与有数据都能渲染（不依赖真实网关）', () => {
+test('七个标签页：无数据与有数据都能渲染（不依赖真实网关）', () => {
   const noop = () => {}
   const baseProps = {
     status: null,
@@ -213,8 +221,11 @@ test('六个标签页：无数据与有数据都能渲染（不依赖真实网�
     save: noop,
     reset: noop,
     undo: noop,
+    saveUiPatch: () => Promise.resolve(true),
+    retryPrefSave: noop,
+    prefStatus: { saving: false, error: '', savedAt: 0 },
   }
-  const tabNames = ['Overview', 'Connect', 'Messages', 'ConfigTab', 'Logs', 'About']
+  const tabNames = ['Overview', 'Connect', 'Messages', 'ConfigTab', 'SettingsTab', 'Logs', 'About']
   for (const name of tabNames) {
     assert.equal(typeof panel[name], 'function', name + ' 应该导出')
     assert.doesNotThrow(() => panel[name](baseProps), name + ' 空数据应可渲染')
@@ -236,12 +247,27 @@ test('六个标签页：无数据与有数据都能渲染（不依赖真实网�
         { path: 'note', label: '备注', type: 'textarea', default: '' },
       ],
     },
+    {
+      id: 'ui',
+      title: '界面偏好',
+      description: '外观与动效',
+      fields: [
+        { path: 'ui.refreshMs', label: '刷新', type: 'number', default: 2000 },
+        { path: 'ui.accent', label: '强调色', type: 'select', default: 'purple', options: [{ value: 'purple', label: '紫' }, { value: 'blue', label: '蓝' }, { value: 'inherit', label: '跟随 DSH' }] },
+        { path: 'ui.contrast', label: '对比度', type: 'select', default: 'system', options: [{ value: 'system', label: '跟随系统' }, { value: 'high', label: '高对比度' }] },
+        { path: 'ui.density', label: '密度', type: 'select', default: 'standard', options: [{ value: 'compact', label: '紧凑' }, { value: 'standard', label: '标准' }] },
+        { path: 'ui.fontScale', label: '字号', type: 'select', default: 'standard', options: [{ value: 'small', label: '小' }, { value: 'standard', label: '标准' }] },
+        { path: 'ui.contentWidth', label: '内容宽度', type: 'select', default: 'wide', options: [{ value: 'wide', label: '宽' }, { value: 'auto', label: '自动' }] },
+        { path: 'ui.motion', label: '动效模式', type: 'select', default: 'system', options: [{ value: 'system', label: '跟随系统' }, { value: 'full', label: '始终开启' }] },
+        { path: 'ui.pageTransition', label: '页面切换动画', type: 'select', default: 'default', options: [{ value: 'default', label: '默认' }, { value: 'fade', label: '淡入' }] },
+      ],
+    },
   ]
   const config = {
     enabled: true,
     gateway: 'onebot',
     onebot: { wsUrl: 'ws://127.0.0.1:3001', wsToken: 'secret-token', httpUrl: '', httpToken: '' },
-    ui: { refreshMs: 2000 },
+    ui: { refreshMs: 2000, accent: 'purple', contrast: 'system', density: 'standard', fontScale: 'standard', contentWidth: 'wide', motion: 'system', pageTransition: 'default' },
     events: { ignoreUsers: ['123'] },
     timeouts: { retryDelaysMs: [1000, 3000] },
   }
@@ -612,16 +638,20 @@ test('样式契约：令牌唯一色值 / 动效唯一 keyframes / 面板样式�
   assert.match(token, /\[data-density='comfortable'\]/)
   assert.match(token, /\[data-font-scale='large'\]/)
   assert.match(token, /\[data-content-width='wide'\]/)
+  assert.match(token, /\[data-contrast='high'\]/)
+  assert.match(token, /--ob-preview-light-canvas:/)
+  assert.match(token, /--ob-preview-dark-canvas:/)
   assert.match(token, /--ob-dur-fast:120ms/)
   assert.match(token, /--ob-dur-standard:180ms/)
   assert.match(token, /--ob-dur-slow:240ms/)
   assert.match(token, /--ob-ease:cubic-bezier\(0\.2,0\.8,0\.2,1\)/)
 
   // 动效块：语义配方 + reduced/off 降级
-  for (const name of ['ob-content-rise', 'ob-reveal-rise', 'ob-feedback-enter', 'ob-feedback-exit', 'ob-feed-in', 'ob-progress-grow', 'ob-ping', 'ob-pulse']) {
+  for (const name of ['ob-content-rise', 'ob-swap-in', 'ob-reveal-rise', 'ob-feedback-enter', 'ob-feedback-exit', 'ob-feed-in', 'ob-progress-grow', 'ob-ping', 'ob-pulse']) {
     assert.match(motion, new RegExp('@keyframes ' + name), '缺少 keyframe ' + name)
   }
   assert.match(motion, /\.ob-enter-default/)
+  assert.match(motion, /\.ob-swap\{/)
   assert.match(motion, /\[data-motion='reduced'\]/)
   assert.match(motion, /\[data-motion='off'\]/)
   assert.match(motion, /prefers-reduced-motion: reduce/)
@@ -630,6 +660,9 @@ test('样式契约：令牌唯一色值 / 动效唯一 keyframes / 面板样式�
   assert.match(css, /\.ob-root/)
   assert.match(css, /\.ob-tabs/)
   assert.match(css, /\.ob-panel/)
+  assert.match(css, /\.ob-settings-nav/)
+  assert.match(css, /\.ob-option-card/)
+  assert.match(css, /\.ob-theme-preview/)
   assert.match(css, /\.ob-state/)
   assert.match(css, /\.ob-savebar/)
   assert.match(css, /\.ob-toast/)
@@ -688,7 +721,7 @@ test('动效数值：reveal stagger / count-up / presence / page transition', ()
   assert.equal(panel.pageTransitionClass('zoom'), 'ob-enter-default', '非法值回退 default')
 })
 
-test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition 映射与回退', () => {
+test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition/contrast 映射与回退', () => {
   const prefs = panel.normalizeUiPreferences({
     accent: 'blue',
     density: 'compact',
@@ -696,12 +729,14 @@ test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition
     contentWidth: 'standard',
     motion: 'reduced',
     pageTransition: 'fade',
+    contrast: 'high',
   })
-  assert.deepEqual(prefs, { accent: 'blue', density: 'compact', fontScale: 'large', contentWidth: 'standard', motion: 'reduced', pageTransition: 'fade' })
-  const fallback = panel.normalizeUiPreferences({ accent: 'magenta', density: 'huge', motion: 'sometimes' })
+  assert.deepEqual(prefs, { accent: 'blue', density: 'compact', fontScale: 'large', contentWidth: 'standard', motion: 'reduced', pageTransition: 'fade', contrast: 'high' })
+  const fallback = panel.normalizeUiPreferences({ accent: 'magenta', density: 'huge', motion: 'sometimes', contrast: 'ultra' })
   assert.equal(fallback.accent, 'purple')
   assert.equal(fallback.density, 'standard')
   assert.equal(fallback.motion, 'system')
+  assert.equal(fallback.contrast, 'system')
   assert.deepEqual(panel.normalizeUiPreferences(null), {
     accent: 'purple',
     density: 'standard',
@@ -709,9 +744,10 @@ test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition
     contentWidth: 'wide',
     motion: 'system',
     pageTransition: 'default',
+    contrast: 'system',
   })
 
-  const root = panel.uiRootData(prefs, false)
+  const root = panel.uiRootData(prefs, false, false)
   assert.deepEqual(root, {
     'data-accent': 'blue',
     'data-density': 'compact',
@@ -719,9 +755,19 @@ test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition
     'data-content-width': 'standard',
     'data-motion': 'reduced',
     'data-page-transition': 'fade',
+    'data-contrast': 'high',
   })
   assert.equal(panel.uiRootData({ motion: 'system' }, true)['data-motion'], 'reduced')
   assert.equal(panel.uiRootData({ motion: 'full' }, true)['data-motion'], 'full')
+
+  // 对比度：system 跟随 prefers-contrast；standard/high 显式生效；非法值回退 system。
+  assert.equal(panel.resolveContrast('system', false), 'standard')
+  assert.equal(panel.resolveContrast('system', true), 'high')
+  assert.equal(panel.resolveContrast('standard', true), 'standard')
+  assert.equal(panel.resolveContrast('high', false), 'high')
+  assert.equal(panel.resolveContrast('weird', true), 'high')
+  assert.equal(panel.uiRootData({}, false, false)['data-contrast'], 'standard')
+  assert.equal(panel.uiRootData({}, false, true)['data-contrast'], 'high')
 
   assert.equal(panel.accentValues('purple', false).brand, '#5d49d6')
   assert.equal(panel.accentValues('purple', true).brand, '#9b8cff')
@@ -734,6 +780,105 @@ test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition
   assert.equal(panel.contentMaxWidth('standard'), '72rem')
   assert.equal(panel.contentMaxWidth('auto'), 'none')
   assert.equal(panel.contentMaxWidth('weird'), '100rem')
+})
+
+test('ConfigTab 过滤 ui 组；SettingsTab 渲染持久壳分类', () => {
+  const groups = [
+    { id: 'basic', title: '基本', fields: [{ path: 'enabled', label: '启用', type: 'switch', default: true }] },
+    { id: 'ui', title: '界面偏好', fields: [{ path: 'ui.accent', label: '强调色', type: 'select', default: 'purple', options: [{ value: 'purple', label: '紫' }] }] },
+  ]
+  const config = { enabled: true, ui: { accent: 'purple' } }
+  const configInfo = { config, defaults: {}, groups, version: '0.3.0', apiVersion: 1, dataDir: 'C:\\data' }
+  const baseProps = {
+    status: null,
+    configInfo,
+    draft: JSON.parse(JSON.stringify(config)),
+    updateDraft: () => {},
+    toast: () => {},
+    go: () => {},
+    gatewayAction: async () => ({ ok: true }),
+    refreshAll: () => {},
+    refreshStatus: () => {},
+    runWithProgress: (task) => task(),
+    now: Date.now(),
+    saving: false,
+    dirty: false,
+    issues: [],
+    save: () => {},
+    reset: () => {},
+    undo: () => {},
+    saveUiPatch: () => Promise.resolve(true),
+    retryPrefSave: () => {},
+    prefStatus: { saving: false, error: '', savedAt: 0 },
+  }
+  const configJson = JSON.stringify(panel.ConfigTab(baseProps))
+  assert.doesNotMatch(configJson, /界面偏好/, '配置页不应再渲染 ui 分组')
+  assert.match(configJson, /保存与重置/)
+  const settingsJson = JSON.stringify(panel.SettingsTab(baseProps))
+  assert.match(settingsJson, /外观/)
+  assert.match(settingsJson, /DSH 主题/)
+  assert.match(settingsJson, /即时保存/)
+})
+
+test('设置壳转场：配置/系统设置强制 fade，其它页签使用配置值', () => {
+  assert.equal(panel.contentTransitionFor('config', 'fade-slide'), 'fade')
+  assert.equal(panel.contentTransitionFor('settings', 'fade-up'), 'fade')
+  assert.equal(panel.contentTransitionFor('settings', 'none'), 'fade')
+  assert.equal(panel.contentTransitionFor('overview', 'fade-slide'), 'fade-slide')
+  assert.equal(panel.contentTransitionFor('logs', 'fade-up'), 'fade-up')
+  assert.equal(panel.contentTransitionFor('about', 'bogus'), 'default')
+  assert.equal(panel.contentTransitionFor('messages', 'none'), 'none')
+})
+
+test('applyConfigPatch：多字段不可变合并', () => {
+  const base = { ui: { accent: 'purple', contrast: 'system' }, onebot: { wsUrl: 'ws://a' }, enabled: true }
+  const next = panel.applyConfigPatch(base, { 'ui.accent': 'blue', 'ui.contrast': 'high' })
+  assert.equal(next.ui.accent, 'blue')
+  assert.equal(next.ui.contrast, 'high')
+  assert.equal(next.onebot.wsUrl, 'ws://a')
+  assert.equal(next.enabled, true)
+  assert.equal(base.ui.accent, 'purple', '不能修改入参')
+  const nested = panel.applyConfigPatch({}, { 'ui.motion': 'reduced', 'onebot.httpUrl': 'http://b' })
+  assert.equal(nested.ui.motion, 'reduced')
+  assert.equal(nested.onebot.httpUrl, 'http://b')
+  assert.deepEqual(panel.applyConfigPatch(null, null), {})
+})
+
+test('settingsSections：ui 字段分类、未知字段落到 other、无 ui 组时只保留主题/重置', () => {
+  const groups = [
+    {
+      id: 'ui',
+      title: '界面偏好',
+      fields: [
+        { path: 'ui.accent', label: '强调色', type: 'select', default: 'purple', options: [{ value: 'purple', label: '紫' }] },
+        { path: 'ui.contrast', label: '对比度', type: 'select', default: 'system', options: [{ value: 'high', label: '高' }] },
+        { path: 'ui.density', label: '密度', type: 'select', default: 'standard', options: [{ value: 'compact', label: '紧凑' }] },
+        { path: 'ui.motion', label: '动效模式', type: 'select', default: 'system', options: [{ value: 'full', label: '开' }] },
+        { path: 'ui.pageTransition', label: '页面切换动画', type: 'select', default: 'default', options: [{ value: 'fade', label: '淡入' }] },
+        { path: 'ui.futureThing', label: '未来字段', type: 'text', default: '' },
+        { path: 'ui.refreshMs', label: '刷新间隔', type: 'number', default: 2000 },
+      ],
+    },
+  ]
+  const sections = panel.settingsSections(groups)
+  const ids = sections.map((section) => section.id)
+  assert.deepEqual(ids, ['appearance', 'layout', 'data', 'motion', 'other', 'reset'])
+  const appearance = sections.find((section) => section.id === 'appearance')
+  assert.deepEqual(appearance.fields.map((field) => field.path), ['ui.accent', 'ui.contrast'])
+  const layout = sections.find((section) => section.id === 'layout')
+  assert.deepEqual(layout.fields.map((field) => field.path), ['ui.density'])
+  const data = sections.find((section) => section.id === 'data')
+  assert.deepEqual(data.fields.map((field) => field.path), ['ui.refreshMs'])
+  const motion = sections.find((section) => section.id === 'motion')
+  assert.deepEqual(motion.fields.map((field) => field.path), ['ui.motion', 'ui.pageTransition'])
+  const other = sections.find((section) => section.id === 'other')
+  assert.deepEqual(other.fields.map((field) => field.path), ['ui.futureThing'])
+  const reset = sections.find((section) => section.id === 'reset')
+  assert.deepEqual(reset.fields, [])
+
+  const empty = panel.settingsSections([])
+  assert.deepEqual(empty.map((section) => section.id), ['appearance', 'reset'])
+  assert.deepEqual(empty[0].fields, [])
 })
 
 test('格式化与缓冲值：formatCount / splitBufferValue', () => {

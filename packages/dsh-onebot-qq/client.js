@@ -22,7 +22,7 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useRef, useCallback, useMemo, useContext, useLayoutEffect, Fragment } = React
     const h = React.createElement
 
-    const inject = ['slots']
+    const inject = ['slots', 'theme']
     const PANEL_ID = 'onebot-qq'
     const API = '/onebot-qq/api'
     const STYLE_ID = 'dsh-onebot-qq-panel-style'
@@ -644,6 +644,7 @@ window.__ModuleLoader__.load({
     const UI_CONTENT_WIDTHS = ['standard', 'wide', 'auto']
     const UI_MOTION_MODES = ['system', 'full', 'reduced', 'off']
     const UI_PAGE_TRANSITIONS = ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']
+    const UI_CONTRASTS = ['system', 'standard', 'high']
 
     /** 强调色令牌（与 console-web tokens.css 的 accent 预设一致；inherit 不做覆盖）。 */
     const ACCENT_TOKENS = {
@@ -692,7 +693,62 @@ window.__ModuleLoader__.load({
       contentWidth: 'wide',
       motion: 'system',
       pageTransition: 'default',
+      contrast: 'system',
     }
+
+    /**
+     * 系统设置页固定分类（只描述分组/字段路径，不携带默认值或选项）。
+     * 字段标签与选项全部来自服务端 CONFIG_GROUPS.ui；未归类的新字段落到「其他界面项」。
+     */
+    const SETTINGS_CATEGORY_DEFS = [
+      {
+        id: 'appearance',
+        title: '外观',
+        description: 'DSH 全局主题、本面板的强调色与对比度。',
+        icon: 'palette',
+        theme: true,
+        paths: ['ui.accent', 'ui.contrast'],
+      },
+      {
+        id: 'layout',
+        title: '布局与字号',
+        description: '面板密度、字号与内容宽度。',
+        icon: 'layout',
+        theme: false,
+        paths: ['ui.density', 'ui.fontScale', 'ui.contentWidth'],
+      },
+      {
+        id: 'data',
+        title: '数据与刷新',
+        description: '面板状态轮询与列表分页。',
+        icon: 'refresh',
+        theme: false,
+        paths: ['ui.refreshMs', 'ui.eventPageSize', 'ui.logPageSize'],
+      },
+      {
+        id: 'motion',
+        title: '动效',
+        description: '动效模式与页面转场；设置分类切换始终只做淡入。',
+        icon: 'sparkles',
+        theme: false,
+        paths: ['ui.motion', 'ui.pageTransition'],
+      },
+      {
+        id: 'reset',
+        title: '重置与说明',
+        description: '恢复默认外观，查看当前生效值与作用范围。',
+        icon: 'refresh',
+        theme: false,
+        paths: [],
+      },
+    ]
+
+    /** DSH 内置主题偏好（light/dark/system）；自定义主题会显示为额外状态。 */
+    const THEME_OPTIONS = [
+      { value: 'light', label: '浅色', icon: 'sun' },
+      { value: 'dark', label: '深色', icon: 'moon' },
+      { value: 'system', label: '跟随系统', icon: 'monitor' },
+    ]
 
     function include(value, list) {
       return list.includes(value)
@@ -783,6 +839,65 @@ window.__ModuleLoader__.load({
       return TRANSITION_CLASS[value] || ''
     }
 
+    /**
+     * 顶层标签页的转场配方：配置 / 系统设置是持久化设置壳，进入时只淡入，
+     * 不整页位移（用户明确要求“不要一整个页面切换滑动”）；其它页签沿用配置。
+     */
+    function contentTransitionFor(tab, pref) {
+      const value = include(pref, UI_PAGE_TRANSITIONS) ? pref : 'default'
+      if (tab === 'config' || tab === 'settings') return 'fade'
+      return value
+    }
+
+    /** 对比度偏好解析：system 跟随 prefers-contrast，standard/high 显式生效。 */
+    function resolveContrast(pref, systemMore) {
+      const value = include(pref, UI_CONTRASTS) ? pref : 'system'
+      if (value === 'system') return systemMore ? 'high' : 'standard'
+      return value
+    }
+
+    /** 不可变地按 path 合并多个字段（系统设置即时保存使用）。 */
+    function applyConfigPatch(base, patch) {
+      let next = clone(isPlainObject(base) ? base : {})
+      if (!isPlainObject(patch)) return next
+      for (const path of Object.keys(patch)) next = setByPath(next, path, patch[path])
+      return next
+    }
+
+    /**
+     * 系统设置页分类：把服务端 ui 字段按路径分组；未知字段进入「其他界面项」。
+     * 返回的每个分类字段仍带服务端 label/type/options/default，客户端不写死选项。
+     */
+    function settingsSections(groups) {
+      const specs = buildFieldSpecs(groups)
+      const uiGroup = specs.find((group) => group.id === 'ui')
+      const fields = uiGroup ? uiGroup.fields : []
+      const used = new Set()
+      const sections = SETTINGS_CATEGORY_DEFS.map((definition) => {
+        const sectionFields = definition.paths
+          .map((path) => fields.find((field) => field.path === path))
+          .filter(Boolean)
+        for (const field of sectionFields) used.add(field.path)
+        return Object.assign({}, definition, { fields: sectionFields })
+      })
+      const orphans = fields.filter((field) => !used.has(field.path))
+      if (orphans.length) {
+        const other = {
+          id: 'other',
+          title: '其他界面项',
+          description: '服务端新增、尚未归类的界面字段。',
+          icon: 'config',
+          theme: false,
+          paths: [],
+          fields: orphans,
+        }
+        const resetIndex = sections.findIndex((section) => section.id === 'reset')
+        if (resetIndex >= 0) sections.splice(resetIndex, 0, other)
+        else sections.push(other)
+      }
+      return sections.filter((section) => section.id === 'appearance' || section.id === 'reset' || section.fields.length > 0)
+    }
+
     function accentValues(accent, dark) {
       if (accent === 'inherit') return null
       const preset = ACCENT_TOKENS[accent] || ACCENT_TOKENS.purple
@@ -810,6 +925,7 @@ window.__ModuleLoader__.load({
         contentWidth: include(source.contentWidth, UI_CONTENT_WIDTHS) ? source.contentWidth : DEFAULT_UI.contentWidth,
         motion: include(source.motion, UI_MOTION_MODES) ? source.motion : DEFAULT_UI.motion,
         pageTransition: include(source.pageTransition, UI_PAGE_TRANSITIONS) ? source.pageTransition : DEFAULT_UI.pageTransition,
+        contrast: include(source.contrast, UI_CONTRASTS) ? source.contrast : DEFAULT_UI.contrast,
       }
     }
 
@@ -821,8 +937,16 @@ window.__ModuleLoader__.load({
       }
     }
 
+    function prefersMoreContrast() {
+      try {
+        return typeof matchMedia === 'function' && matchMedia('(prefers-contrast: more)').matches
+      } catch (error) {
+        return false
+      }
+    }
+
     /** 根节点 data-* 属性：client 只负责声明语义，样式全部由 TOKEN_CSS 消费。 */
-    function uiRootData(ui, systemReduced) {
+    function uiRootData(ui, systemReduced, systemMoreContrast) {
       const prefs = normalizeUiPreferences(ui)
       return {
         'data-accent': prefs.accent,
@@ -831,6 +955,7 @@ window.__ModuleLoader__.load({
         'data-content-width': prefs.contentWidth,
         'data-motion': resolveMotionMode(prefs.motion, systemReduced),
         'data-page-transition': prefs.pageTransition,
+        'data-contrast': resolveContrast(prefs.contrast, systemMoreContrast),
       }
     }
 
@@ -958,6 +1083,15 @@ window.__ModuleLoader__.load({
   --ob-distance-page:1.5rem;
   --ob-opacity-reveal-start:0.96;
   --ob-content-max:100rem;
+  /* 主题预览小窗的固定色（浅/深各一套，不随当前主题变化） */
+  --ob-preview-light-canvas:#f6f7fb;
+  --ob-preview-light-surface:#ffffff;
+  --ob-preview-light-ink:#172033;
+  --ob-preview-light-border:#e4e7ee;
+  --ob-preview-dark-canvas:#0d111c;
+  --ob-preview-dark-surface:#141a27;
+  --ob-preview-dark-ink:#f5f7fb;
+  --ob-preview-dark-border:#273247;
 }
 
 /* ---- 颜色：暗色（DSH 通过 body[data-ds-dark-theme] 标记暗色主题） ---- */
@@ -1049,6 +1183,28 @@ body[data-ds-dark-theme] .ob-root[data-accent='orange']{--ob-brand:#fdab6d;--ob-
 .ob-root[data-content-width='standard']{--ob-content-max:72rem}
 .ob-root[data-content-width='wide']{--ob-content-max:100rem}
 .ob-root[data-content-width='auto']{--ob-content-max:none}
+
+/* ---- 对比度（本面板级；ui.contrast=system 跟随 prefers-contrast） ---- */
+.ob-root[data-contrast='high']{
+  --ob-border:#bcc5d3;
+  --ob-border-strong:#8c97aa;
+  --ob-ink:#0b1220;
+  --ob-ink-muted:#3c485c;
+  --ob-ink-dim:#5a6678;
+  --ob-surface-muted:#e8ecf3;
+  --ob-hover:rgb(23 32 51 / 0.06);
+  --ob-hover-strong:rgb(23 32 51 / 0.10);
+  --ob-focus-width:0.1875rem;
+}
+body[data-ds-dark-theme] .ob-root[data-contrast='high']{
+  --ob-border:#4a5a76;
+  --ob-border-strong:#6a7c9a;
+  --ob-ink:#ffffff;
+  --ob-ink-muted:#c3ccda;
+  --ob-ink-dim:#9aa7ba;
+  --ob-surface-muted:#263248;
+  --ob-focus-width:0.1875rem;
+}
 `
 
     // =====================================================================
@@ -1083,6 +1239,12 @@ body[data-ds-dark-theme] .ob-root[data-accent='orange']{--ob-brand:#fdab6d;--ob-
 @keyframes ob-content-down{
   from{opacity:0;transform:translateY(calc(var(--ob-distance-page) * -1))}
   to{opacity:1;transform:none}
+}
+
+/* ---- recipe: content.swap（设置分类切换：仅淡入，无位移、不整页滑动） ---- */
+@keyframes ob-swap-in{
+  from{opacity:0}
+  to{opacity:1}
 }
 
 /* ---- recipe: viewport.reveal（首次进入视口的区块/卡片，一次） ---- */
@@ -1149,6 +1311,11 @@ body[data-ds-dark-theme] .ob-root[data-accent='orange']{--ob-brand:#fdab6d;--ob-
 /* ---- Presence：enter/stable/exit ---- */
 .ob-presence[data-presence='enter']{animation:ob-feedback-enter var(--ob-dur-feedback) var(--ob-ease) both}
 .ob-presence[data-presence='exit']{animation:ob-feedback-exit var(--ob-dur-fast) var(--ob-ease) both;pointer-events:none}
+
+/* ---- 设置壳右侧内容切换（content.swap）：只淡入，壳/页头/导航不动 ---- */
+.ob-swap{animation:ob-swap-in var(--ob-dur-feedback) var(--ob-ease) both}
+.ob-root[data-motion='reduced'] .ob-swap,
+.ob-root[data-motion='off'] .ob-swap{animation:none}
 
 /* ---- 事件流新行进入 ---- */
 .ob-feed-item{animation:ob-feed-in var(--ob-dur-feedback) var(--ob-ease) both}
@@ -1447,6 +1614,53 @@ body[data-ds-dark-theme] .ob-root{color-scheme:dark}
 .ob-settings-nav-btn.on{background:var(--ob-brand-soft);color:var(--ob-brand);font-weight:var(--ob-weight-label)}
 .ob-settings-content{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0;scroll-margin-top:96px}
 .ob-settings-section{scroll-margin-top:96px}
+.ob-settings-pane{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0}
+.ob-settings-nav-title{margin:10px 0 2px;padding:0 12px;font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);letter-spacing:0.08em;text-transform:uppercase;color:var(--ob-ink-muted)}
+.ob-settings-status{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-settings-status .ob-dot{width:6px;height:6px}
+.ob-settings-status.ok{color:var(--ob-success)}
+.ob-settings-status.err{color:var(--ob-danger)}
+.ob-settings-heading{margin:0;font-size:var(--ob-text-section);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
+.ob-settings-description{margin:4px 0 0;font-size:var(--ob-text-small);line-height:1.65;color:var(--ob-ink-muted)}
+.ob-option-grid{display:grid;width:100%;gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,168px),1fr))}
+.ob-option-card{display:flex;flex-direction:column;gap:8px;min-width:0;padding:12px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);text-align:start;cursor:pointer;transition:border-color var(--ob-dur-control) var(--ob-ease),background-color var(--ob-dur-control) var(--ob-ease),box-shadow var(--ob-dur-control) var(--ob-ease),transform var(--ob-dur-control) var(--ob-ease)}
+.ob-option-card:hover{border-color:var(--ob-border-strong);background:var(--ob-hover)}
+.ob-option-card:active{transform:scale(0.995)}
+.ob-option-card.on{border-color:var(--ob-brand);background:var(--ob-brand-soft);box-shadow:0 0 0 1px var(--ob-brand)}
+.ob-option-card.on .ob-option-label{color:var(--ob-brand)}
+.ob-option-label{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-label);color:var(--ob-ink)}
+.ob-option-label svg{width:16px;height:16px;flex:none;color:var(--ob-ink-muted)}
+.ob-option-card.on .ob-option-label svg{color:var(--ob-brand)}
+.ob-option-preview{display:flex;align-items:center;justify-content:center;min-height:56px;border-radius:calc(var(--ob-radius-control) - 4px);background:var(--ob-surface-muted);overflow:hidden}
+.ob-option-hint{font-size:var(--ob-text-micro);line-height:1.5;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-theme-preview{display:flex;flex-direction:column;gap:5px;width:100%;height:100%;min-height:56px;padding:8px;border:1px solid var(--ob-preview-light-border);background:var(--ob-preview-light-canvas)}
+.ob-theme-preview[data-theme-preview='dark']{border-color:var(--ob-preview-dark-border);background:var(--ob-preview-dark-canvas)}
+.ob-theme-preview[data-theme-preview='system']{background:linear-gradient(135deg,var(--ob-preview-light-canvas) 0 49%,var(--ob-preview-dark-canvas) 51% 100%)}
+.ob-theme-preview-bar{height:6px;border-radius:9999px;background:var(--ob-preview-light-border)}
+.ob-theme-preview[data-theme-preview='dark'] .ob-theme-preview-bar{background:var(--ob-preview-dark-border)}
+.ob-theme-preview .ob-theme-preview-surface{margin-top:auto;height:16px;border-radius:5px;background:var(--ob-preview-light-surface);border:1px solid var(--ob-preview-light-border)}
+.ob-theme-preview[data-theme-preview='dark'] .ob-theme-preview-surface{background:var(--ob-preview-dark-surface);border-color:var(--ob-preview-dark-border)}
+.ob-accent-grid{display:grid;width:100%;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr))}
+.ob-accent-card{display:flex;align-items:center;gap:8px;min-width:0;padding:8px 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);cursor:pointer;font-size:var(--ob-text-small);text-align:start;transition:border-color var(--ob-dur-control) var(--ob-ease),background-color var(--ob-dur-control) var(--ob-ease)}
+.ob-accent-card:hover{border-color:var(--ob-border-strong);background:var(--ob-hover)}
+.ob-accent-card.on{border-color:var(--ob-brand);background:var(--ob-brand-soft)}
+.ob-swatch{display:inline-block;flex:none;width:20px;height:20px;border-radius:9999px;border:1px solid color-mix(in srgb,var(--ob-ink) 16%,transparent);box-shadow:inset 0 0 0 2px var(--ob-surface)}
+.ob-preview-density{display:flex;flex-direction:column;justify-content:center;gap:4px;width:100%;min-height:56px;padding:8px}
+.ob-preview-density>span{display:flex;align-items:center;gap:5px}
+.ob-preview-density>span>i{width:6px;height:6px;border-radius:9999px;background:var(--ob-brand);flex:none}
+.ob-preview-density>span>b{height:3px;flex:1 1 auto;border-radius:9999px;background:var(--ob-border-strong)}
+.ob-preview-density[data-density-preview='compact']{gap:3px;padding:6px}
+.ob-preview-density[data-density-preview='comfortable']{gap:8px;padding:10px}
+.ob-preview-font{display:grid;place-items:center;width:100%;min-height:56px;color:var(--ob-ink);line-height:1.2}
+.ob-preview-font[data-font-preview='small']{font-size:var(--ob-text-small)}
+.ob-preview-font[data-font-preview='standard']{font-size:var(--ob-text-section)}
+.ob-preview-font[data-font-preview='large']{font-size:calc(var(--ob-text-section) * 1.2)}
+.ob-preview-width{display:flex;align-items:center;justify-content:center;width:100%;min-height:56px;padding:8px}
+.ob-preview-width>span{display:block;height:32px;border-radius:var(--ob-radius-control);border:1px solid var(--ob-brand);background:var(--ob-brand-soft)}
+.ob-preview-width[data-width-preview='standard']>span{width:66%}
+.ob-preview-width[data-width-preview='wide']>span{width:84%}
+.ob-preview-width[data-width-preview='auto']>span{width:100%}
+.ob-settings-note{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
 
 /* ---------- 表单控件 ---------- */
 .ob-field{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 0}
@@ -1558,6 +1772,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
   .ob-settings-nav{position:static;flex-direction:row;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
   .ob-settings-nav::-webkit-scrollbar{display:none}
   .ob-settings-nav-btn{flex:none;white-space:nowrap}
+  .ob-settings-nav-title{display:none}
 }
 @media (max-width:640px){
   .ob-shell{padding:0 16px}
@@ -1680,6 +1895,113 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         const mode = resolveMotionMode(pref, systemReduced)
         return { mode, systemReduced, categories: motionCategories(mode) }
       }, [pref, systemReduced])
+    }
+
+    /** 读取系统 prefers-contrast（ui.contrast=system 时使用）。 */
+    function useSystemMoreContrast() {
+      const [more, setMore] = useState(() => prefersMoreContrast())
+      useEffect(() => {
+        let media = null
+        try {
+          if (typeof matchMedia !== 'function') return undefined
+          media = matchMedia('(prefers-contrast: more)')
+        } catch (error) {
+          return undefined
+        }
+        const onChange = () => setMore(media.matches === true)
+        try {
+          if (typeof media.addEventListener === 'function') media.addEventListener('change', onChange)
+          else if (typeof media.addListener === 'function') media.addListener(onChange)
+        } catch (error) {}
+        return () => {
+          try {
+            if (typeof media.removeEventListener === 'function') media.removeEventListener('change', onChange)
+            else if (typeof media.removeListener === 'function') media.removeListener(onChange)
+          } catch (error) {}
+        }
+      }, [])
+      return more
+    }
+
+    // ---- DSH 全局主题桥：系统设置页通过 theme service 切换整个 DSH 的主题 ----
+
+    let clientThemeBridge = null
+
+    function readClientService(ctx, key) {
+      try {
+        return ctx && typeof ctx.get === 'function' ? ctx.get(key) : undefined
+      } catch (error) {
+        return undefined
+      }
+    }
+
+    /**
+     * 绑定 DSH 的 theme service（客户端公开服务）：getTheme / setTheme，
+     * 用 theme/change 事件同步外部（DSH 自身设置页）的主题变化。
+     * 服务不存在时保持 null，设置页会优雅禁用主题区。
+     */
+    function bindClientTheme(ctx) {
+      const theme = (ctx && ctx.theme) || readClientService(ctx, 'theme')
+      if (!theme || typeof theme.getTheme !== 'function' || typeof theme.setTheme !== 'function') return null
+      const bridge = {
+        getSnapshot: () => {
+          try {
+            return theme.getTheme()
+          } catch (error) {
+            return null
+          }
+        },
+        setTheme: (id) => {
+          try {
+            theme.setTheme(String(id))
+          } catch (error) {
+            try {
+              console.warn('[dsh-onebot-qq] 主题切换失败：', error)
+            } catch (inner) {}
+          }
+        },
+        subscribe: (listener) => {
+          if (!ctx || typeof ctx.on !== 'function') return () => {}
+          try {
+            const off = ctx.on('theme/change', () => listener())
+            return typeof off === 'function' ? off : () => {}
+          } catch (error) {
+            return () => {}
+          }
+        },
+      }
+      clientThemeBridge = bridge
+      if (ctx && typeof ctx.effect === 'function') {
+        try {
+          ctx.effect(() => () => {
+            if (clientThemeBridge === bridge) clientThemeBridge = null
+          }, 'onebot-qq: theme bridge')
+        } catch (error) {}
+      }
+      return bridge
+    }
+
+    /** 订阅 DSH 主题快照；无 theme service 时 available=false。 */
+    function useClientTheme() {
+      const bridge = clientThemeBridge
+      const [snapshot, setSnapshot] = useState(() => (bridge ? bridge.getSnapshot() : null))
+      useEffect(() => {
+        if (!bridge) {
+          setSnapshot(null)
+          return undefined
+        }
+        setSnapshot(bridge.getSnapshot())
+        const off = bridge.subscribe(() => setSnapshot(bridge.getSnapshot()))
+        return typeof off === 'function' ? off : undefined
+      }, [bridge])
+      return {
+        available: Boolean(bridge),
+        snapshot,
+        preference: snapshot && snapshot.preference ? String(snapshot.preference) : '',
+        activeScheme: snapshot && snapshot.active && snapshot.active.colorScheme ? String(snapshot.active.colorScheme) : '',
+        themes: snapshot && Array.isArray(snapshot.themes) ? snapshot.themes : [],
+        setTheme: bridge ? bridge.setTheme : null,
+      }
     }
 
     function useMotion() {
@@ -2045,6 +2367,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       connect: ['M9 7V4a3 3 0 0 1 6 0v3', 'M7 7h10v5a5 5 0 0 1-10 0z', 'M12 17v3'],
       message: ['M4 6h16v10H8l-4 3z', 'M8 10h8', 'M8 13h5'],
       config: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M12 2v3', 'M12 19v3', 'M2 12h3', 'M19 12h3', 'M4.9 4.9l2.1 2.1', 'M17 17l2.1 2.1', 'M19.1 4.9 17 7', 'M7 17l-2.1 2.1'],
+      palette: ['M12 21a9 9 0 1 1 0-18c4.4 0 8 2.9 8 6.5 0 2.3-1.8 3.5-4 3.5h-1.2a1.8 1.8 0 0 0-1.3 3.1c.4.4.5.9.5 1.4 0 1.4-1 2.5-2 2.5z', 'M7.5 11h.01', 'M11 7.5h.01', 'M15.5 9h.01'],
+      layout: ['M4 4h16v16H4z', 'M4 9h16', 'M9 9v11'],
+      sparkles: ['M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z', 'M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z', 'M5 15l.6 1.6L7 17l-1.4.4L5 19l-.6-1.6L3 17l1.4-.4z'],
+      sun: ['M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z', 'M12 2v2', 'M12 20v2', 'M2 12h2', 'M20 12h2', 'M4.9 4.9l1.4 1.4', 'M17.7 17.7l1.4 1.4', 'M19.1 4.9l-1.4 1.4', 'M6.3 17.7l-1.4 1.4'],
+      moon: ['M21 13.2A8.5 8.5 0 1 1 10.8 3 6.7 6.7 0 0 0 21 13.2z'],
+      monitor: ['M4 4h16v12H4z', 'M8 20h8', 'M12 16v4'],
+      sliders: ['M4 6h10', 'M18 6h2', 'M4 12h4', 'M12 12h8', 'M4 18h12', 'M20 18h0', 'M14 4v4', 'M8 10v4', 'M16 16v4'],
       logs: ['M5 4h14', 'M5 9h9', 'M5 14h14', 'M5 19h7'],
       about: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 10v6', 'M12 7h.01'],
       refresh: ['M20 11a8 8 0 1 0-2.3 5.7', 'M20 5v6h-6'],
@@ -2650,6 +2979,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'config', label: '配置', icon: 'config' },
+      { id: 'settings', label: '系统设置', icon: 'palette' },
       { id: 'logs', label: '日志', icon: 'logs' },
       { id: 'about', label: '关于', icon: 'about' },
     ]
@@ -3553,26 +3883,24 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     // =====================================================================
-    // 标签页：配置（左侧分组导航 + 服务端字段表驱动）
+    // 标签页：配置（持久化设置壳：左分组导航固定，右侧只切换当前分组）
     // =====================================================================
 
     function ConfigTab(props) {
       const configInfo = props.configInfo
       const draft = props.draft
-      const groups = useMemo(() => buildFieldSpecs(configInfo && configInfo.groups), [configInfo])
+      const groups = useMemo(
+        () => buildFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui'),
+        [configInfo],
+      )
       const [active, setActive] = useState('')
-      const motionMode = useMotionModeValue(props)
       useEffect(() => {
         if (!groups.length) return
         if (!groups.some((group) => group.id === active)) setActive(groups[0].id)
       }, [groups, active])
 
       if (!configInfo || !draft) {
-        return h(
-          'div',
-          { className: 'ob-page' },
-          h(PanelSkeleton, { rows: 5 }),
-        )
+        return h('div', { className: 'ob-page' }, h(PanelSkeleton, { rows: 5 }))
       }
       if (!groups.length) {
         return h(
@@ -3588,17 +3916,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         )
       }
 
+      const activeGroup = groups.find((group) => group.id === active) || groups[0]
       const setField = (path, value) => props.updateDraft((previous) => setByPath(previous || {}, path, value))
-      const focusSection = (groupId) => {
-        setActive(groupId)
-        try {
-          const el = document.getElementById('ob-config-' + groupId)
-          if (el && el.scrollIntoView) {
-            const smooth = shouldAnimate(motionMode, 'screen')
-            el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
-          }
-        } catch (error) {}
-      }
+      const items = groups.map((group) => ({
+        id: group.id,
+        label: group.title,
+        icon: configGroupIcon(group.id),
+        description: group.description || '',
+      }))
 
       return h(
         'div',
@@ -3610,42 +3935,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             })
           : null,
         h(
-          'div',
-          { className: 'ob-settings' },
-          h(
-            'nav',
-            { className: 'ob-settings-nav', 'aria-label': '配置分组' },
-            groups.map((group) =>
-              h(
-                'button',
-                {
-                  key: group.id,
-                  type: 'button',
-                  className: cx('ob-settings-nav-btn', active === group.id && 'on'),
-                  onClick: () => focusSection(group.id),
-                },
-                h(Icon, { name: group.id === 'ui' ? 'config' : group.id === 'onebot' ? 'plug' : group.id === 'gateway' ? 'connect' : group.id === 'security' ? 'shield' : 'logs', size: 15 }),
-                group.title,
-              ),
-            ),
-          ),
-          h(
-            'div',
-            { className: 'ob-settings-content' },
-            groups.map((group) =>
-              h(
-                'div',
-                { key: group.id, className: 'ob-settings-section', id: 'ob-config-' + group.id },
-                h(
-                  Panel,
-                  { title: group.title, description: group.description || undefined },
-                  group.fields.map((field) =>
-                    h(FieldRow, { key: field.path, spec: field, value: getByPath(draft, field.path), onChange: (value) => setField(field.path, value), disabled: props.saving }),
-                  ),
-                ),
-              ),
-            ),
-            h(
+          SettingsShell,
+          {
+            items,
+            active: activeGroup.id,
+            onSelect: setActive,
+            label: '配置分组',
+            footer: h(
               Panel,
               {
                 title: '保存与重置',
@@ -3658,19 +3954,18 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   h(Btn, { kind: 'danger', onClick: props.reset, disabled: props.saving }, '恢复默认'),
                 ),
               },
-              h('p', { className: 'ob-note' }, '快捷键：', h(Kbd, null, 'Ctrl'), ' + ', h(Kbd, null, 'S'), ' 保存。当前配置文件由宿主写入数据目录，刷新页面不会丢失。'),
+              h('p', { className: 'ob-note' }, '快捷键：', h(Kbd, null, 'Ctrl'), ' + ', h(Kbd, null, 'S'), ' 保存。分组切换只替换右侧内容，页头与导航保持不动。'),
+            ),
+          },
+          h(
+            Panel,
+            { title: activeGroup.title, description: activeGroup.description || undefined },
+            activeGroup.fields.map((field) =>
+              h(FieldRow, { key: field.path, spec: field, value: getByPath(draft, field.path), onChange: (value) => setField(field.path, value), disabled: props.saving }),
             ),
           ),
         ),
       )
-    }
-
-    // 小工具：读取当前配置中的 motion（ConfigTab 需要判断滚动是否平滑）。
-    function useMotionModeValue(props) {
-      const config = safeObject(props.configInfo && props.configInfo.config)
-      const systemReduced = useSystemReducedMotion()
-      const prefs = normalizeUiPreferences(config.ui)
-      return resolveMotionMode(prefs.motion, systemReduced)
     }
 
     // =====================================================================
@@ -3916,6 +4211,460 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     // =====================================================================
+    // 标签页：系统设置（参考 console-web preferences：持久设置壳 + 即时保存）
+    //
+    // 布局（持久化壳）：页头 / 全局标签栏 / 左侧分类导航都不在右内容容器内，
+    // 切换分类只替换右侧 .ob-settings-pane（ob-swap 仅淡入，不整页滑动）。
+    // 主题由 DSH theme service 控制（全 DSH 生效）；其余偏好走 ui.* 配置并即时保存。
+    // =====================================================================
+
+    const PAGE_TRANSITION_HINTS = {
+      default: '轻微上移 + 淡入（推荐）',
+      fade: '仅淡入，不位移',
+      'fade-slide': '从右侧轻移入',
+      'fade-up': '从下方轻移入',
+      'fade-down': '从上方轻移入',
+      none: '关闭页面切换动画',
+    }
+
+    function configGroupIcon(id) {
+      switch (id) {
+        case 'ui':
+          return 'palette'
+        case 'gateway':
+          return 'connect'
+        case 'onebot':
+          return 'plug'
+        case 'snowluma':
+          return 'search'
+        case 'reconnect':
+        case 'timeouts':
+          return 'refresh'
+        case 'events':
+          return 'bolt'
+        case 'logging':
+          return 'logs'
+        case 'security':
+          return 'shield'
+        default:
+          return 'config'
+      }
+    }
+
+    /** 配置/系统设置共用的持久设置壳：左导航固定，右侧只换当前分类内容。 */
+    function SettingsShell(props) {
+      const items = safeArray(props.items)
+      return h(
+        'div',
+        { className: 'ob-settings' },
+        h(
+          'nav',
+          { className: 'ob-settings-nav', 'aria-label': props.label || '设置分类' },
+          items.map((item) =>
+            h(
+              'button',
+              {
+                key: item.id,
+                type: 'button',
+                className: cx('ob-settings-nav-btn', props.active === item.id && 'on'),
+                'aria-current': props.active === item.id ? 'page' : undefined,
+                onClick: () => props.onSelect(item.id),
+              },
+              h(Icon, { name: item.icon || 'config', size: 15 }),
+              h('span', { className: 'ob-truncate' }, item.label),
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'ob-settings-content' },
+          h('div', { key: props.active, className: 'ob-settings-pane ob-swap' }, props.children),
+          props.footer || null,
+        ),
+      )
+    }
+
+    function SettingFieldBlock(props) {
+      return h(
+        'div',
+        { className: 'ob-field' },
+        h('div', { className: 'ob-field-label' }, props.label),
+        props.hint ? h('p', { className: 'ob-field-help' }, props.hint) : null,
+        h('div', { className: 'ob-field-control' }, props.children),
+      )
+    }
+
+    function SettingOptionGrid(props) {
+      const options = safeArray(props.options)
+      return h(
+        'div',
+        { className: 'ob-option-grid' },
+        options.map((option) =>
+          h(
+            'button',
+            {
+              key: String(option.value),
+              type: 'button',
+              className: cx('ob-option-card', option.value === props.value && 'on'),
+              'aria-pressed': option.value === props.value,
+              onClick: () => props.onChange(option.value),
+            },
+            h('span', { className: 'ob-option-label' }, h('span', null, option.label), props.icon ? h(Icon, { name: props.icon(option) }) : null),
+            props.renderPreview ? h('span', { className: 'ob-option-preview' }, props.renderPreview(option)) : null,
+          ),
+        ),
+      )
+    }
+
+    function ThemePreview(props) {
+      return h(
+        'span',
+        { className: 'ob-theme-preview', 'data-theme-preview': props.value, 'aria-hidden': true },
+        h('span', { className: 'ob-theme-preview-bar', style: { width: '42%' } }),
+        h('span', { className: 'ob-theme-preview-bar', style: { width: '70%' } }),
+        h('span', { className: 'ob-theme-preview-surface' }),
+      )
+    }
+
+    function DensityPreview(props) {
+      return h(
+        'span',
+        { className: 'ob-preview-density', 'data-density-preview': props.value, 'aria-hidden': true },
+        [0, 1, 2].map((row) => h('span', { key: row }, h('i', null), h('b', null))),
+      )
+    }
+
+    function FontPreview(props) {
+      return h('span', { className: 'ob-preview-font', 'data-font-preview': props.value, 'aria-hidden': true }, 'Aa 面板预览')
+    }
+
+    function WidthPreview(props) {
+      return h('span', { className: 'ob-preview-width', 'data-width-preview': props.value, 'aria-hidden': true }, h('span', null))
+    }
+
+    function AccentSwatch(props) {
+      const tone = accentValues(props.value, false)
+      const style = tone ? { background: tone.brand } : { background: 'linear-gradient(135deg, var(--ob-ink), var(--ob-ink-muted))' }
+      return h('span', { className: 'ob-swatch', style, 'aria-hidden': true })
+    }
+
+    function PreferenceSaveStatus(props) {
+      const status = props.status || {}
+      if (status.error) return h('span', { className: 'ob-settings-status err' }, h('i', { className: 'ob-dot', 'aria-hidden': true }), '保存失败')
+      if (status.saving) return h('span', { className: 'ob-settings-status' }, h(BusyIndicator, { label: '保存中', showLabel: false }), '保存中…')
+      return h('span', { className: 'ob-settings-status ok' }, h('i', { className: 'ob-dot', 'aria-hidden': true }), status.savedAt ? '已保存 · ' + formatTime(status.savedAt) : '已保存')
+    }
+
+    function ThemeControl(props) {
+      const theme = props.theme
+      if (!theme || !theme.available) {
+        return h(EmptyState, {
+          compact: true,
+          tone: 'warn',
+          icon: 'alert',
+          title: '主题服务不可用',
+          description: '当前环境没有 DSH theme service，无法在这里切换全局主题；其它面板偏好仍可修改。',
+        })
+      }
+      const current = theme.preference
+      const known = THEME_OPTIONS.some((option) => option.value === current)
+      const currentLabel = !known && current ? '当前：自定义主题「' + current + '」' : ''
+      return h(
+        'div',
+        { className: 'ob-stack', style: { width: '100%' } },
+        h(SettingOptionGrid, {
+          options: THEME_OPTIONS,
+          value: current,
+          onChange: (value) => theme.setTheme(value),
+          icon: (option) => option.icon,
+          renderPreview: (option) => h(ThemePreview, { value: option.value }),
+        }),
+        h(
+          'div',
+          { className: 'ob-row' },
+          h(Badge, { tone: 'brand' }, '当前渲染：' + (theme.activeScheme === 'dark' ? '深色' : '浅色')),
+          currentLabel ? h(Badge, { tone: 'info' }, currentLabel) : null,
+          h('span', { className: 'ob-hint-inline' }, '与 DSH 自带外观设置同步，改动立即作用于整个 DSH。'),
+        ),
+      )
+    }
+
+    function SettingsOptionField(props) {
+      const field = props.field
+      const value = props.value
+      const onChange = props.onChange
+      if (!field) return null
+      const options = safeArray(field.options)
+      if (field.path === 'ui.accent') {
+        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(
+          'div',
+          { className: 'ob-accent-grid' },
+          options.map((option) =>
+            h(
+              'button',
+              {
+                key: String(option.value),
+                type: 'button',
+                className: cx('ob-accent-card', option.value === value && 'on'),
+                'aria-pressed': option.value === value,
+                title: option.label,
+                onClick: () => onChange(option.value),
+              },
+              h(AccentSwatch, { value: option.value }),
+              h('span', { className: 'ob-truncate' }, option.label),
+            ),
+          ),
+        ))
+      }
+      if (field.path === 'ui.density') {
+        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+          options,
+          value,
+          onChange,
+          renderPreview: (option) => h(DensityPreview, { value: option.value }),
+        }))
+      }
+      if (field.path === 'ui.fontScale') {
+        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+          options,
+          value,
+          onChange,
+          renderPreview: (option) => h(FontPreview, { value: option.value }),
+        }))
+      }
+      if (field.path === 'ui.contentWidth') {
+        return h(SettingFieldBlock, { label: field.label, hint: field.help }, h(SettingOptionGrid, {
+          options,
+          value,
+          onChange,
+          renderPreview: (option) => h(WidthPreview, { value: option.value }),
+        }))
+      }
+      if (field.path === 'ui.pageTransition') {
+        return h(
+          SettingFieldBlock,
+          { label: field.label, hint: field.help },
+          h(
+            'div',
+            { className: 'ob-stack', style: { width: '100%', gap: '6px' } },
+            h(
+              'select',
+              { className: 'ob-select', value: value == null ? '' : String(value), onChange: (event) => onChange(event.target.value), 'aria-label': field.label },
+              options.map((option) => h('option', { key: String(option.value), value: String(option.value) }, option.label)),
+            ),
+            h('p', { className: 'ob-field-help', style: { margin: 0 } }, PAGE_TRANSITION_HINTS[value] || '页面切换动画只影响顶层标签；配置与系统设置内部切换始终只淡入。'),
+          ),
+        )
+      }
+      if (!options.length) {
+        return h(FieldRow, { spec: field, value, onChange })
+      }
+      return h(
+        SettingFieldBlock,
+        { label: field.label, hint: field.help },
+        h(Seg, {
+          value,
+          label: field.label,
+          options: options.map((option) => ({ value: option.value, label: option.label })),
+          onChange,
+        }),
+      )
+    }
+
+    function SettingsSummary(props) {
+      const rows = []
+      if (props.theme && props.theme.available) {
+        const preference = props.theme.preference
+        const option = THEME_OPTIONS.find((item) => item.value === preference)
+        rows.push(['DSH 主题', option ? option.label : preference ? '自定义：' + preference : '—'])
+      }
+      for (const field of props.fields) {
+        const value = getByPath(props.draft, field.path)
+        const option = safeArray(field.options).find((item) => item.value === value)
+        rows.push([field.label, option ? option.label : String(value == null ? '—' : value)])
+      }
+      rows.push(['解析后的对比度', props.contrast === 'high' ? '高对比度' : '标准'])
+      return h(KV, { rows })
+    }
+
+    function SettingsTab(props) {
+      const configInfo = props.configInfo
+      const draft = props.draft
+      const sections = useMemo(() => settingsSections(configInfo && configInfo.groups), [configInfo])
+      const [active, setActive] = useState('appearance')
+      const [revision, setRevision] = useState(0)
+      const theme = useClientTheme()
+      const systemReduced = useSystemReducedMotion()
+      const systemMoreContrast = useSystemMoreContrast()
+      const ui = safeObject((draft && draft.ui) || (configInfo && configInfo.config && configInfo.config.ui))
+      const prefs = normalizeUiPreferences(ui)
+      const motionMode = resolveMotionMode(prefs.motion, systemReduced)
+      const contrast = resolveContrast(prefs.contrast, systemMoreContrast)
+
+      if (!configInfo || !draft) {
+        return h('div', { className: 'ob-page' }, h(PanelSkeleton, { rows: 5 }))
+      }
+      if (!sections.length) {
+        return h(
+          'div',
+          { className: 'ob-page' },
+          h(Panel, null, h(EmptyState, {
+            tone: 'err',
+            icon: 'alert',
+            title: '没有可渲染的界面偏好',
+            description: '服务端 ui 分组为空。请检查 CONFIG_GROUPS，或刷新后再试。',
+            action: h(Btn, { small: true, onClick: () => props.refreshAll() }, '刷新'),
+          })),
+        )
+      }
+
+      const activeSection = sections.find((section) => section.id === active) || sections[0]
+      const allFields = sections.flatMap((section) => section.fields)
+      const saveStatus = props.prefStatus || {}
+      const updateField = (path, value) => props.saveUiPatch({ [path]: value })
+      const themeLabel = theme.available
+        ? THEME_OPTIONS.find((option) => option.value === theme.preference) ? THEME_OPTIONS.find((option) => option.value === theme.preference).label : theme.preference || '—'
+        : '不可用'
+
+      const renderSectionBody = () => {
+        if (activeSection.id === 'reset') {
+          return h(
+            Panel,
+            { title: '当前生效值', description: '这些值来自服务端配置与 DSH 主题；修改会即时保存。' },
+            h(SettingsSummary, { fields: allFields, draft, theme, contrast }),
+            h(
+              'div',
+              { className: 'ob-settings-note', style: { marginTop: '14px' } },
+              h('p', { className: 'ob-field-help', style: { margin: 0 } }, '主题由 DSH 管理；「恢复默认外观」只重置 ui.*，不影响主题、连接与账号配置。'),
+              h(Btn, { small: true, kind: 'danger', icon: 'refresh', onClick: () => {
+                const confirmed = typeof window !== 'undefined' && typeof window.confirm === 'function'
+                  ? window.confirm('恢复默认界面偏好？只会重置 ui.*（强调色/对比度/密度/字号/内容宽度/动效/页面转场），主题与连接配置不受影响。')
+                  : true
+                if (!confirmed) return
+                const patch = {}
+                for (const field of allFields) patch[field.path] = field.default
+                props.saveUiPatch(patch)
+                props.toast('已恢复默认界面偏好', 'ok')
+              } }, '恢复默认外观'),
+            ),
+          )
+        }
+        if (activeSection.id === 'other') {
+          return h(
+            Panel,
+            { title: activeSection.title, description: activeSection.description },
+            activeSection.fields.map((field) =>
+              h(FieldRow, { key: field.path, spec: field, value: getByPath(draft, field.path), onChange: (value) => updateField(field.path, value), disabled: saveStatus.saving }),
+            ),
+          )
+        }
+        return h(
+          Panel,
+          {
+            title: activeSection.id === 'appearance' ? '主题与强调色' : activeSection.id === 'layout' ? '空间与阅读' : '动效与转场',
+            description: activeSection.id === 'appearance'
+              ? '主题是 DSH 全局设置；强调色与对比度只影响本面板。'
+              : activeSection.id === 'layout'
+                ? '调整面板的密度、字号和内容宽度；保存后立即生效。'
+                : '动效模式与页面转场；配置/系统设置内部切换始终只做淡入。',
+          },
+          activeSection.id === 'appearance'
+            ? h(
+                'div',
+                { className: 'ob-stack' },
+                h(SettingFieldBlock, { label: 'DSH 主题', hint: '浅色 / 深色 / 跟随系统；作用范围是整个 DSH，而不仅是本面板。' }, h(ThemeControl, { theme })),
+                activeSection.fields.map((field) => h(SettingsOptionField, {
+                  key: field.path,
+                  field,
+                  value: getByPath(draft, field.path),
+                  onChange: (value) => updateField(field.path, value),
+                })),
+              )
+            : activeSection.fields.map((field) => h(SettingsOptionField, {
+                key: field.path,
+                field,
+                value: getByPath(draft, field.path),
+                onChange: (value) => updateField(field.path, value),
+              })),
+          activeSection.id === 'motion'
+            ? h(
+                'div',
+                { className: 'ob-settings-note', style: { marginTop: '14px' } },
+                h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('p', { className: 'ob-field-label', style: { margin: 0 } }, '预览内容切换'), h('p', { className: 'ob-field-help', style: { margin: 0 } }, '配置/系统设置内部切换使用同一套淡入，不做整页滑动。')),
+                h(Btn, { small: true, icon: 'play', onClick: () => setRevision((value) => value + 1) }, '播放预览'),
+                h('div', { className: 'ob-option-preview', style: { width: '160px' } }, h('div', { key: revision, className: 'ob-swap', style: { padding: '10px', fontSize: 'var(--ob-text-small)' } }, '内容切换预览 ' + (revision + 1))),
+              )
+            : null,
+        )
+      }
+
+      return h(
+        'div',
+        { className: 'ob-page' },
+        props.prefStatus && props.prefStatus.error
+          ? h(Banner, {
+              tone: 'err',
+              message: '界面偏好保存失败：' + props.prefStatus.error,
+              actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: () => props.retryPrefSave() }, '重试')],
+            })
+          : null,
+        h(
+          'div',
+          { className: 'ob-settings' },
+          h(
+            'nav',
+            { className: 'ob-settings-nav', 'aria-label': '系统设置分类' },
+            h('p', { className: 'ob-settings-nav-title' }, '显示与偏好'),
+            sections.map((section) =>
+              h(
+                'button',
+                {
+                  key: section.id,
+                  type: 'button',
+                  className: cx('ob-settings-nav-btn', activeSection.id === section.id && 'on'),
+                  'aria-current': activeSection.id === section.id ? 'page' : undefined,
+                  onClick: () => setActive(section.id),
+                },
+                h(Icon, { name: section.icon || 'config', size: 15 }),
+                h('span', { className: 'ob-truncate' }, section.title),
+              ),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'ob-settings-content' },
+            h(
+              'div',
+              { className: 'ob-settings-pane ob-swap', key: activeSection.id },
+              h(
+                'div',
+                { className: 'ob-spread' },
+                h(
+                  'div',
+                  { className: 'ob-stack', style: { gap: '2px', minWidth: 0 } },
+                  h('h2', { className: 'ob-settings-heading' }, activeSection.title),
+                  h('p', { className: 'ob-settings-description' }, activeSection.description),
+                ),
+                h('div', { className: 'ob-row' }, h(PreferenceSaveStatus, { status: saveStatus })),
+              ),
+              renderSectionBody(),
+            ),
+            h(
+              'p',
+              { className: 'ob-note' },
+              '即时保存：每次修改都会写入服务端配置，不需要再点保存；主题通过 DSH theme service 切换。当前动效模式 ',
+              h(Badge, { tone: motionMode === 'full' ? 'ok' : 'warn' }, motionMode),
+              ' · 对比度 ',
+              h(Badge, { tone: contrast === 'high' ? 'info' : 'muted' }, contrast === 'high' ? '高' : '标准'),
+              ' · 主题 ',
+              h(Badge, { tone: 'brand' }, themeLabel),
+              '。',
+            ),
+          ),
+        ),
+      )
+    }
+    // =====================================================================
     // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
 
@@ -3953,13 +4702,19 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           return {
             eyebrow: 'PREFERENCES',
             title: '配置',
-            description: '所有配置项都来自服务端字段表；改动后点底部「保存」或按 Ctrl + S。外观偏好保存后立即生效，不需要重连。',
+            description: '所有配置项都来自服务端字段表；左侧分组切换只替换右侧内容。改动后点底部「保存」或按 Ctrl + S；外观偏好已移到「系统设置」。',
           }
         case 'logs':
           return {
             eyebrow: 'DIAGNOSTICS',
             title: '日志',
             description: '增量拉取宿主日志环形缓冲；token 与密钥已在服务端脱敏。',
+          }
+        case 'settings':
+          return {
+            eyebrow: 'SYSTEM SETTINGS',
+            title: '系统设置',
+            description: '面板外观与动效偏好，以及 DSH 全局主题。分类切换只替换右侧内容，页头与导航保持不动。',
           }
         case 'about':
           return {
@@ -3993,6 +4748,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [saving, setSaving] = useState(false)
       const [issues, setIssues] = useState([])
       const [busyCount, setBusyCount] = useState(0)
+      const [prefStatus, setPrefStatus] = useState({ saving: false, error: '', savedAt: 0 })
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -4001,8 +4757,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const toastTimer = useRef(null)
       const errorDismissedRef = useRef(false)
       const lastErrorRef = useRef('')
+      const prefQueueRef = useRef(Promise.resolve())
+      const prefPendingRef = useRef(0)
 
       const systemReduced = useSystemReducedMotion()
+      const systemMoreContrast = useSystemMoreContrast()
       const uiPrefs = useMemo(() => {
         const ui = safeObject((draft && draft.ui) || (configInfo && configInfo.config && configInfo.config.ui))
         return normalizeUiPreferences(ui)
@@ -4011,9 +4770,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         const mode = resolveMotionMode(uiPrefs.motion, systemReduced)
         return { mode, systemReduced, categories: motionCategories(mode) }
       }, [uiPrefs.motion, systemReduced])
-      const rootData = useMemo(() => uiRootData(uiPrefs, systemReduced), [uiPrefs, systemReduced])
+      const rootData = useMemo(() => uiRootData(uiPrefs, systemReduced, systemMoreContrast), [uiPrefs, systemReduced, systemMoreContrast])
       const now = useNow(5000)
-      const progress = useTrickleProgress(Boolean(loading || refreshing || saving || busyCount > 0), motion)
+      const progress = useTrickleProgress(Boolean(loading || refreshing || saving || prefStatus.saving || busyCount > 0), motion)
 
       const dirty = useMemo(() => Boolean(configInfo && draft) && !deepEqual(draft, configInfo.config), [draft, configInfo])
       dirtyRef.current = dirty
@@ -4216,6 +4975,65 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         toast('已撤销未保存的改动', 'info')
       }, [toast])
 
+      // ---- 系统设置即时保存：设置页每次修改直接写盘，串行队列避免竞争 ----
+
+      const queuePrefSave = useCallback((nextConfig) => {
+        prefPendingRef.current += 1
+        setPrefStatus((previous) => ({ saving: true, error: '', savedAt: previous.savedAt || 0 }))
+        const run = async () => {
+          const merged = mergeConfigSave(await post('/config/save', { config: nextConfig }))
+          if (!merged.ok) {
+            setPrefStatus({ saving: prefPendingRef.current > 1, error: merged.message, savedAt: 0 })
+            setIssues([])
+            toast('界面偏好保存失败：' + merged.message, 'err')
+            return false
+          }
+          if (merged.config) {
+            const info = configInfoRef.current
+            const nextInfo = info ? Object.assign({}, info, { config: merged.config }) : info
+            setConfigInfo(nextInfo)
+            configInfoRef.current = nextInfo
+            // 只有在没有更新改动时才回写 draft，避免覆盖用户刚点的下一个选项。
+            if (deepEqual(draftRef.current, nextConfig)) {
+              setDraft(clone(merged.config))
+              draftRef.current = clone(merged.config)
+              dirtyRef.current = false
+            }
+          }
+          setIssues(merged.issues)
+          return true
+        }
+        const chained = prefQueueRef.current.then(run, run)
+        prefQueueRef.current = chained.catch(() => {})
+        chained.finally(() => {
+          prefPendingRef.current = Math.max(0, prefPendingRef.current - 1)
+          if (prefPendingRef.current === 0) {
+            setPrefStatus((previous) => ({
+              saving: false,
+              error: previous.error,
+              savedAt: previous.error ? previous.savedAt : Date.now(),
+            }))
+          }
+        })
+        return chained
+      }, [toast])
+
+      const saveUiPatch = useCallback((patch) => {
+        const base = draftRef.current || (configInfoRef.current && configInfoRef.current.config)
+        if (!base) return Promise.resolve(false)
+        const next = applyConfigPatch(base, patch)
+        draftRef.current = next
+        dirtyRef.current = true
+        setDraft(next)
+        return queuePrefSave(next)
+      }, [queuePrefSave])
+
+      const retryPrefSave = useCallback(() => {
+        const base = draftRef.current || (configInfoRef.current && configInfoRef.current.config)
+        if (!base) return
+        queuePrefSave(base)
+      }, [queuePrefSave])
+
       useEffect(() => {
         if (typeof window === 'undefined') return undefined
         const onKey = (event) => {
@@ -4277,6 +5095,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         save,
         reset,
         undo,
+        saveUiPatch,
+        retryPrefSave,
+        prefStatus,
         now,
       }
 
@@ -4285,6 +5106,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
+      else if (tab === 'settings') body = h(SettingsTab, tabProps)
       else if (tab === 'logs') body = h(Logs, tabProps)
       else body = h(About, tabProps)
 
@@ -4341,10 +5163,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                       h(StatusPill, { key: 'state', tone: state.tone, text: state.text, live: gateway.state === 'connected' || gateway.state === 'connecting', extra: login && login.nickname ? String(login.nickname) : '' }),
                       h(Badge, { key: 'mode', tone: 'brand' }, endpointModeLabel(gateway.endpoint && gateway.endpoint.mode)),
                       version ? h(Badge, { key: 'version', tone: 'muted' }, 'v' + String(version)) : null,
-                      dirty ? h(Badge, { key: 'dirty', tone: 'warn' }, '有未保存的改动') : null,
+                      dirty && tab !== 'settings' ? h(Badge, { key: 'dirty', tone: 'warn' }, '有未保存的改动') : null,
                     ],
                     actions: [
-                      dirty ? h(Btn, { key: 'save', small: true, kind: 'primary', icon: 'check', onClick: () => save(), busy: saving, disabled: saving }, '保存') : null,
+                      tab === 'config' && dirty ? h(Btn, { key: 'save', small: true, kind: 'primary', icon: 'check', onClick: () => save(), busy: saving, disabled: saving }, '保存') : null,
                       h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => refreshAll(), disabled: refreshing }),
                     ],
                   }),
@@ -4358,9 +5180,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                       role: 'tabpanel',
                       'aria-labelledby': 'ob-tab-' + tab,
                     },
-                    h('div', { key: tab, className: pageTransitionClass(uiPrefs.pageTransition) }, body),
+                    h('div', { key: tab, className: pageTransitionClass(contentTransitionFor(tab, uiPrefs.pageTransition)) }, body),
                   ),
-                  h(Savebar, { visible: dirty, saving, onSave: () => save(), onUndo: undo }),
+                  h(Savebar, { visible: dirty && tab === 'config', saving, onSave: () => save(), onUndo: undo }),
                 ),
           ),
           h(Toast, { message: toastMessage }),
@@ -4388,6 +5210,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     function applyImpl(ctx) {
       if (!ctx) return
       installStyle(ctx)
+      bindClientTheme(ctx)
       let slots = null
       try {
         slots = typeof ctx.get === 'function' ? ctx.get('slots') : undefined
@@ -4419,6 +5242,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。
     exports.ConfigTab = ConfigTab
+    exports.SettingsTab = SettingsTab
+    exports.SettingsShell = SettingsShell
     exports.Logs = Logs
     exports.About = About
     exports.UI_ACCENTS = UI_ACCENTS
@@ -4427,10 +5252,14 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.UI_CONTENT_WIDTHS = UI_CONTENT_WIDTHS
     exports.UI_MOTION_MODES = UI_MOTION_MODES
     exports.UI_PAGE_TRANSITIONS = UI_PAGE_TRANSITIONS
+    exports.UI_CONTRASTS = UI_CONTRASTS
     exports.DEFAULT_UI = DEFAULT_UI
+    exports.THEME_OPTIONS = THEME_OPTIONS
+    exports.SETTINGS_CATEGORY_DEFS = SETTINGS_CATEGORY_DEFS
     exports.ACCENT_TOKENS = ACCENT_TOKENS
     exports.DENSITY_METRICS = DENSITY_METRICS
     exports.resolveMotionMode = resolveMotionMode
+    exports.resolveContrast = resolveContrast
     exports.motionCategories = motionCategories
     exports.motionDisabled = motionDisabled
     exports.shouldAnimate = shouldAnimate
@@ -4439,6 +5268,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.easeOutCubic = easeOutCubic
     exports.nextPresence = nextPresence
     exports.pageTransitionClass = pageTransitionClass
+    exports.contentTransitionFor = contentTransitionFor
+    exports.applyConfigPatch = applyConfigPatch
+    exports.settingsSections = settingsSections
     exports.accentValues = accentValues
     exports.fontScalePercent = fontScalePercent
     exports.densityMetrics = densityMetrics
@@ -4448,6 +5280,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.splitBufferValue = splitBufferValue
     exports.formatCount = formatCount
     exports.formatNumberList = formatNumberList
+    exports.bindClientTheme = bindClientTheme
     exports.clampNumber = clampNumber
     exports.deepEqual = deepEqual
     exports.getByPath = getByPath

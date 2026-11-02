@@ -21,12 +21,13 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
   原始 action 透传（默认关闭，需显式开启）。
 - **SnowLuma 只读适配**：自动探测安装目录、读取它自己的 `config/onebot*.json`（含 `onebot_<uin>.json`、
   `mode: snapshot`）得到地址与 token；**不下载、不启动、不注入**（尊重其 EULA）。读不到时回退手填地址并说明原因。
-- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，六个标签：概览 / 连接 / 消息 / 配置 / 日志 / 关于。
+- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，七个标签：概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于。
   视觉与动效按 `console-web` 的设计体系（令牌 + 语义动效配方）重做：eyebrow 页头、软底 + surface 卡片、
   软阴影/大圆角、soft Tabs + 滑块、StatTile/MiniBars、骨架屏、presence 反馈、trickle 进度、状态脉冲与数字滚动。
+  新增的「系统设置」参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、
+  密度、字号、内容宽度、动效模式与页面切换动画；分类切换只替换右侧内容、不整页滑动，修改即时保存。
   配置页 100% 由服务端字段表驱动（新增配置项不需要改 UI），支持保存/撤销/恢复默认/Ctrl+S、
-  dirty 提示、toast、加载/空态/错误重试；强调色 / 密度 / 字号 / 内容宽度 / 动效模式 / 页面切换动画
-  都是 `ui.*` 配置（保存即生效），`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级，
+  dirty 提示、toast、加载/空态/错误重试；`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级，
   浅/深色（`body[data-ds-dark-theme]`）与 190–390px 窄宽均已验证。
 - **不写死参数**：所有可调算法参数集中在 `src/core/config.js` 的 `DEFAULTS`，首次运行写出
   `$DSH_HOME/plugins-data/dsh-onebot-qq/config.json`，面板可改，热应用（连接相关改动自动重连）。
@@ -65,26 +66,26 @@ dsh-bot/
 └── packages/dsh-onebot-qq/             # 插件包（DSH bundle + client plugin）
     ├── package.json                    # dsh.bundle.patch / dsh.client 清单
     ├── cordis.patch.yml                # bundle 插入行
-    ├── client.js                       # 网页半边：侧栏入口 + 六标签整页面板
+    ├── client.js                       # 网页半边：侧栏入口 + 七标签整页面板（配置/系统设置持久壳）
     ├── src/host.js                     # 宿主半边入口（组装 gateway/events/routes）
     ├── src/core/                       # 配置、持久化、日志、脱敏、事件缓冲
     ├── src/gateway/                    # 连接生命周期、事件规范化、action、SnowLuma 只读适配
     ├── src/onebot/client.js            # OneBot v11 WS/HTTP 客户端（重连/echo/握手超时）
     ├── src/http/routes.js              # /onebot-qq/api/* REST
-    ├── test/                           # 75 个 node:test 用例（含 e2e + mock 网关 + fake DSH + 动效/样式契约）
+    ├── test/                           # 79 个 node:test 用例（含 e2e + mock 网关 + fake DSH + 设置/动效/样式契约）
     ├── scripts/                        # 真实 DSH 验证脚本 / 独立 mock 网关
     └── docs/                           # 用户手册、配置手册、生态调研、验证报告、截图
 ```
 
 ## 验证
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **75/75 通过**；
+- `node --test packages/dsh-onebot-qq/test/*.test.js` → **79/79 通过**；
 - `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图校验
   **RESULT: PASS**（可重复运行，自动清理）；
 - 真实 DSH + mock 网关 + Chrome headless：面板实际渲染、连接态核验、事件/发送/断开全链路 **16/16**；
-  另有 UI/动效专项断言（`getAnimations()`：标签切换 180ms、reveal stagger、reduced/off 降级、偏好生效、
-  暗色根背景、360px 无横向溢出）全部通过，截图与证据见
-  [`packages/dsh-onebot-qq/docs/verification/`](packages/dsh-onebot-qq/docs/verification/)。
+  另有 UI/动效/系统设置专项断言（`getAnimations()`：标签切换 180ms、reveal stagger、持久壳只换右内容、
+  DSH 主题切换、即时保存、对比度、reduced/off、暗色根背景、360px 无横向溢出）**48/48** 全部通过，
+  截图与证据见 [`packages/dsh-onebot-qq/docs/verification/`](packages/dsh-onebot-qq/docs/verification/)。
 - 完整证据、根因复盘（含一个 Cordis `Config` 槽位冲突导致的激活失败修复）与限制见
   [`docs/VERIFICATION.md`](packages/dsh-onebot-qq/docs/VERIFICATION.md)。
 

@@ -136,23 +136,28 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `logging.persist.enabled` | switch | `false` | `true`/`false` | 是否按天写 `<数据目录>/logs/<area>-<day>.log` | ✅ |
 | `logging.redact` | switch | `true` | `true`/`false` | 日志/错误文本脱敏开关；默认开启，关闭仅建议本机排障 | ✅ |
 
-### 3.7 界面（`ui`）
+### 3.7 界面偏好（`ui`）
 
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
 |---|---|---|---|---|---|
-| `ui.refreshMs` | number | `2000` | 500–60000 ms | 面板状态轮询间隔（客户端还会 clamp 到 500–60000） | ✅ |
-| `ui.eventPageSize` | number | `50` | 10–500 | 「消息」页事件列表每页条数 | ✅ |
-| `ui.logPageSize` | number | `100` | 10–500 | 「日志」页每页条数 | ✅ |
-| `ui.accent` | select | `"purple"` | `purple` / `blue` / `green` / `orange` / `inherit` | 面板强调色（品牌色/选中态/焦点环）；`inherit` 跟随 DSH 主题黑白 | ✅ |
-| `ui.density` | select | `"standard"` | `compact` / `standard` / `comfortable` | 控件高度与面板内距 | ✅ |
-| `ui.fontScale` | select | `"standard"` | `small` / `standard` / `large` | 面板字号缩放（93.75% / 100% / 112.5%） | ✅ |
-| `ui.contentWidth` | select | `"wide"` | `standard` / `wide` / `auto` | 内容最大宽度：72rem / 100rem / 铺满 | ✅ |
-| `ui.motion` | select | `"system"` | `system` / `full` / `reduced` / `off` | 动效策略；`system` 跟随 `prefers-reduced-motion`，`reduced`/`off` 将动画时长降为 0.01ms | ✅ |
-| `ui.pageTransition` | select | `"default"` | `default` / `fade` / `fade-slide` / `fade-up` / `fade-down` / `none` | 标签页内容切换动画配方；`none` 只关切换动画，不影响其它动效 | ✅ |
+| `ui.refreshMs` | number | `2000` | 500–60000 ms | 面板状态轮询间隔（客户端还会 clamp 到 500–60000） | ✅ 系统设置 → 数据与刷新 |
+| `ui.eventPageSize` | number | `50` | 10–500 | 「消息」页事件列表每页条数 | ✅ 系统设置 → 数据与刷新 |
+| `ui.logPageSize` | number | `100` | 10–500 | 「日志」页每页条数 | ✅ 系统设置 → 数据与刷新 |
+| `ui.accent` | select | `"purple"` | `purple` / `blue` / `green` / `orange` / `inherit` | 面板强调色（品牌色/选中态/焦点环）；`inherit` 跟随 DSH 主题黑白 | ✅ 外观 |
+| `ui.contrast` | select | `"system"` | `system` / `standard` / `high` | 面板对比度；`system` 跟随 `prefers-contrast`，`high` 加强边框/文字对比 | ✅ 外观 |
+| `ui.density` | select | `"standard"` | `compact` / `standard` / `comfortable` | 控件高度与面板内距 | ✅ 布局与字号 |
+| `ui.fontScale` | select | `"standard"` | `small` / `standard` / `large` | 面板字号缩放（93.75% / 100% / 112.5%） | ✅ 布局与字号 |
+| `ui.contentWidth` | select | `"wide"` | `standard` / `wide` / `auto` | 内容最大宽度：72rem / 100rem / 铺满 | ✅ 布局与字号 |
+| `ui.motion` | select | `"system"` | `system` / `full` / `reduced` / `off` | 动效策略；`system` 跟随 `prefers-reduced-motion`，`reduced`/`off` 将动画时长降为 0.01ms | ✅ 动效 |
+| `ui.pageTransition` | select | `"default"` | `default` / `fade` / `fade-slide` / `fade-up` / `fade-down` / `none` | 顶层标签内容切换动画；`配置`/`系统设置` 恒为淡入，分类切换恒为 `content.swap` | ✅ 动效 |
 
-外观偏好全部由客户端消费、保存后立即生效（不需要重连，也不会改变连接行为）；后端只负责枚举校验与持久化。
-`ui.motion` 与系统 `prefers-reduced-motion` 是双重约束：`system` 跟随系统，`full` 显式覆盖系统偏好，
-`reduced` / `off` 始终降级。默认值、选项与帮助文案都来自服务端 `CONFIG_GROUPS`，客户端不写死。
+外观偏好全部由客户端消费、在「系统设置」页按分类展示并**每次修改即时保存**（不需要重连，也不会改变连接行为）；
+后端只负责枚举校验与持久化。`ui.motion` 与系统 `prefers-reduced-motion` 是双重约束：`system` 跟随系统，
+`full` 显式覆盖系统偏好，`reduced` / `off` 始终降级。默认值、选项与帮助文案都来自服务端 `CONFIG_GROUPS`，
+客户端不写死。
+
+> **主题不在此表**：浅色 / 深色 / 跟随系统由 DSH 自己的 `theme` 偏好持有；「系统设置 → 外观」只是调用
+> 客户端公开的 `theme.setTheme()` 并订阅 `theme/change`，因此与 DSH 自带外观设置双向同步，不会产生第二份主题配置。
 
 ### 3.8 安全（`security`）
 
@@ -230,6 +235,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
     "eventPageSize": 50,
     "logPageSize": 100,
     "accent": "purple",
+    "contrast": "system",
     "density": "standard",
     "fontScale": "standard",
     "contentWidth": "wide",
@@ -251,7 +257,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `enabled`、`gateway`、`botQQ`、`accountCheck`、`verification.enabled` | 需要重建连接（正在运行时自动重连） |
 | `onebot.*`（wsUrl/httpUrl/wsToken/httpToken/httpAuth） | 需要重建连接 |
 | `snowluma.*`（autoDetect/dir/uin） | 需要重建连接 |
-| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`verification.bufferSize` | **不重连**，各模块每次使用时现取配置，立即生效；其中 `ui.*` 是纯客户端外观/动效偏好，保存后面板直接重渲染 |
+| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`verification.bufferSize` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板 |
 | `enabled: false` → `true`（保存时） | 自动建立连接（与「启用并自动连接」字段语义一致） |
 | `enabled: false` | 断开连接并停止自动重连 |
 

@@ -1,4 +1,5 @@
 {
-  "unconfigured": false,
-  "hasTabs": true
+  "unconfigured": true,
+  "hasTabs": true,
+  "hasSystemSettingsTab": true
 }

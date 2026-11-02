@@ -55,7 +55,7 @@ test('normalizeConfig：非法枚举/类型回退默认值', () => {
 
 test('normalizeConfig：ui 外观/动效偏好合法值保留、非法枚举回退默认', () => {
   const ok = normalizeConfig({
-    ui: { accent: 'blue', density: 'comfortable', fontScale: 'large', contentWidth: 'auto', motion: 'reduced', pageTransition: 'fade-up' },
+    ui: { accent: 'blue', density: 'comfortable', fontScale: 'large', contentWidth: 'auto', motion: 'reduced', pageTransition: 'fade-up', contrast: 'high' },
   })
   assert.deepEqual(ok.config.ui, {
     refreshMs: DEFAULTS.ui.refreshMs,
@@ -67,10 +67,11 @@ test('normalizeConfig：ui 外观/动效偏好合法值保留、非法枚举回�
     contentWidth: 'auto',
     motion: 'reduced',
     pageTransition: 'fade-up',
+    contrast: 'high',
   })
 
   const bad = normalizeConfig({
-    ui: { accent: 'magenta', density: 'huge', fontScale: 'xl', contentWidth: 'full', motion: 'sometimes', pageTransition: 'zoom' },
+    ui: { accent: 'magenta', density: 'huge', fontScale: 'xl', contentWidth: 'full', motion: 'sometimes', pageTransition: 'zoom', contrast: 'ultra' },
   })
   assert.equal(bad.config.ui.accent, DEFAULTS.ui.accent)
   assert.equal(bad.config.ui.density, DEFAULTS.ui.density)
@@ -78,6 +79,7 @@ test('normalizeConfig：ui 外观/动效偏好合法值保留、非法枚举回�
   assert.equal(bad.config.ui.contentWidth, DEFAULTS.ui.contentWidth)
   assert.equal(bad.config.ui.motion, DEFAULTS.ui.motion)
   assert.equal(bad.config.ui.pageTransition, DEFAULTS.ui.pageTransition)
+  assert.equal(bad.config.ui.contrast, DEFAULTS.ui.contrast)
 })
 
 test('logger：logging.redact=true 脱敏，redact=false 时按原样记录', () => {

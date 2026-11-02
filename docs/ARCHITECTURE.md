@@ -143,7 +143,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.6 客户端面板（client.js）
 
 - 形式：`window.__ModuleLoader__.load({ id: 'dsh-onebot-qq', factory(require) {...} })`，
-  工厂返回 `{ inject:['slots'], apply(ctx) }`；`id` 必须等于包名。
+  工厂返回 `{ inject:['slots','theme'], apply(ctx) }`；`id` 必须等于包名。`theme` 是客户端 ui-theme
+  公开服务（`getTheme/setTheme` + `theme/change`），用于系统设置页切换 DSH 全局主题；`package.json`
+  的 `dsh.client.inject` 必须与之一致。
 - 注册：
   - `ctx.slots.register({ name:'sidebar.panellist', id:'onebot-qq', order: 20, label: () => 'QQ 连接' }, Icon)`
   - `ctx.slots.register({ name:'main', key:'onebot-qq' }, Panel)`
@@ -151,22 +153,29 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 只经 `/onebot-qq/api/*` 读写宿主，不直接碰 QQ。
 - 样式/动效分为三层，均由**同一个** `<style>` 注入（`STYLE_ID = dsh-onebot-qq-panel-style`）：
   - `TOKEN_CSS`：唯一允许十六进制色值的区块。显式声明 console-web 的浅色/暗色调色板、4 套强调色 +
-    `inherit`（跟随 DSH 主题）、密度/字号/内容宽度映射、圆角/阴影/字重/动效时长变量；暗色通过
-    `body[data-ds-dark-theme] .ob-root` 覆盖，强调色通过 `data-accent` 选择器覆盖。
+    `inherit`（跟随 DSH 主题）、密度/字号/内容宽度/对比度映射、圆角/阴影/字重/动效时长变量；暗色通过
+    `body[data-ds-dark-theme] .ob-root` 覆盖，强调色通过 `data-accent`、对比度通过 `data-contrast` 覆盖。
   - `MOTION_CSS`：唯一允许 `@keyframes` 与 `animation:` 的区块。实现语义配方 `content.enter` /
-    `content.swap` / `viewport.reveal` / `feedback.enter+exit` / `progress.trickle` / 状态脉冲；
-    `data-motion="reduced|off"` 与 `prefers-reduced-motion` 统一降级为 0.01ms，状态仍立即完成。
+    `content.swap`（设置分类切换仅淡入） / `viewport.reveal` / `feedback.enter+exit` / `progress.trickle` /
+    状态脉冲；`data-motion="reduced|off"` 与 `prefers-reduced-motion` 统一降级为 0.01ms。
   - `PANEL_CSS`：布局/组件类，只消费 `--ob-*` 变量；不写裸色值、不写裸字重（字重走
     `--ob-weight-*` 令牌）、不声明动画。
-- 外观偏好全部来自 `ui.*` 配置（`accent/density/fontScale/contentWidth/motion/pageTransition`），
-  根节点以 `data-*` 属性声明语义；客户端不写死默认值，保存后即时重渲染，无需重连。
+- 外观偏好全部来自 `ui.*` 配置（`accent/contrast/density/fontScale/contentWidth/motion/pageTransition`），
+  根节点以 `data-*` 属性声明语义；客户端不写死默认值。**主题不进入 `ui.*`**：它由 DSH `theme` 偏好持有，
+  设置页只调用 `setTheme` 并订阅 `theme/change`，避免两份主题源。
+- **持久设置壳（config/settings）**：页头、全局标签栏、左侧分类导航不在被替换的内容容器内；
+  分类切换只替换右侧 `.ob-settings-pane`（`key=active` + `ob-swap-in` 淡入），不重挂载壳、不滚动整页。
+  `配置`/`系统设置` 顶层进入时强制 `ob-enter-fade`（不受 `ui.pageTransition` slide 配方影响）。
+- **系统设置即时保存**：`saveUiPatch(patch)` 以 `applyConfigPatch` 乐观更新 draft，随即进入串行队列
+  `POST /config/save`；成功时用服务端规范化结果回写（仅在没有更新改动时覆盖 draft），设置页显示
+  「保存中/已保存/失败重试」，不显示吸底 Savebar；`配置` 页仍保持显式保存 + dirty 提示。
 - 无障碍与响应式：统一 `:focus-visible` 焦点环、tab 方向键/Home/End 导航、toast `aria-live`、
-  reduced-motion 合规；190–390px 单列、tab 可横向滚动、无横向溢出；动效只使用 opacity/transform/width，
-  不动画高度或滚动容器。
-- 标签页：**概览 / 连接 / 消息 / 配置 / 日志 / 关于**。
-- 配置页字段按分组渲染（左侧分组导航 + 右侧分组卡片），支持保存、撤销、恢复默认、Ctrl+S；
-  所有配置来自 `GET /config`，不得在客户端写死默认值。
-- 未保存改动要有 dirty 提示（页头徽标 + 吸底保存条）；保存失败要有可读错误。
+  reduced-motion 合规；190–390px 单列、tab/设置分类可横向滚动、无横向溢出；动效只使用
+  opacity/transform/width，不动画高度或滚动容器。
+- 标签页：**概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于**。
+- 配置页字段按分组渲染（左侧分组导航 + 右侧仅当前分组），支持保存、撤销、恢复默认、Ctrl+S；
+  所有配置来自 `GET /config`，不得在客户端写死默认值。`ui` 分组只由系统设置页消费，配置页过滤掉。
+- 未保存改动要有 dirty 提示（页头徽标 + 吸底保存条，仅配置页）；保存失败要有可读错误。
 
 ### 3.7 实现补充（gateway 实际形状，集成后核对）
 

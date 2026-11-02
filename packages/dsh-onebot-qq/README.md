@@ -14,10 +14,12 @@
   网页半边只用 DSH 注入的 React 实例。
 - **所有算法参数都可配置**：重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、日志级别……全部在
   `config.json` 里，带默认值，面板可改可重置；没有任何写死的业务常量。
-- **可配置的界面与动效**：面板的视觉令牌与语义动效参考 console-web 项目的设计体系（PageHeader、
-  Panel/Card、StatusPill、soft Tabs、Viewport Reveal、Feedback Presence、trickle Progress 等）重新实现；
-  强调色 / 密度 / 字号 / 内容宽度 / 动效模式 / 页面切换动画全部是 `ui.*` 配置项，保存立即生效，
-  `reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级（详见 [用户手册动效章节](docs/USER-MANUAL.md#界面偏好与动效配置--界面)）。
+- **可配置的界面与动效 +「系统设置」页**：面板的视觉令牌与语义动效参考 console-web 项目的设计体系
+  （PageHeader、Panel/Card、StatusPill、soft Tabs、Viewport Reveal、Feedback Presence、trickle Progress 等）
+  重新实现；新增第 7 个「系统设置」标签，参考 console-web preferences 提供 **DSH 全局主题**、强调色、对比度、
+  密度、字号、内容宽度、动效模式、页面切换动画，分类切换只替换右侧内容、不整页滑动，每次修改即时保存。
+  `配置` 与 `系统设置` 都是持久设置壳；`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级
+  （详见 [用户手册的系统设置章节](docs/USER-MANUAL.md#系统设置)）。
 
 ## 能力
 
@@ -30,8 +32,9 @@
 | 消息发送 | 发私聊 / 群聊（字符串自动转 `[{type:'text'}]` 消息段，也可直接传段数组） |
 | 查询 | 登录信息、好友列表、群列表、群成员信息、撤回/查询消息、网关状态/版本 |
 | 调试 | HTTP 探测（`get_login_info`）；可选的原始 action 透传（默认关闭） |
-| Web 面板 | 侧栏「QQ 连接」→ 整页面板：概览 / 连接 / 消息 / 配置 / 日志 / 关于；数据驱动配置表单、Ctrl+S 保存、dirty 提示 |
-| 界面偏好与动效 | 强调色、界面密度、字号、内容宽度、动效模式（system/full/reduced/off）、页面切换动画；保存立即生效，系统减少动效时自动降级 |
+| Web 面板 | 侧栏「QQ 连接」→ 整页面板：概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于；数据驱动配置表单、Ctrl+S 保存、dirty 提示 |
+| 系统设置 | 参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、密度、字号、内容宽度、动效、页面转场；持久设置壳 + 即时保存 + 预览 |
+| 界面偏好与动效 | 强调色、界面密度、字号、内容宽度、对比度、动效模式（system/full/reduced/off）、页面切换动画；保存立即生效，系统减少动效时自动降级 |
 | SnowLuma 只读适配 | 自动探测安装目录、读 `config/onebot.json` 与 `onebot_<uin>.json` 里的 HTTP/WS 端口与 token |
 
 ## 环境要求
@@ -158,6 +161,10 @@ packages/dsh-onebot-qq/
 | `onebot-qq/event` | `(record)` | 一条已规范化并接受的事件（与 `/events` 的 item 同形） |
 | `onebot-qq/state` | `(snapshot)` | 连接状态变化时的状态快照（与 `/status` 的 `gateway` 同形） |
 | `onebot-qq/config` | `(config, previous)` | 配置保存/重置后的热应用通知 |
+
+![系统设置：外观（DSH 主题 + 强调色 + 对比度）](docs/verification/settings-appearance.png)
+
+更多截图（浅色/暗色/窄屏/配置/系统设置/日志/关于）见 [docs/VERIFICATION.md](docs/VERIFICATION.md#0-结论速览)。
 
 ## 测试与验证
 
