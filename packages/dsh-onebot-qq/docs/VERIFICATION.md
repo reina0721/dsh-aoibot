@@ -5,7 +5,7 @@
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
 - 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket`）
-- 插件版本：`dsh-onebot-qq@0.1.0`
+- 插件版本：`dsh-onebot-qq@0.2.0`（本版本重做了面板视觉与语义动效，见 §4.1）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,10 +15,11 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **70 / 70 通过**（7 个测试文件） |
-| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `onebot-qq-verify`，端口 3199，可重复运行） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **75 / 75 通过**（7 个测试文件） |
+| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
-| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×900 与 360×800） | ✅ 侧栏入口 + 6 标签 + 数据驱动配置 + 连接态核验全部可见，无控制台错误 |
+| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×900 与 360×800） | ✅ 侧栏入口 + 6 标签 + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
+| UI/动效断言（`document.getAnimations()`，浅色/暗色/窄屏/偏好/降级） | ✅ **全部通过**（30 个布尔断言 + 动效/颜色/尺寸证据；见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
 | 安装进当前桌面 profile 并生效 | ✅ 见 §7（`plugin_manager` 安装结果） |
 | 已知缺陷 | 发现并修复 1 个会导致客户端插件无法激活的致命缺陷（§6.1），并有回归测试锁定 |
 
@@ -26,12 +27,19 @@
 
 | 文件 | 内容 |
 |---|---|
-| `overview-connected.png` | 已连接状态：`已连接` 徽标、登录账号 `冒烟机器人 (20000002)`、`核验通过`、事件/日志统计、最近消息 |
-| `connect-tab.png` | 「连接」标签：端点、脱敏 URL、连接/探测/重连控制 |
-| `overview-stopped.png` | 未配置状态：可读空态 + 「去连接」引导 + 最近错误 |
-| `config-tab.png` | 「配置」标签：全部字段由服务端 `groups` 字段表渲染（8 种控件） |
+| `overview-connected.png` | 已连接状态：eyebrow + 大标题页头、状态 pill、登录账号 `冒烟机器人 (20000002)`、`核验通过`、统计 tile、分布条形图、最近事件 |
+| `overview-stopped.png` | 未配置状态：warning banner +「去连接」、可读空态、连接操作 |
+| `connect-unconfigured.png` | 连接页空态：三步 stepper 与地址表单 |
+| `connect-tab.png` | 「连接」标签：三步 stepper、端点、脱敏 URL、检测/探测、连接控制 |
+| `messages-tab.png` | 「消息」标签：目标列表（好友/群 + 搜索）、发送表单、事件流 |
+| `config-tab.png` | 「配置」标签：左侧分组导航 + 右侧分组卡片，「界面」偏好（强调色/密度/字号/内容宽度）可见 |
 | `logs-tab.png` | 「日志」标签：增量拉取的真实网关生命周期日志 |
+| `about-tab.png` | 「关于」标签：版本/数据目录/能力边界/第三方与许可 |
+| `dark-overview.png` / `dark-config.png` | 暗色主题（`body[data-ds-dark-theme]`）下的概览与配置页 |
 | `narrow-360px.png` | 360px 窄宽单列布局，`scrollWidth == clientWidth`（无横向溢出） |
+| `reduced-motion.png` | `ui.motion=reduced` 下的面板（动画时长被降为 0.01ms，信息完整） |
+| `preferences-blue-compact.png` | `ui.accent=blue` + `ui.density=compact` + `fontScale=large` + `contentWidth=standard` 的真实渲染 |
+| `ui-motion-evidence.json` | puppeteer 采集的动效/偏好/响应式断言快照（`getAnimations()` 名称、时长、data-* 属性、颜色、尺寸） |
 
 ## 1. 静态检查
 
@@ -48,7 +56,7 @@ Get-ChildItem packages\dsh-onebot-qq\src -Recurse -Filter *.js | ForEach-Object 
 ```powershell
 cd packages\dsh-onebot-qq
 & $node --test test/*.test.js
-# ℹ tests 70 / pass 70 / fail 0
+# ℹ tests 75 / pass 75 / fail 0
 ```
 
 | 测试文件 | 数量 | 覆盖 |
@@ -57,15 +65,15 @@ cd packages\dsh-onebot-qq
 | `test/actions.test.js` | 7 | 消息段转换、群/私聊 action 映射、id 参数、校验错误、raw 透传 |
 | `test/snowluma.test.js` | 11 | 安装探测、`onebot.json` / `onebot_<uin>.json` 读取、`enabled`/`enable` 兼容、URL 脱敏、端点解析回退 |
 | `test/gateway.test.js` | 10 | WS 连接、账号核验 ok/warn/enforce、核验期事件缓冲、probe、send、disconnect、重复 start、`enabled:false→true` 自动连接 |
-| `test/config.test.js` | 5 | 字段表与 DEFAULTS 不漂移、非法 wsUrl 产生 issue、probeMs clamp、非法枚举回退、`logging.redact` 开关 |
-| `test/panel.test.js` | 19 | module loader 注册形状、apply 注册两个 slot、纯函数、六标签渲染冒烟、样式契约、**`exports.Config` 回归锁定** |
+| `test/config.test.js` | 6 | 字段表与 DEFAULTS 不漂移、非法 wsUrl 产生 issue、probeMs clamp、非法枚举回退、`logging.redact` 开关、**`ui.*` 外观/动效偏好合法值保留与非法回退** |
+| `test/panel.test.js` | 23 | module loader 注册形状、apply 注册两个 slot、纯函数、六标签渲染冒烟、**Motion Policy / reveal / count-up / presence / 转场配方映射**、**令牌/动效/面板三段式样式契约**、`exports.Config` 回归锁定 |
 | `test/e2e.test.js` | 9 | fake DSH 挂载真实 `src/host.js`：health/status/config、save 热应用、reset、非法值 issues、核验 ok/warn/enforce、缓冲、事件过滤、send、disconnect、logs |
 
 ## 3. 真实 DSH 安装 / 启动验证
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scripts\verify-plugin.ps1
-# RESULT: PASS   （profile: onebot-qq-verify，port 3199，结束后自动清理）
+powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scripts\verify-plugin.ps1 -Profile lead-ui -Port 3198 -KeepServer -KeepProfile
+# RESULT: PASS   （本次实际使用的临时 profile/端口；脚本不带参数时默认 onebot-qq-verify / 3199 并自动清理）
 ```
 
 脚本做的事（全部 PASS，逐项见 `verify-out/SUMMARY.txt` 与 `verify-result.json`）：
@@ -119,11 +127,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 - 窄屏 360×800：单列布局，`document.scrollWidth == document.clientWidth`（无横向溢出）；
 - 控制台除 DSH 自身的 `[deepseek-account] account read failed`（与插件无关）外无错误。
 
+### 4.1 UI / 动效专项验证（v0.2.0 重做后）
+
+除上面的功能断言外，本次用 puppeteer 对**新面板**做了 30 个布尔断言与逐项证据采集，全部通过
+（原始快照见 [verification/ui-motion-evidence.json](verification/ui-motion-evidence.json)）：
+
+| 类别 | 断言（全部 ✅） | 证据 |
+|---|---|---|
+| 视觉基线 | 页头 eyebrow/标题/描述、状态 pill、6 个中文标签、连接昵称、无 `Failed to load plugins` | 截图 + 页面文本 |
+| 页面切换 | 内容容器获得 `ob-enter-default`；`getAnimations()` 含 `ob-content-rise`、duration=**180ms**、结束后 finished；tab 滑块 transform 移动 | `motion.tabSwitch` |
+| Reveal | 首屏 `ob-reveal[data-reveal=revealed]` 数量 > 0、pending=0；存在非 0 的 `--ob-reveal-delay`（stagger） | `motion.initial` |
+| 转场偏好 | `ui.pageTransition=fade-up` 后切换使用 `ob-enter-up` | `motion.fadeUp` |
+| reduced | `ui.motion=reduced` → 根节点 `data-motion=reduced`，`ob-content-rise` duration=**0.01ms** | `motion.reduced` |
+| off | `ui.motion=off` → `data-motion=off` 且顶部进度条 `display:none` | `motion.off` |
+| 外观偏好 | `accent=blue` → 主按钮背景 `rgb(37, 99, 235)`；`density=compact` → tab 高 **30px**；`fontScale=large` → 根字号 **15.75px**；`contentWidth=standard` → shell `max-width=72rem` | `motion.prefs` |
+| 浅/暗色 | 浅色根背景 `rgb(246, 247, 251)`；暗色 `body[data-ds-dark-theme]` 且根背景 `rgb(13, 17, 28)` | `motion.dark` |
+| 窄屏 | 360×800 下 `document.scrollWidth == clientWidth` 且面板容器无横向溢出 | `motion.narrow` |
+| 事件流 | mock 推送的私聊消息文本出现在「消息」页；日志行、配置分组导航、关于页均渲染 | `checks.messagesFilled/logsRendered/configNav/aboutRendered` |
+
+动效实现约束（已由 `test/panel.test.js` 锁定）：`TOKEN_CSS` 是唯一允许十六进制色值的区块；
+`MOTION_CSS` 是唯一允许 `@keyframes` / `animation:` 的区块；`PANEL_CSS` 只消费 `--ob-*` 变量，
+不出现裸色值/裸字重。动效只使用 opacity/transform/width，不改高度与滚动容器。
+
 ## 5. 复用与配置化核对
 
 - **复用现有轮子**：OneBot 客户端、store/redact/logger、SnowLuma 只读解析、mock 网关、fake DSH、面板
-  结构与主题 token 用法均复用/改写自 `aureth-labs/dsh-aurabot-qq`（MIT）与 DeepSeek Harness，明细和
-  许可证全文见 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。运行时不引入任何第三方依赖。
+  注册结构与 DSH 主题 token 用法均复用/改写自 `aureth-labs/dsh-aurabot-qq`（MIT）与 DeepSeek Harness；
+  本版面板的视觉令牌与语义动效参考用户自己的 console-web 项目（`packages/design-system` 的 tokens/motion
+  foundation、`surface-foundation` 的页面配方、`ui-adapter` 的 AsyncRegion/Presence/Skeleton 契约），
+  但在单文件浏览器插件里重新实现，不引入其运行时依赖。明细和许可证全文见
+  [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。运行时不引入任何第三方依赖。
 - **不写死算法参数**：重连退避/抖动、连接/调用/核验/探测超时、重试次数与间隔、事件缓冲容量、
   过滤规则、日志等级/容量、面板刷新间隔、账号核验策略等全部来自 `config.json`；
   代码里只有协议常量与安全下限（如 `Math.max(1000, …)` 的 clamp）。
@@ -161,12 +194,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 | SnowLuma 2.x 的 `enabled` 字段（旧实现读 `enable` 恒真） | 同时兼容 `enabled` / `enable`，并只采纳启用中的服务端；`snowluma.test.js` 覆盖 |
 | `timeouts.connectMs` 配置未生效 | OneBot 客户端增加 WS 握手超时定时器，超时主动 close 并按重连策略调度 |
 | `header-token` 是 OneBot v11 规范外的鉴权方式 | 面板文案标注「非标准，仅特定网关」；默认保持 `bearer`（NapCat/SnowLuma 首选） |
+| 旧面板视觉扁平、无动效体系（用户反馈「一点也不灵动」） | 按 console-web 的令牌/页面配方/动效语义整体重做：软底 + surface 卡片 + 阴影/大圆角、eyebrow 页头、soft Tabs + 滑块、StatTile/MiniBars/reveal/presence/trickle/数字滚动；新增 6 个 `ui.*` 偏好；`test/panel.test.js` 锁定三段式样式契约与 Motion Policy |
+| 配置页分组导航跳转时 sticky 标签栏遮住分组标题 | 给分组区加 `scroll-margin-top: 96px`，跳转后标题可见 |
+| 连接页 stepper 在窄容器里文字换行、竖排错位 | 步骤与连接线拆成独立 flex 项 + `white-space: nowrap`，窄屏自动整体换行 |
+| 旧面板样式契约测试过严（禁止任何十六进制/600 字重），阻塞主题化 | 改为「令牌块唯一允许色值、动效块唯一允许 keyframes、组件块只消费变量」；字重/配色全部走 `--ob-*` 令牌 |
 
 ## 7. 安装进当前 DSH profile
 
 - 当前 GUI（`http://127.0.0.1:60932`）属于 `desktop` profile。验证完成后通过 DSH 的插件管理
   （`plugin_manager` / `dsh plugin add`）把本包安装/链接进 `desktop` profile；
   安装结果与「是否需要刷新页面 / 重启 DSH」以安装工具返回的 `application` 字段为准。
+- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.2.0`（`link:` 指向本仓库的 source 目录，
+  `installed: true`）。**刷新 Web 页面**即可加载新版面板；新增的 `ui.*` 字段需要**重启 DSH 进程**才会
+  由宿主半边的 `CONFIG_GROUPS` 下发（不改权重：旧配置会自动补默认值）。
 - 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；验证过程中产生的临时连接配置已在
   每次联调结束时通过 `POST /config/reset` 恢复默认，不会把 mock 地址留在你的配置里。
 
@@ -177,8 +217,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
    接入步骤与常见问题见 [USER-MANUAL.md](USER-MANUAL.md) 与 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
 2. **SnowLuma 探测**只做了单元级（临时目录 + 构造的 `onebot*.json`）与只读逻辑核对，未在本机真实
    SnowLuma 安装上验证（本机未安装）。
-3. **深色主题**：面板只使用 DSH 语义 token，浅/深色由宿主切换；验证截图在浅色下采集，未逐页截深色。
-4. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新页面取决于 DSH 的运行时热加载行为；以安装结果为准。
+3. **深色主题**：面板显式提供 console-web 暗色调色板（`body[data-ds-dark-theme]`），本次已在
+   Chrome `prefers-color-scheme: dark` 下截取概览与配置页并断言根背景 `rgb(13,17,28)`；但未在
+   DSH 的「手动切换主题」全部入口上逐一回归。
+4. **动效矩阵**：在 1440×900 与 360×800 两个断点验证；未覆盖全部窗口宽度矩阵与高刷新率屏幕的
+   逐帧性能测量（实现只使用合成友好的 opacity/transform/width，无 JS RAF 动画循环）。
+5. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新页面取决于 DSH 的运行时热加载行为；以安装结果为准。
 
 ## 9. 复现方式
 
@@ -197,4 +241,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 # 3) 本地人工联调：假网关 + 面板
 & $node packages\dsh-onebot-qq\scripts\mock-gateway.mjs   # 默认 6700，打印地址/token
 # 打开面板 → 连接页填 ws://127.0.0.1:6700 / http://127.0.0.1:6700 + token → 保存 → 连接
+
+# 4) UI/动效证据（需要真实 DSH 探针实例 + puppeteer-core，见 .refs/tools/ui-shots.mjs）
+& $node .refs/tools/ui-shots.mjs 'http://127.0.0.1:3198/?token=…' '.<输出目录>'
 ```

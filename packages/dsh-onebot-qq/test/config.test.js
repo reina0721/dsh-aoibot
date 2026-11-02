@@ -53,6 +53,33 @@ test('normalizeConfig：非法枚举/类型回退默认值', () => {
   assert.equal(config.reconnect.jitterRatio, 0)
 })
 
+test('normalizeConfig：ui 外观/动效偏好合法值保留、非法枚举回退默认', () => {
+  const ok = normalizeConfig({
+    ui: { accent: 'blue', density: 'comfortable', fontScale: 'large', contentWidth: 'auto', motion: 'reduced', pageTransition: 'fade-up' },
+  })
+  assert.deepEqual(ok.config.ui, {
+    refreshMs: DEFAULTS.ui.refreshMs,
+    eventPageSize: DEFAULTS.ui.eventPageSize,
+    logPageSize: DEFAULTS.ui.logPageSize,
+    accent: 'blue',
+    density: 'comfortable',
+    fontScale: 'large',
+    contentWidth: 'auto',
+    motion: 'reduced',
+    pageTransition: 'fade-up',
+  })
+
+  const bad = normalizeConfig({
+    ui: { accent: 'magenta', density: 'huge', fontScale: 'xl', contentWidth: 'full', motion: 'sometimes', pageTransition: 'zoom' },
+  })
+  assert.equal(bad.config.ui.accent, DEFAULTS.ui.accent)
+  assert.equal(bad.config.ui.density, DEFAULTS.ui.density)
+  assert.equal(bad.config.ui.fontScale, DEFAULTS.ui.fontScale)
+  assert.equal(bad.config.ui.contentWidth, DEFAULTS.ui.contentWidth)
+  assert.equal(bad.config.ui.motion, DEFAULTS.ui.motion)
+  assert.equal(bad.config.ui.pageTransition, DEFAULTS.ui.pageTransition)
+})
+
 test('logger：logging.redact=true 脱敏，redact=false 时按原样记录', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ob-log-'))
   process.env.DSH_ONEBOT_QQ_DATA_DIR = dir

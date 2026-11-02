@@ -4,10 +4,14 @@
 // 只读写宿主半边的 /onebot-qq/api/* 接口；所有配置项（含默认值、范围、选项）全部来自
 // GET /config 的 groups 字段表，客户端不写死任何默认值。
 //
-// 视觉：只使用 DSH 主题语义 token（--dsw-alias-* / --dsw-radius-* / --dsw-font-*），
-// 浅色/深色跟随主题；字重 ≤500；不引入 UI 库、不用 JSX。
+// 视觉与动效：令牌、排版、圆角/阴影、页面配方与语义动效体系参考 console-web（社区版 UI 基座）：
+//   - 颜色/圆角/阴影/字号来自 TOKEN_CSS（唯一允许十六进制色值的区块）；
+//   - enter/swap/reveal/presence/trickle/pulse 等配方与 keyframes 来自 MOTION_CSS；
+//   - 其余布局/组件样式在 PANEL_CSS，只消费 --ob-* 变量，不出现裸色值/裸字重；
+//   - 动效受 ui.motion（system/full/reduced/off）与 prefers-reduced-motion 双重约束。
 //
-// 结构：纯函数（可测试）→ 样式 → 基础控件 → 六个标签页 → 根组件 → apply 注册。
+// 结构：纯函数（可测试）→ 偏好/动效语法 → 令牌/动效/面板样式 → 动效运行时 → UI 原语
+//      → 六个标签页 → 根组件 → apply 注册。
 
 window.__ModuleLoader__.load({
   id: 'dsh-onebot-qq',
@@ -15,7 +19,7 @@ window.__ModuleLoader__.load({
     var module = { exports: {} }
     var exports = module.exports
     const React = require('react') || {}
-    const { useState, useEffect, useRef, useCallback, useMemo, Fragment } = React
+    const { useState, useEffect, useRef, useCallback, useMemo, useContext, useLayoutEffect, Fragment } = React
     const h = React.createElement
 
     const inject = ['slots']
@@ -626,206 +630,978 @@ window.__ModuleLoader__.load({
     // 样式（只注入一次；apply 里用 ctx.effect 清理，SSR/测试环境自动跳过）
     // =====================================================================
 
-    const PANEL_CSS = `
+    // =====================================================================
+    // 外观偏好 / 语义动效（纯函数区，挂 module.exports 供 node:test 断言）
+    //
+    // 取值与 console-web 的 appearance preferences + Motion Foundation 对齐：
+    //   accent / density / fontScale / contentWidth / motion / pageTransition
+    // 所有数值都来自服务端配置；这里只做「配置值 → 令牌属性/动画语义」的确定性映射。
+    // =====================================================================
+
+    const UI_ACCENTS = ['purple', 'blue', 'green', 'orange', 'inherit']
+    const UI_DENSITIES = ['compact', 'standard', 'comfortable']
+    const UI_FONT_SCALES = ['small', 'standard', 'large']
+    const UI_CONTENT_WIDTHS = ['standard', 'wide', 'auto']
+    const UI_MOTION_MODES = ['system', 'full', 'reduced', 'off']
+    const UI_PAGE_TRANSITIONS = ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']
+
+    /** 强调色令牌（与 console-web tokens.css 的 accent 预设一致；inherit 不做覆盖）。 */
+    const ACCENT_TOKENS = {
+      purple: {
+        light: { brand: '#5d49d6', strong: '#4e3bc3', soft: '#eeebff', on: '#ffffff', ring: '#5d49d6' },
+        dark: { brand: '#9b8cff', strong: '#b0a5ff', soft: '#29244d', on: '#17122d', ring: '#b0a5ff' },
+      },
+      blue: {
+        light: { brand: '#2563eb', strong: '#1e40af', soft: '#e9f0ff', on: '#ffffff', ring: '#2563eb' },
+        dark: { brand: '#8ab0ff', strong: '#a5c3ff', soft: '#1c2d52', on: '#17122d', ring: '#8ab0ff' },
+      },
+      green: {
+        light: { brand: '#047857', strong: '#065f46', soft: '#e4f5ee', on: '#ffffff', ring: '#047857' },
+        dark: { brand: '#5fd0a8', strong: '#7de0ba', soft: '#12382b', on: '#17122d', ring: '#5fd0a8' },
+      },
+      orange: {
+        light: { brand: '#c2410c', strong: '#9a3412', soft: '#ffecdf', on: '#ffffff', ring: '#c2410c' },
+        dark: { brand: '#fdab6d', strong: '#febf8f', soft: '#45230f', on: '#17122d', ring: '#fdab6d' },
+      },
+    }
+
+    /** 页面转场配方 → 内容容器的 CSS 类（none 返回空串，只关转场、不关其它动效）。 */
+    const TRANSITION_CLASS = {
+      default: 'ob-enter-default',
+      fade: 'ob-enter-fade',
+      'fade-slide': 'ob-enter-slide',
+      'fade-up': 'ob-enter-up',
+      'fade-down': 'ob-enter-down',
+      none: '',
+    }
+
+    /** 密度档位：控件高度/面板内距（rem 由 px 换算，跟随 font-scale 之外保持可读）。 */
+    const DENSITY_METRICS = {
+      compact: { controlSm: '1.875rem', control: '2.25rem', controlLg: '2.5rem', panelPad: '1rem', sectionGap: '1rem' },
+      standard: { controlSm: '2.25rem', control: '2.75rem', controlLg: '3rem', panelPad: '1.25rem', sectionGap: '1.5rem' },
+      comfortable: { controlSm: '2.625rem', control: '3.25rem', controlLg: '3.5rem', panelPad: '1.5rem', sectionGap: '1.75rem' },
+    }
+
+    const FONT_SCALE_PERCENT = { small: 93.75, standard: 100, large: 112.5 }
+    const CONTENT_MAX_WIDTH = { standard: '72rem', wide: '100rem', auto: 'none' }
+
+    const DEFAULT_UI = {
+      accent: 'purple',
+      density: 'standard',
+      fontScale: 'standard',
+      contentWidth: 'wide',
+      motion: 'system',
+      pageTransition: 'default',
+    }
+
+    function include(value, list) {
+      return list.includes(value)
+    }
+
+    function clamp01(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return 0
+      return Math.max(0, Math.min(1, number))
+    }
+
+    /** ease-out cubic：动效数值插值统一使用（与 console-web 的克制动感一致）。 */
+    function easeOutCubic(progress) {
+      const p = clamp01(progress)
+      return 1 - Math.pow(1 - p, 3)
+    }
+
+    /**
+     * 解析动效模式：system 跟随 prefers-reduced-motion，full 强制开启，reduced/off 明确降级。
+     * @param {string} pref 配置里的 ui.motion
+     * @param {boolean} systemReduced 系统是否要求减少动效
+     * @returns {'full'|'reduced'|'off'}
+     */
+    function resolveMotionMode(pref, systemReduced) {
+      const value = include(pref, UI_MOTION_MODES) ? pref : 'system'
+      if (value === 'system') return systemReduced ? 'reduced' : 'full'
+      return value
+    }
+
+    function motionDisabled(mode) {
+      return mode === 'reduced' || mode === 'off'
+    }
+
+    /** 动效分类（screen/async/reveal/swap/feedback/media）：reduced/off 全部关闭。 */
+    function motionCategories(mode) {
+      const enabled = mode === 'full'
+      return { screen: enabled, async: enabled, reveal: enabled, swap: enabled, feedback: enabled, media: enabled }
+    }
+
+    function shouldAnimate(mode, category) {
+      if (mode !== 'full') return false
+      const categories = motionCategories(mode)
+      return Boolean(categories[category === undefined ? 'screen' : category])
+    }
+
+    /** reveal 逐项延迟：40ms/项、上限 120ms（console-web --motion-delay-reveal-* 同值）。 */
+    function revealDelayMs(order) {
+      const index = Math.max(0, Math.floor(Number(order) || 0))
+      return Math.min(120, index * 40)
+    }
+
+    /**
+     * 数字滚动插值：from → to，progress 0..1，使用 ease-out cubic；非数字时直接返回 to。
+     * （是否允许动画由调用方按 Motion Policy 决定，本函数只做数值插值。）
+     */
+    function countUpValue(from, to, progress) {
+      const target = Number(to)
+      if (!Number.isFinite(target)) return to
+      const start = Number(from)
+      if (!Number.isFinite(start)) return target
+      const value = start + (target - start) * easeOutCubic(progress)
+      return Math.round(value)
+    }
+
+    /**
+     * Presence 状态机（feedback.enter/exit）：
+     * unmounted →(visible) enter →(animationend) stable →(hidden) exit →(animationend) unmounted；
+     * 快速反转（enter 中隐藏 / exit 中显示）安全回到目标方向。
+     */
+    function nextPresence(phase, visible) {
+      switch (phase) {
+        case 'unmounted':
+          return visible ? 'enter' : 'unmounted'
+        case 'enter':
+          return visible ? 'stable' : 'exit'
+        case 'stable':
+          return visible ? 'stable' : 'exit'
+        case 'exit':
+          return visible ? 'enter' : 'unmounted'
+        default:
+          return visible ? 'enter' : 'unmounted'
+      }
+    }
+
+    /** 页面转场配方 → className（非法值回退 default）。 */
+    function pageTransitionClass(pref) {
+      const value = include(pref, UI_PAGE_TRANSITIONS) ? pref : 'default'
+      return TRANSITION_CLASS[value] || ''
+    }
+
+    function accentValues(accent, dark) {
+      if (accent === 'inherit') return null
+      const preset = ACCENT_TOKENS[accent] || ACCENT_TOKENS.purple
+      return dark ? preset.dark : preset.light
+    }
+
+    function fontScalePercent(scale) {
+      return FONT_SCALE_PERCENT[scale] || FONT_SCALE_PERCENT.standard
+    }
+
+    function densityMetrics(density) {
+      return DENSITY_METRICS[density] || DENSITY_METRICS.standard
+    }
+
+    function contentMaxWidth(width) {
+      return CONTENT_MAX_WIDTH[width] || CONTENT_MAX_WIDTH.wide
+    }
+
+    function normalizeUiPreferences(ui) {
+      const source = isPlainObject(ui) ? ui : {}
+      return {
+        accent: include(source.accent, UI_ACCENTS) ? source.accent : DEFAULT_UI.accent,
+        density: include(source.density, UI_DENSITIES) ? source.density : DEFAULT_UI.density,
+        fontScale: include(source.fontScale, UI_FONT_SCALES) ? source.fontScale : DEFAULT_UI.fontScale,
+        contentWidth: include(source.contentWidth, UI_CONTENT_WIDTHS) ? source.contentWidth : DEFAULT_UI.contentWidth,
+        motion: include(source.motion, UI_MOTION_MODES) ? source.motion : DEFAULT_UI.motion,
+        pageTransition: include(source.pageTransition, UI_PAGE_TRANSITIONS) ? source.pageTransition : DEFAULT_UI.pageTransition,
+      }
+    }
+
+    function prefersReducedMotion() {
+      try {
+        return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+      } catch (error) {
+        return false
+      }
+    }
+
+    /** 根节点 data-* 属性：client 只负责声明语义，样式全部由 TOKEN_CSS 消费。 */
+    function uiRootData(ui, systemReduced) {
+      const prefs = normalizeUiPreferences(ui)
+      return {
+        'data-accent': prefs.accent,
+        'data-density': prefs.density,
+        'data-font-scale': prefs.fontScale,
+        'data-content-width': prefs.contentWidth,
+        'data-motion': resolveMotionMode(prefs.motion, systemReduced),
+        'data-page-transition': prefs.pageTransition,
+      }
+    }
+
+    /** "2 / 200" 这类缓冲值拆成可分别滚动显示的数字；无法解析时原样返回。 */
+    function splitBufferValue(value) {
+      const text = String(value == null ? '' : value).trim()
+      const match = /^(\d+)\s*\/\s*(\d+)$/.exec(text)
+      if (!match) return null
+      return { used: Number(match[1]), capacity: Number(match[2]) }
+    }
+
+    /** 千分位（不依赖 locale，保证测试与不同 DSH locale 下输出稳定）。 */
+    function formatCount(value) {
+      const number = Number(value)
+      if (!Number.isFinite(number)) return String(value == null ? '' : value)
+      const rounded = Math.round(number)
+      const sign = rounded < 0 ? '-' : ''
+      const digits = String(Math.abs(rounded))
+      let out = ''
+      for (let i = 0; i < digits.length; i += 1) {
+        if (i > 0 && (digits.length - i) % 3 === 0) out += ','
+        out += digits[i]
+      }
+      return sign + out
+    }
+
+    // =====================================================================
+    // 样式层 1/3：设计令牌（TOKEN_CSS）
+    //
+    // 约束（由 panel.test.js 锁定）：
+    //   - 全文件只有本区块允许出现十六进制色值；
+    //   - 组件样式不得直接写裸 font-weight，必须使用 --ob-weight-*；
+    //   - 所有外观偏好都在这里映射为 data-* 选择器，组件不感知配置细节。
+    // 令牌来源：console-web packages/design-system/src/tokens.css（浅色/暗色/强调色/密度/字号）。
+    // =====================================================================
+
+    const TOKEN_CSS = `
 .ob-root{
-  --ob-bg:var(--dsw-alias-bg-base);
-  --ob-card:var(--dsw-alias-settings-card-fill,var(--dsw-alias-bg-layer-1));
-  --ob-card-2:var(--dsw-alias-bg-layer-2);
-  --ob-card-3:var(--dsw-alias-bg-layer-3);
-  --ob-text:var(--dsw-alias-label-primary);
-  --ob-sub:var(--dsw-alias-label-secondary);
-  --ob-dim:var(--dsw-alias-label-tertiary);
-  --ob-line:var(--dsw-alias-border-l3);
-  --ob-line-soft:var(--dsw-alias-border-l2);
-  --ob-hover:var(--dsw-alias-interactive-bg-hover);
+  /* ---- 颜色：浅色（console-web light palette） ---- */
+  --ob-canvas:#f6f7fb;
+  --ob-surface:#ffffff;
+  --ob-surface-raised:#ffffff;
+  --ob-surface-muted:#f0f2f7;
+  --ob-surface-inset:#e9ecf3;
+  --ob-border:#e4e7ee;
+  --ob-border-strong:#cfd5df;
+  --ob-ink:#172033;
+  --ob-ink-muted:#596579;
+  --ob-ink-dim:#8a95a8;
+  --ob-brand:#5d49d6;
+  --ob-brand-strong:#4e3bc3;
+  --ob-brand-soft:#eeebff;
+  --ob-on-brand:#ffffff;
+  --ob-focus-ring:#5d49d6;
+  --ob-success:#10703f;
+  --ob-success-soft:#e8f7ef;
+  --ob-warning:#b54708;
+  --ob-warning-soft:#fff2df;
+  --ob-danger:#c4323d;
+  --ob-danger-soft:#ffeaec;
+  --ob-info:#2463eb;
+  --ob-info-soft:#e9f0ff;
+  --ob-scrim:rgb(15 23 42 / 0.38);
+  --ob-chart-1:#5d49d6;
+  --ob-chart-2:#2463eb;
+  --ob-chart-3:#0f7f74;
+  --ob-chart-4:#b45309;
+  --ob-chart-5:#be3b6b;
+  --ob-skeleton:rgb(23 32 51 / 0.06);
+  --ob-skeleton-strong:rgb(23 32 51 / 0.10);
+  --ob-hover:rgb(23 32 51 / 0.04);
+  --ob-hover-strong:rgb(23 32 51 / 0.07);
+  --ob-selection:rgb(93 73 214 / 0.18);
+
+  /* ---- 字体与排版（字重只在这里声明） ---- */
+  --ob-font-ui:"Inter Variable",Inter,"Segoe UI Variable","Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  --ob-font-mono:ui-monospace,"Cascadia Code","SF Mono",Consolas,"Liberation Mono",monospace;
+  --ob-weight-display:700;
+  --ob-weight-heading:600;
+  --ob-weight-label:600;
+  --ob-weight-medium:500;
+  --ob-weight-body:400;
+  --ob-font-scale:1;
+  --ob-text-display:calc(1.875rem * var(--ob-font-scale));
+  --ob-text-title:calc(1.25rem * var(--ob-font-scale));
+  --ob-text-section:calc(1rem * var(--ob-font-scale));
+  --ob-text-body:calc(0.875rem * var(--ob-font-scale));
+  --ob-text-small:calc(0.8125rem * var(--ob-font-scale));
+  --ob-text-micro:calc(0.75rem * var(--ob-font-scale));
+  --ob-leading-body:1.6;
+  --ob-tracking-display:-0.02em;
+  --ob-tracking-eyebrow:0.16em;
+
+  /* ---- 圆角 / 阴影 ---- */
+  --ob-radius-control:0.75rem;
+  --ob-radius-panel:1rem;
+  --ob-radius-shell:1.25rem;
+  --ob-radius-pill:9999px;
+  --ob-shadow-panel:0 1px 2px rgb(15 23 42 / 0.04),0 12px 32px rgb(15 23 42 / 0.06);
+  --ob-shadow-card:0 1px 2px rgb(15 23 42 / 0.03);
+  --ob-shadow-overlay:0 24px 64px rgb(15 23 42 / 0.18);
+  --ob-shadow-toast:0 16px 40px rgb(15 23 42 / 0.16);
+
+  /* ---- 间距：随密度覆盖 ---- */
+  --ob-control-sm:2.25rem;
+  --ob-control:2.75rem;
+  --ob-control-lg:3rem;
+  --ob-panel-pad:1.25rem;
+  --ob-section-gap:1.5rem;
+  --ob-control-gap:0.75rem;
+  --ob-focus-width:0.125rem;
+  --ob-focus-offset:0.125rem;
+
+  /* ---- 动效（console-web motion tokens） ---- */
+  --ob-ease:cubic-bezier(0.2,0.8,0.2,1);
+  --ob-dur-fast:120ms;
+  --ob-dur-standard:180ms;
+  --ob-dur-slow:240ms;
+  --ob-dur-control:var(--ob-dur-fast);
+  --ob-dur-feedback:var(--ob-dur-standard);
+  --ob-dur-page:var(--ob-dur-slow);
+  --ob-dur-progress:180ms;
+  --ob-dur-progress-cycle:1100ms;
+  --ob-distance-enter:0.5rem;
+  --ob-distance-page:1.5rem;
+  --ob-opacity-reveal-start:0.96;
+  --ob-content-max:100rem;
+}
+
+/* ---- 颜色：暗色（DSH 通过 body[data-ds-dark-theme] 标记暗色主题） ---- */
+body[data-ds-dark-theme] .ob-root{
+  --ob-canvas:#0d111c;
+  --ob-surface:#141a27;
+  --ob-surface-raised:#1a2232;
+  --ob-surface-muted:#20293a;
+  --ob-surface-inset:#101622;
+  --ob-border:#273247;
+  --ob-border-strong:#36435b;
+  --ob-ink:#f5f7fb;
+  --ob-ink-muted:#9aa6ba;
+  --ob-ink-dim:#6f7c92;
+  --ob-brand:#9b8cff;
+  --ob-brand-strong:#b0a5ff;
+  --ob-brand-soft:#29244d;
+  --ob-on-brand:#17122d;
+  --ob-focus-ring:#b0a5ff;
+  --ob-success:#57d08b;
+  --ob-success-soft:#153827;
+  --ob-warning:#f3b55a;
+  --ob-warning-soft:#3d2d18;
+  --ob-danger:#ff7a86;
+  --ob-danger-soft:#422129;
+  --ob-info:#78a5ff;
+  --ob-info-soft:#192d55;
+  --ob-scrim:rgb(0 0 0 / 0.58);
+  --ob-chart-1:#9b8cff;
+  --ob-chart-2:#78a5ff;
+  --ob-chart-3:#4fd1b8;
+  --ob-chart-4:#f3b55a;
+  --ob-chart-5:#f78fb3;
+  --ob-skeleton:rgb(245 247 251 / 0.07);
+  --ob-skeleton-strong:rgb(245 247 251 / 0.12);
+  --ob-hover:rgb(255 255 255 / 0.05);
+  --ob-hover-strong:rgb(255 255 255 / 0.09);
+  --ob-selection:rgb(155 140 255 / 0.26);
+  --ob-shadow-panel:0 1px 2px rgb(0 0 0 / 0.32),0 16px 40px rgb(0 0 0 / 0.28);
+  --ob-shadow-card:0 1px 2px rgb(0 0 0 / 0.24);
+  --ob-shadow-overlay:0 24px 64px rgb(0 0 0 / 0.56);
+  --ob-shadow-toast:0 16px 40px rgb(0 0 0 / 0.46);
+}
+
+/* ---- 强调色预设：light ---- */
+.ob-root[data-accent='purple']{--ob-brand:#5d49d6;--ob-brand-strong:#4e3bc3;--ob-brand-soft:#eeebff;--ob-on-brand:#ffffff;--ob-focus-ring:#5d49d6}
+.ob-root[data-accent='blue']{--ob-brand:#2563eb;--ob-brand-strong:#1e40af;--ob-brand-soft:#e9f0ff;--ob-on-brand:#ffffff;--ob-focus-ring:#2563eb}
+.ob-root[data-accent='green']{--ob-brand:#047857;--ob-brand-strong:#065f46;--ob-brand-soft:#e4f5ee;--ob-on-brand:#ffffff;--ob-focus-ring:#047857}
+.ob-root[data-accent='orange']{--ob-brand:#c2410c;--ob-brand-strong:#9a3412;--ob-brand-soft:#ffecdf;--ob-on-brand:#ffffff;--ob-focus-ring:#c2410c}
+
+/* ---- 强调色预设：dark ---- */
+body[data-ds-dark-theme] .ob-root[data-accent='purple']{--ob-brand:#9b8cff;--ob-brand-strong:#b0a5ff;--ob-brand-soft:#29244d;--ob-on-brand:#17122d;--ob-focus-ring:#b0a5ff}
+body[data-ds-dark-theme] .ob-root[data-accent='blue']{--ob-brand:#8ab0ff;--ob-brand-strong:#a5c3ff;--ob-brand-soft:#1c2d52;--ob-on-brand:#17122d;--ob-focus-ring:#8ab0ff}
+body[data-ds-dark-theme] .ob-root[data-accent='green']{--ob-brand:#5fd0a8;--ob-brand-strong:#7de0ba;--ob-brand-soft:#12382b;--ob-on-brand:#17122d;--ob-focus-ring:#5fd0a8}
+body[data-ds-dark-theme] .ob-root[data-accent='orange']{--ob-brand:#fdab6d;--ob-brand-strong:#febf8f;--ob-brand-soft:#45230f;--ob-on-brand:#17122d;--ob-focus-ring:#fdab6d}
+
+/* ---- 强调色：跟随 DSH 主题（继承宿主语义 token） ---- */
+.ob-root[data-accent='inherit']{
   --ob-brand:var(--dsw-alias-brand-primary);
-  --ob-ok:var(--dsw-alias-state-success-primary);
-  --ob-warn:var(--dsw-alias-state-warn-primary);
-  --ob-err:var(--dsw-alias-state-error-primary);
-  --ob-ok-bg:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);
-  --ob-warn-bg:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);
-  --ob-err-bg:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);
-  --ob-ring:color-mix(in srgb,var(--dsw-alias-brand-primary) 26%,transparent);
-  height:100%;overflow:auto;box-sizing:border-box;background:var(--ob-bg);color:var(--ob-text);
-  font-family:var(--dsw-font-family,var(--dsh-font-family-text,inherit));font-size:13px;line-height:1.55;
-  padding:20px 0 40px;
+  --ob-brand-strong:var(--dsw-alias-brand-primary);
+  --ob-brand-soft:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent);
+  --ob-on-brand:var(--dsw-alias-bg-base);
+  --ob-focus-ring:var(--dsw-alias-brand-primary);
 }
-.ob-root *{box-sizing:border-box}
-/* macOS 隐藏式标题栏：入口页自己让出顶部安全区（同 Plugins 页的写法）；Windows 的 frame 已留出标题栏。 */
-:root[data-platform='darwin'] .ob-root{padding-top:calc(20px + var(--dsh-frame-top-clearance,0px))}
-.ob-wrap{max-width:1080px;margin:0 auto;padding:0 24px}
-.ob-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px 16px;margin-bottom:14px}
-.ob-title{flex:1 1 220px;min-width:0}
-.ob-title h1{margin:0;font-size:20px;line-height:28px;font-weight:500;letter-spacing:0;overflow-wrap:anywhere}
-.ob-title p{margin:4px 0 0;font-size:13px;line-height:20px;color:var(--ob-sub);overflow-wrap:anywhere}
-.ob-head-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
-.ob-status{display:inline-flex;align-items:center;gap:6px;height:28px;max-width:100%;padding:0 10px;border-radius:var(--dsw-radius-sm);border:0.5px solid var(--ob-line);background:var(--ob-card);font-size:12px;color:var(--ob-sub)}
-.ob-status-text{white-space:nowrap}
-.ob-status-extra{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ob-dim)}
-.ob-dot{flex:none;width:8px;height:8px;border-radius:50%;corner-shape:round;background:var(--ob-dim)}
-.ob-dot.ok{background:var(--ob-ok)}
-.ob-dot.warn{background:var(--ob-warn)}
-.ob-dot.err{background:var(--ob-err)}
-.ob-tabs{position:sticky;top:0;z-index:5;display:flex;gap:2px;margin:0 0 16px;padding:4px;border-radius:var(--dsw-radius-lg);border:0.5px solid var(--ob-line);background:var(--ob-card);overflow-x:auto;scrollbar-width:none}
-:root[data-platform='darwin'] .ob-tabs{top:var(--dsh-frame-top-clearance,0px)}
-.ob-tabs::-webkit-scrollbar{display:none}
-:root[data-platform='darwin'] .ob-tabs::before{content:"";position:absolute;left:0;right:0;bottom:calc(100% + 1px);height:var(--dsh-frame-top-clearance,0px);background:var(--ob-bg);pointer-events:none}
-.ob-tab{flex:none;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--ob-sub);font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
-.ob-tab.on{background:var(--ob-card-2);color:var(--ob-text);font-weight:500}
-.ob-tab-dirty{width:6px;height:6px;border-radius:50%;corner-shape:round;background:var(--ob-warn)}
-.ob-stack{display:flex;flex-direction:column;gap:12px}
-.ob-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
-.ob-grid-4{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,132px),1fr))}
-.ob-card{min-width:0;border-radius:var(--dsw-radius-xl);border:0.5px solid var(--dsw-alias-settings-card-stroke,var(--ob-line));background:var(--ob-card);padding:16px 18px}
-.ob-card-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
-.ob-card-head h2,.ob-card-head h3{margin:0;font-size:14px;line-height:22px;font-weight:500;min-width:0;overflow-wrap:anywhere}
-.ob-card-desc{margin:-2px 0 12px;font-size:12.5px;line-height:1.55;color:var(--ob-sub);overflow-wrap:anywhere}
-.ob-spacer{flex:1 1 auto}
-.ob-stat{padding:14px 16px}
-.ob-stat-n{font-size:22px;line-height:28px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
-.ob-stat-l{margin-top:2px;font-size:12px;line-height:1.5;color:var(--ob-sub);overflow-wrap:anywhere}
-.ob-stat-h{margin-top:2px;font-size:11px;line-height:1.5;color:var(--ob-dim);overflow-wrap:anywhere}
-.ob-kv{display:grid;grid-template-columns:minmax(80px,auto) minmax(0,1fr);gap:6px 14px;margin:0;font-size:12.5px}
-.ob-kv dt{color:var(--ob-sub);overflow-wrap:anywhere}
-.ob-kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
-.ob-kv-state{display:inline-flex;align-items:center;gap:6px}
-.ob-issue-list,.ob-about-list{margin:4px 0 0;padding-left:18px;font-size:12.5px;line-height:1.6;color:var(--ob-sub)}
-.ob-issue-list li,.ob-about-list li{overflow-wrap:anywhere}
-.ob-issue-list li+li,.ob-about-list li+li{margin-top:4px}
-.ob-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;max-width:100%;height:32px;padding:0 12px;border-radius:var(--dsw-radius-md);border:0.5px solid var(--ob-line);background:var(--ob-card);color:var(--ob-text);font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
-.ob-btn.sm{height:28px;padding:0 10px;font-size:12px}
-.ob-btn.primary{background:var(--dsw-alias-button-primary-fill);border-color:transparent;color:var(--dsw-alias-label-primary-foreground)}
-.ob-btn.danger{color:var(--ob-err)}
-.ob-btn.ghost{border-color:transparent;background:transparent;color:var(--ob-sub)}
-.ob-btn:disabled{opacity:.55;cursor:default}
-.ob-icon-btn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0.5px solid transparent;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--ob-sub);font:inherit;font-size:16px;line-height:1;cursor:pointer}
-.ob-input,.ob-select,.ob-textarea{width:100%;min-width:0;height:32px;padding:0 10px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-md);background:var(--ob-card);color:var(--ob-text);font:inherit;font-size:13px;outline:none}
-.ob-textarea{height:auto;min-height:84px;padding:8px 10px;resize:vertical;line-height:1.55}
-.ob-input:focus,.ob-select:focus,.ob-textarea:focus{border-color:var(--ob-brand);box-shadow:0 0 0 3px var(--ob-ring)}
-.ob-input::placeholder,.ob-textarea::placeholder{color:var(--ob-dim)}
-.ob-input.sm{width:110px}
-.ob-input-wrap{position:relative;display:flex;width:100%;min-width:0}
-.ob-input-wrap .ob-input{padding-right:58px}
-.ob-eye{position:absolute;top:4px;right:4px;height:24px;padding:0 8px;border:0.5px solid transparent;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--ob-sub);font:inherit;font-size:12px;cursor:pointer}
-.ob-unit{flex:none;font-size:12px;color:var(--ob-sub);white-space:nowrap}
-.ob-field{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 16px;padding:10px 0;border-top:0.5px solid var(--ob-line-soft)}
-.ob-field:first-of-type{border-top:0;padding-top:0}
-.ob-field-label{flex:1 1 190px;min-width:0}
-.ob-field-label b{display:block;font-size:13px;line-height:20px;font-weight:500;overflow-wrap:anywhere}
-.ob-field-label small{display:block;margin-top:2px;font-size:12px;line-height:1.5;color:var(--ob-dim);overflow-wrap:anywhere}
-.ob-field-ctl{display:flex;flex:1 1 240px;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
-.ob-switch{position:relative;flex:none;width:38px;height:22px;padding:0;border:0;border-radius:999px;corner-shape:round;background:var(--ob-line);cursor:pointer}
-.ob-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;corner-shape:round;background:var(--dsw-alias-switch-thumb,var(--ob-card));box-shadow:var(--dsw-elevation-soft);transition:left .15s}
-.ob-switch.on{background:var(--ob-brand)}
-.ob-switch.on::after{left:19px}
-.ob-switch:disabled{opacity:.55;cursor:default}
-.ob-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;min-width:0}
-.ob-tag{display:inline-flex;align-items:center;gap:2px;max-width:100%;height:26px;padding:0 2px 0 8px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-sm);background:var(--ob-card-2);font-size:12px}
-.ob-tag span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ob-tag button{flex:none;width:20px;height:20px;padding:0;border:0;border-radius:var(--dsw-radius-xs);background:transparent;color:var(--ob-sub);font:inherit;line-height:1;cursor:pointer}
-.ob-tags input{flex:1 1 140px;min-width:110px;height:32px;padding:0 10px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-md);background:var(--ob-card);color:var(--ob-text);font:inherit;font-size:13px;outline:none}
-.ob-tags input:focus{border-color:var(--ob-brand);box-shadow:0 0 0 3px var(--ob-ring)}
-.ob-badge{display:inline-flex;align-items:center;height:18px;max-width:100%;padding:0 6px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-xs);background:var(--ob-card-2);color:var(--ob-sub);font-size:11px;line-height:1;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ob-badge.ok{border-color:transparent;background:var(--ob-ok-bg);color:var(--ob-ok)}
-.ob-badge.warn{border-color:transparent;background:var(--ob-warn-bg);color:var(--ob-warn)}
-.ob-badge.err{border-color:transparent;background:var(--ob-err-bg);color:var(--ob-err)}
-.ob-banner{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 10px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--ob-line);border-radius:var(--dsw-radius-md);background:var(--ob-card-2);font-size:12.5px;line-height:1.55}
-.ob-banner.warn{border-color:var(--dsw-alias-state-warn-secondary,var(--ob-warn));background:var(--ob-warn-bg)}
-.ob-banner.err{border-color:var(--dsw-alias-state-error-secondary,var(--ob-err));background:var(--ob-err-bg)}
-.ob-banner-msg{flex:1 1 200px;min-width:0;overflow-wrap:anywhere}
-.ob-banner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
-.ob-note{margin:0 0 12px;padding:10px 12px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-md);background:var(--ob-card-2);color:var(--ob-sub);font-size:12.5px;line-height:1.55;overflow-wrap:anywhere}
-.ob-note:last-child{margin-bottom:0}
-.ob-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:26px 12px;color:var(--ob-dim);font-size:13px;text-align:center}
-.ob-empty-icon{font-size:22px;line-height:1;opacity:.9}
-.ob-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:30px 12px;color:var(--ob-sub);font-size:13px}
-.ob-spin{display:inline-block;flex:none;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;corner-shape:round;animation:ob-spin .7s linear infinite;vertical-align:-2px}
-@keyframes ob-spin{to{transform:rotate(360deg)}}
-.ob-list{display:flex;flex-direction:column;min-width:0}
-.ob-item{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;min-width:0;padding:8px 0;border-top:0.5px solid var(--ob-line-soft)}
-.ob-item:first-child{border-top:0;padding-top:0}
-.ob-item-main{flex:1 1 160px;min-width:0;padding:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.ob-item-main b{display:block;font-size:13px;line-height:20px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ob-item-main small{display:block;font-size:12px;line-height:1.5;color:var(--ob-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ob-item-act{flex:none}
-.ob-scroll{max-height:320px;overflow:auto}
-.ob-logs{display:flex;flex-direction:column;gap:1px;max-height:520px;overflow:auto;padding:6px 0;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-lg);background:var(--ob-card-2)}
-.ob-log{display:flex;flex-wrap:wrap;align-items:flex-start;gap:2px 8px;padding:3px 12px;font-family:var(--dsh-font-family-code,var(--dsw-font-family-code,ui-monospace,monospace));font-size:12px;line-height:1.5}
-.ob-log .ob-log-time{flex:none;color:var(--ob-dim);font-variant-numeric:tabular-nums}
-.ob-log .ob-log-area{flex:none;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ob-dim)}
-.ob-log-text{flex:1 1 100%;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
-.ob-log.warn .ob-log-text{color:var(--ob-warn)}
-.ob-log.error .ob-log-text{color:var(--ob-err)}
-.ob-log.debug .ob-log-text{color:var(--ob-dim)}
-.ob-event{min-width:0;padding:9px 0;border-top:0.5px solid var(--ob-line-soft)}
-.ob-event:first-child{border-top:0;padding-top:0}
-.ob-event-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0;font-size:12px;color:var(--ob-dim)}
-.ob-event-text{margin-top:4px;font-size:13px;line-height:1.55;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
-.ob-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-.ob-chip{display:inline-flex;align-items:center;max-width:100%;height:20px;padding:0 6px;border-radius:var(--dsw-radius-xs);background:var(--ob-card-2);border:0.5px solid var(--ob-line);color:var(--ob-sub);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ob-seg{display:inline-flex;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-md);overflow:hidden}
-.ob-seg button{height:30px;padding:0 14px;border:0;border-left:0.5px solid var(--ob-line);background:var(--ob-card);color:var(--ob-sub);font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
-.ob-seg button:first-child{border-left:0}
-.ob-seg button.on{background:var(--ob-card-2);color:var(--ob-text);font-weight:500}
-.ob-savebar{position:sticky;bottom:12px;z-index:8;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:16px;padding:10px 14px;border:0.5px solid var(--ob-brand);border-radius:var(--dsw-radius-lg);background:var(--ob-card);box-shadow:var(--dsw-elevation-panel)}
-.ob-savebar-msg{flex:1 1 160px;min-width:0;font-size:13px;font-weight:500;overflow-wrap:anywhere}
-.ob-kbd{display:inline-block;padding:0 4px;border:0.5px solid var(--ob-line);border-radius:var(--dsw-radius-xs);background:var(--ob-card-2);font-size:11px;line-height:16px}
-.ob-toast{position:fixed;left:50%;bottom:24px;z-index:60;display:flex;align-items:center;gap:8px;max-width:min(560px,calc(100vw - 32px));padding:10px 14px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);box-shadow:var(--dsw-elevation-prominent);font-size:13px;line-height:1.5;transform:translateX(-50%);overflow-wrap:anywhere}
-.ob-toast-mark{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;border-radius:50%;corner-shape:round;font-size:11px;font-weight:500}
-.ob-toast.ok .ob-toast-mark{background:var(--ob-ok);color:var(--dsw-alias-label-primary-foreground)}
-.ob-toast.err .ob-toast-mark{background:var(--ob-err);color:var(--dsw-alias-label-primary-foreground)}
-.ob-toast.info .ob-toast-mark{background:var(--ob-card-3);color:var(--ob-text)}
-.ob-mono{font-family:var(--dsh-font-family-code,var(--dsw-font-family-code,ui-monospace,monospace));font-size:12px;overflow-wrap:anywhere}
-.ob-muted{color:var(--ob-sub)}
-.ob-dim{color:var(--ob-dim)}
-.ob-small{font-size:12px;line-height:1.5}
-.ob-nowrap{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.ob-a{color:var(--dsw-alias-link);text-decoration:none;font-weight:500}
-@media (hover: hover){
-  .ob-tab:hover{color:var(--ob-text)}
-  .ob-btn:not(:disabled):hover{background:var(--ob-hover)}
-  .ob-btn.primary:not(:disabled):hover{background:var(--dsw-alias-button-primary-hover)}
-  .ob-btn.ghost:not(:disabled):hover{background:var(--ob-hover)}
-  .ob-icon-btn:hover{background:var(--ob-hover);color:var(--ob-text)}
-  .ob-eye:hover{background:var(--ob-hover);color:var(--ob-text)}
-  .ob-switch:not(:disabled):hover{filter:brightness(.96)}
-  .ob-tag button:hover{background:var(--ob-hover);color:var(--ob-text)}
-  .ob-seg button:hover{color:var(--ob-text)}
-  .ob-item-main{cursor:pointer}
-  .ob-a:hover{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+
+/* ---- 密度 ---- */
+.ob-root[data-density='compact']{
+  --ob-control-sm:1.875rem;
+  --ob-control:2.25rem;
+  --ob-control-lg:2.5rem;
+  --ob-panel-pad:1rem;
+  --ob-section-gap:1rem;
+  --ob-radius-control:0.625rem;
+  --ob-radius-panel:0.875rem;
 }
-.ob-root button:focus-visible,.ob-root .ob-tab:focus-visible,.ob-root input:focus-visible,.ob-root select:focus-visible,.ob-root textarea:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px}
-.ob-input:focus-visible,.ob-textarea:focus-visible{outline:none}
-@media (max-width:640px){
-  .ob-wrap{padding:0 14px}
-  .ob-field-label{flex-basis:100%}
-  .ob-field-ctl{flex-basis:100%}
-  .ob-log-text{flex-basis:100%}
-  .ob-log{padding:5px 10px}
+.ob-root[data-density='comfortable']{
+  --ob-control-sm:2.625rem;
+  --ob-control:3.25rem;
+  --ob-control-lg:3.5rem;
+  --ob-panel-pad:1.5rem;
+  --ob-section-gap:1.75rem;
 }
-@media (max-width:420px){
-  .ob-wrap{padding:0 12px}
-  .ob-card{padding:14px}
-  .ob-tab{padding:0 10px}
-  .ob-savebar{padding:10px 12px}
+
+/* ---- 字号缩放 ---- */
+.ob-root[data-font-scale='small']{--ob-font-scale:0.9375}
+.ob-root[data-font-scale='large']{--ob-font-scale:1.125}
+
+/* ---- 内容宽度 ---- */
+.ob-root[data-content-width='standard']{--ob-content-max:72rem}
+.ob-root[data-content-width='wide']{--ob-content-max:100rem}
+.ob-root[data-content-width='auto']{--ob-content-max:none}
+`
+
+    // =====================================================================
+    // 样式层 2/3：语义动效（MOTION_CSS）
+    //
+    // 约束（由 panel.test.js 锁定）：
+    //   - 全文件只有本区块允许 @keyframes 与 animation: 声明；
+    //   - 动效只使用 opacity/transform/width 等合成友好属性，不改高度与滚动容器；
+    //   - reduced/off 与 prefers-reduced-motion 在这里统一降级为 0.01ms（状态仍然立即完成）。
+    // 配方命名沿用 console-web Motion Foundation：
+    //   content.enter / content.swap / viewport.reveal / feedback.enter+exit / progress.trickle
+    // =====================================================================
+
+    const MOTION_CSS = `
+/* ---- recipe: content.enter（标签页/区块内容进入） ---- */
+@keyframes ob-content-rise{
+  from{opacity:0;transform:translateY(var(--ob-distance-enter))}
+  to{opacity:1;transform:none}
 }
-@media (pointer: coarse){
-  .ob-input,.ob-select,.ob-textarea,.ob-tags input{font-size:16px}
-  .ob-btn{height:36px}
-  .ob-tab{height:36px}
+@keyframes ob-content-fade{
+  from{opacity:0}
+  to{opacity:1}
 }
+@keyframes ob-content-slide{
+  from{opacity:0;transform:translateX(var(--ob-distance-page))}
+  to{opacity:1;transform:none}
+}
+@keyframes ob-content-up{
+  from{opacity:0;transform:translateY(var(--ob-distance-page))}
+  to{opacity:1;transform:none}
+}
+@keyframes ob-content-down{
+  from{opacity:0;transform:translateY(calc(var(--ob-distance-page) * -1))}
+  to{opacity:1;transform:none}
+}
+
+/* ---- recipe: viewport.reveal（首次进入视口的区块/卡片，一次） ---- */
+@keyframes ob-reveal-rise{
+  from{opacity:var(--ob-opacity-reveal-start);transform:translateY(var(--ob-distance-enter))}
+  to{opacity:1;transform:none}
+}
+
+/* ---- recipe: feedback.enter/exit（banner/toast/savebar 挂载与卸载） ---- */
+@keyframes ob-feedback-enter{
+  from{opacity:0;transform:translateY(calc(var(--ob-distance-enter) * -1))}
+  to{opacity:1;transform:none}
+}
+@keyframes ob-feedback-exit{
+  to{opacity:0;transform:translateY(calc(var(--ob-distance-enter) * -0.5))}
+}
+
+/* ---- recipe: feed（事件流新行进入） ---- */
+@keyframes ob-feed-in{
+  from{opacity:0;transform:translateY(-0.25rem) scale(0.995)}
+  to{opacity:1;transform:none}
+}
+
+/* ---- recipe: progress.trickle（顶部不确定进度：0→85% 后保持） ---- */
+@keyframes ob-progress-grow{
+  0%{width:0%}
+  100%{width:85%}
+}
+@keyframes ob-progress-fade{
+  to{opacity:0}
+}
+
+/* ---- recipe: status（状态脉冲与连接呼吸） ---- */
+@keyframes ob-ping{
+  0%{transform:scale(1);opacity:0.55}
+  70%,100%{transform:scale(2.4);opacity:0}
+}
+@keyframes ob-breathe{
+  0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ob-ok) 28%,transparent)}
+  50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--ob-ok) 0%,transparent)}
+}
+@keyframes ob-pulse{
+  0%,100%{opacity:1}
+  50%{opacity:0.45}
+}
+@keyframes ob-rotate{
+  to{transform:rotate(360deg)}
+}
+
+/* ---- 内容进入配方类（由 pageTransition 配置选择其一） ---- */
+.ob-enter-default{animation:ob-content-rise var(--ob-dur-feedback) var(--ob-ease) both}
+.ob-enter-fade{animation:ob-content-fade var(--ob-dur-feedback) var(--ob-ease) both}
+.ob-enter-slide{animation:ob-content-slide var(--ob-dur-page) var(--ob-ease) both}
+.ob-enter-up{animation:ob-content-up var(--ob-dur-page) var(--ob-ease) both}
+.ob-enter-down{animation:ob-content-down var(--ob-dur-page) var(--ob-ease) both}
+
+/* ---- Reveal：JS 写入 data-reveal 与 --ob-reveal-delay；无 JS 时保持可见 ---- */
+.ob-reveal[data-reveal='pending']{opacity:var(--ob-opacity-reveal-start)}
+.ob-reveal[data-reveal='revealed']{
+  animation:ob-reveal-rise var(--ob-dur-feedback) var(--ob-ease) both;
+  animation-delay:var(--ob-reveal-delay,0ms);
+}
+
+/* ---- Presence：enter/stable/exit ---- */
+.ob-presence[data-presence='enter']{animation:ob-feedback-enter var(--ob-dur-feedback) var(--ob-ease) both}
+.ob-presence[data-presence='exit']{animation:ob-feedback-exit var(--ob-dur-fast) var(--ob-ease) both;pointer-events:none}
+
+/* ---- 事件流新行进入 ---- */
+.ob-feed-item{animation:ob-feed-in var(--ob-dur-feedback) var(--ob-ease) both}
+
+/* ---- 顶部进度条 ---- */
+.ob-progress-fill{width:0%}
+.ob-progress[data-phase='pending'] .ob-progress-fill{
+  animation:ob-progress-grow var(--ob-dur-progress-cycle) var(--ob-ease) forwards;
+}
+.ob-progress[data-phase='completing'] .ob-progress-fill{
+  width:100%;
+  animation:none;
+  transition:width var(--ob-dur-progress) var(--ob-ease);
+}
+.ob-progress[data-phase='completing']{
+  animation:ob-progress-fade var(--ob-dur-progress) var(--ob-ease) both;
+  animation-delay:var(--ob-dur-progress);
+}
+
+/* ---- 状态/加载动效 ---- */
+.ob-dot[data-live='true']{animation:ob-breathe 2.4s ease-in-out infinite}
+.ob-dot[data-live='true']::after{content:"";animation:ob-ping 1.8s var(--ob-ease) infinite}
+.ob-skeleton{animation:ob-pulse 1.6s ease-in-out infinite}
+.ob-spin{animation:ob-rotate 0.9s linear infinite}
+
+/* ---- Motion Policy：reduced / off 统一零时长降级 ---- */
+.ob-root[data-motion='reduced'] *,
+.ob-root[data-motion='reduced'] *::before,
+.ob-root[data-motion='reduced'] *::after,
+.ob-root[data-motion='off'] *,
+.ob-root[data-motion='off'] *::before,
+.ob-root[data-motion='off'] *::after{
+  animation-duration:0.01ms!important;
+  animation-delay:0ms!important;
+  animation-iteration-count:1!important;
+  transition-duration:0.01ms!important;
+  scroll-behavior:auto!important;
+}
+.ob-root[data-motion='reduced'] .ob-reveal[data-reveal='pending'],
+.ob-root[data-motion='off'] .ob-reveal[data-reveal='pending']{
+  opacity:1;
+}
+.ob-root[data-motion='off'] .ob-progress{display:none}
+.ob-root[data-motion='off'] .ob-dot[data-live='true']::after{display:none}
+
+/* 系统 prefer-reduced-motion：除了显式 ui.motion=full，都降级（与 console-web 语义一致）。 */
 @media (prefers-reduced-motion: reduce){
-  .ob-root *{transition:none!important;animation:none!important}
+  .ob-root:not([data-motion='full']) *,
+  .ob-root:not([data-motion='full']) *::before,
+  .ob-root:not([data-motion='full']) *::after{
+    animation-duration:0.01ms!important;
+    animation-delay:0ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:0.01ms!important;
+  }
+  .ob-root:not([data-motion='full']) .ob-reveal[data-reveal='pending']{opacity:1}
 }
 `
+
+    // =====================================================================
+    // 样式层 3/3：布局与组件（PANEL_CSS）
+    //
+    // 约束（由 panel.test.js 锁定）：只消费 --ob-* / --dsw-* 变量；
+    // 不出现十六进制色值、不写裸 font-weight、不声明 @keyframes（动效见 MOTION_CSS）。
+    // 视觉基准：console-web 的 PageHeader / Panel / Card / StatusPill / TabsView(soft) / StateSurface。
+    // =====================================================================
+
+    const PANEL_CSS = `
+.ob-root{
+  height:100%;overflow:auto;overflow-x:clip;box-sizing:border-box;
+  background:var(--ob-canvas);color:var(--ob-ink);
+  font-family:var(--ob-font-ui);font-size:var(--ob-text-body);line-height:var(--ob-leading-body);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  padding:0 0 48px;
+  color-scheme:light;
+}
+body[data-ds-dark-theme] .ob-root{color-scheme:dark}
+.ob-root *{box-sizing:border-box}
+.ob-root ::selection{background:var(--ob-selection);color:var(--ob-ink)}
+.ob-root button,.ob-root input,.ob-root select,.ob-root textarea{font:inherit;color:inherit}
+.ob-root a{color:var(--ob-brand);text-decoration:none}
+.ob-root a:hover{text-decoration:underline}
+.ob-root :focus-visible{outline:var(--ob-focus-width) solid var(--ob-focus-ring);outline-offset:var(--ob-focus-offset);border-radius:var(--ob-radius-control)}
+.ob-shell{max-width:var(--ob-content-max);margin:0 auto;padding:0 28px}
+:root[data-platform='darwin'] .ob-root{padding-top:var(--dsh-frame-top-clearance,0px)}
+.ob-page{display:flex;flex-direction:column;gap:12px;padding-top:24px}
+.ob-content .ob-page{padding-top:12px;gap:16px}
+.ob-content{gap:0}
+
+/* ---------- 页头（PageHeader：eyebrow + 大标题 + 描述 + 动作） ---------- */
+.ob-header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px;margin-bottom:4px}
+.ob-header-main{min-width:0;max-width:52rem}
+.ob-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 10px;font-size:var(--ob-text-micro);line-height:1;letter-spacing:var(--ob-tracking-eyebrow);text-transform:uppercase;font-weight:var(--ob-weight-heading);color:var(--ob-brand)}
+.ob-eyebrow-dot{width:6px;height:6px;border-radius:var(--ob-radius-pill);background:var(--ob-brand)}
+.ob-display{margin:0;font-size:var(--ob-text-display);line-height:1.2;letter-spacing:var(--ob-tracking-display);font-weight:var(--ob-weight-display);color:var(--ob-ink);overflow-wrap:anywhere;text-wrap:balance}
+.ob-subtitle{margin:10px 0 0;max-width:44rem;font-size:var(--ob-text-body);line-height:1.7;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-header-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-header-meta{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}
+.ob-brand-mark{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;border-radius:var(--ob-radius-control);background:var(--ob-brand);color:var(--ob-on-brand);box-shadow:var(--ob-shadow-card)}
+.ob-brand-mark svg{width:22px;height:22px}
+.ob-hint-inline{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-hint-inline .ob-spin{width:12px;height:12px}
+
+/* ---------- 状态 pill / 徽标 ---------- */
+.ob-status-pill{display:inline-flex;align-items:center;gap:8px;max-width:100%;height:30px;padding:0 12px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);color:var(--ob-ink-muted);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);white-space:nowrap}
+.ob-status-pill.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-status-pill.warn{background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-status-pill.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-status-pill.info{background:var(--ob-info-soft);color:var(--ob-info)}
+.ob-status-extra{max-width:180px;overflow:hidden;text-overflow:ellipsis;color:color-mix(in srgb,currentColor 72%,transparent);font-weight:var(--ob-weight-medium)}
+.ob-dot{position:relative;flex:none;display:inline-block;width:7px;height:7px;border-radius:var(--ob-radius-pill);background:currentColor}
+.ob-dot::after{content:"";position:absolute;inset:0;border-radius:inherit;background:currentColor;opacity:0}
+.ob-badge{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);color:var(--ob-ink-muted);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);white-space:nowrap}
+.ob-badge.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-badge.warn{background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-badge.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-badge.info{background:var(--ob-info-soft);color:var(--ob-info)}
+.ob-badge.brand{background:var(--ob-brand-soft);color:var(--ob-brand)}
+
+/* ---------- 按钮 ---------- */
+.ob-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:0;height:var(--ob-control);padding:0 16px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);font-size:var(--ob-text-body);font-weight:var(--ob-weight-medium);line-height:1;white-space:nowrap;cursor:pointer;box-shadow:var(--ob-shadow-card);transition:background-color var(--ob-dur-control) var(--ob-ease),border-color var(--ob-dur-control) var(--ob-ease),transform var(--ob-dur-control) var(--ob-ease),box-shadow var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease)}
+.ob-btn svg{width:16px;height:16px;flex:none}
+.ob-btn:hover{border-color:var(--ob-border-strong);background:var(--ob-hover)}
+.ob-btn:active{transform:scale(0.98)}
+.ob-btn[disabled],.ob-btn[aria-disabled='true']{opacity:0.5;cursor:not-allowed;transform:none}
+.ob-btn.small{height:var(--ob-control-sm);padding:0 12px;font-size:var(--ob-text-small);border-radius:calc(var(--ob-radius-control) - 2px)}
+.ob-btn.large{height:var(--ob-control-lg);padding:0 20px}
+.ob-btn.primary{border-color:transparent;background:var(--ob-brand);color:var(--ob-on-brand);font-weight:var(--ob-weight-heading);box-shadow:var(--ob-shadow-card)}
+.ob-btn.primary:hover{background:var(--ob-brand-strong);border-color:transparent}
+.ob-btn.secondary{border-color:var(--ob-brand);background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-btn.secondary:hover{background:color-mix(in srgb,var(--ob-brand-soft) 78%,var(--ob-brand) 8%);border-color:var(--ob-brand-strong)}
+.ob-btn.ghost{border-color:transparent;background:transparent;box-shadow:none;color:var(--ob-ink-muted)}
+.ob-btn.ghost:hover{background:var(--ob-hover-strong);color:var(--ob-ink)}
+.ob-btn.danger{border-color:var(--ob-danger-soft);background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-btn.danger:hover{border-color:var(--ob-danger);background:color-mix(in srgb,var(--ob-danger-soft) 74%,var(--ob-danger) 10%)}
+.ob-btn.block{width:100%}
+.ob-icon-btn{display:inline-flex;align-items:center;justify-content:center;flex:none;width:var(--ob-control);height:var(--ob-control);padding:0;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink-muted);cursor:pointer;box-shadow:var(--ob-shadow-card);transition:background-color var(--ob-dur-control) var(--ob-ease),border-color var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease),transform var(--ob-dur-control) var(--ob-ease)}
+.ob-icon-btn:hover{background:var(--ob-hover);color:var(--ob-ink);border-color:var(--ob-border-strong)}
+.ob-icon-btn:active{transform:scale(0.96)}
+.ob-icon-btn svg{width:18px;height:18px}
+.ob-icon-btn.small{width:var(--ob-control-sm);height:var(--ob-control-sm)}
+.ob-spinner{display:inline-block;width:14px;height:14px;border:2px solid color-mix(in srgb,currentColor 26%,transparent);border-top-color:currentColor;border-radius:var(--ob-radius-pill)}
+.ob-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* ---------- 标签栏（soft TabsView + 滑块指示器） ---------- */
+.ob-tabs{position:sticky;top:0;z-index:6;margin:0;padding:8px 0 6px;background:color-mix(in srgb,var(--ob-canvas) 84%,transparent);border-bottom:1px solid var(--ob-border);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2)}
+@supports not ((backdrop-filter:blur(2px)) or (-webkit-backdrop-filter:blur(2px))){.ob-tabs{background:var(--ob-canvas)}}
+:root[data-platform='darwin'] .ob-tabs{top:0}
+.ob-tablist{position:relative;display:flex;align-items:center;gap:2px;width:100%;padding:4px;border-radius:var(--ob-radius-panel);background:var(--ob-surface-muted);overflow-x:auto;scrollbar-width:none;max-width:100%}
+.ob-tablist::-webkit-scrollbar{display:none}
+.ob-tab-pill{position:absolute;top:4px;bottom:4px;left:0;border-radius:var(--ob-radius-control);background:var(--ob-surface);box-shadow:var(--ob-shadow-card);transition:transform var(--ob-dur-standard) var(--ob-ease),width var(--ob-dur-standard) var(--ob-ease);pointer-events:none}
+.ob-tab{position:relative;z-index:1;flex:none;display:inline-flex;align-items:center;gap:7px;height:var(--ob-control-sm);padding:0 14px;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink-muted);font-size:var(--ob-text-body);font-weight:var(--ob-weight-medium);white-space:nowrap;cursor:pointer;transition:color var(--ob-dur-control) var(--ob-ease)}
+.ob-tab:hover{color:var(--ob-ink)}
+.ob-tab.on{color:var(--ob-ink);font-weight:var(--ob-weight-heading)}
+.ob-tab svg{width:15px;height:15px;flex:none;opacity:0.85}
+.ob-tab[aria-selected='true'] svg{color:var(--ob-brand);opacity:1}
+.ob-tab-dirty{width:6px;height:6px;border-radius:var(--ob-radius-pill);background:var(--ob-warning)}
+.ob-content{min-width:0;overflow-x:clip}
+
+/* ---------- 卡片 / 面板 / 章节 ---------- */
+.ob-grid{display:grid;gap:var(--ob-control-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.ob-grid.two{grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr))}
+.ob-stack{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0}
+.ob-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-spread{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.ob-panel{position:relative;min-width:0;border:1px solid var(--ob-border);border-radius:var(--ob-radius-panel);background:var(--ob-surface);color:var(--ob-ink);box-shadow:var(--ob-shadow-panel);overflow:hidden}
+.ob-panel.outlined{box-shadow:none}
+.ob-panel.muted{border-color:transparent;background:var(--ob-surface-muted);box-shadow:none}
+.ob-panel.brand{border-color:color-mix(in srgb,var(--ob-brand) 18%,transparent);background:linear-gradient(140deg,var(--ob-brand-soft),var(--ob-surface) 72%);box-shadow:var(--ob-shadow-card)}
+.ob-panel-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px 16px;padding:var(--ob-panel-pad) var(--ob-panel-pad) calc(var(--ob-panel-pad) - 4px)}
+.ob-panel-head.with-line{border-bottom:1px solid var(--ob-border)}
+.ob-panel-title{margin:0;font-size:var(--ob-text-section);line-height:1.4;font-weight:var(--ob-weight-heading);color:var(--ob-ink);overflow-wrap:anywhere}
+.ob-panel-desc{margin:4px 0 0;font-size:var(--ob-text-small);line-height:1.6;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-panel-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:none}
+.ob-panel-body{padding:calc(var(--ob-panel-pad) - 4px) var(--ob-panel-pad) var(--ob-panel-pad);min-width:0}
+.ob-panel-body.flush{padding:0}
+.ob-panel-body.inset{padding:calc(var(--ob-panel-pad) - 8px)}
+.ob-panel-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px;padding:calc(var(--ob-panel-pad) - 6px) var(--ob-panel-pad);border-top:1px solid var(--ob-border);background:color-mix(in srgb,var(--ob-surface) 86%,var(--ob-surface-muted))}
+.ob-section{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ob-section-title{margin:0;font-size:var(--ob-text-section);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
+.ob-note{margin:0;padding:10px 12px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);color:var(--ob-ink-muted);font-size:var(--ob-text-small);line-height:1.65}
+.ob-muted{color:var(--ob-ink-muted)}
+.ob-small{font-size:var(--ob-text-small)}
+.ob-micro{font-size:var(--ob-text-micro)}
+.ob-mono{font-family:var(--ob-font-mono)}
+.ob-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ob-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.ob-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;border:1px solid var(--ob-border);border-radius:5px;background:var(--ob-surface);font-size:var(--ob-text-micro);font-family:var(--ob-font-mono);color:var(--ob-ink-muted)}
+.ob-issue-list{margin:6px 0 0;padding-left:18px;font-size:var(--ob-text-small);line-height:1.6;color:var(--ob-warning)}
+
+/* ---------- 顶部进度条 ---------- */
+.ob-progress{position:relative;height:3px;border-radius:var(--ob-radius-pill);background:transparent;overflow:hidden;margin:0}
+.ob-progress-fill{position:absolute;inset-block:0;left:0;border-radius:var(--ob-radius-pill);background:var(--ob-brand);box-shadow:0 0 8px color-mix(in srgb,var(--ob-brand) 50%,transparent)}
+.ob-progress-track{position:absolute;inset:0;background:var(--ob-surface-muted)}
+
+/* ---------- 概览：hero / 统计 / 分布 / 事件流 ---------- */
+.ob-hero{display:flex;flex-direction:column;gap:var(--ob-panel-pad)}
+.ob-hero-main{display:flex;flex-wrap:wrap;align-items:center;gap:16px 20px;min-width:0}
+.ob-hero-copy{flex:1 1 280px;min-width:0}
+.ob-hero-title{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0;font-size:var(--ob-text-title);line-height:1.3;font-weight:var(--ob-weight-display);letter-spacing:var(--ob-tracking-display);color:var(--ob-ink)}
+.ob-hero-sub{margin:8px 0 0;font-size:var(--ob-text-body);line-height:1.65;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-hero-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ob-hero-facts{display:grid;gap:10px 20px;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));padding-top:var(--ob-panel-pad);border-top:1px solid var(--ob-border)}
+.ob-fact-k{margin:0 0 3px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted);letter-spacing:0.02em}
+.ob-fact-v{margin:0;font-size:var(--ob-text-small);font-weight:var(--ob-weight-label);color:var(--ob-ink);overflow-wrap:anywhere}
+.ob-ring{position:relative;display:flex;align-items:center;justify-content:center;flex:none;width:56px;height:56px;border-radius:var(--ob-radius-pill);background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-ring.brand{background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-ring.warn{background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-ring.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-ring.muted{background:var(--ob-surface-muted);color:var(--ob-ink-muted)}
+.ob-ring svg{width:26px;height:26px}
+.ob-stat-grid{display:grid;gap:var(--ob-control-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,168px),1fr))}
+.ob-stat{display:flex;flex-direction:column;gap:8px;min-width:0;padding:calc(var(--ob-panel-pad) - 2px);border:1px solid var(--ob-border);border-radius:var(--ob-radius-panel);background:var(--ob-surface);box-shadow:var(--ob-shadow-card);transition:transform var(--ob-dur-standard) var(--ob-ease),box-shadow var(--ob-dur-standard) var(--ob-ease),border-color var(--ob-dur-standard) var(--ob-ease)}
+.ob-stat:hover{transform:translateY(-1px);box-shadow:var(--ob-shadow-panel);border-color:var(--ob-border-strong)}
+.ob-stat-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ob-stat-label{margin:0;font-size:var(--ob-text-micro);font-weight:var(--ob-weight-medium);color:var(--ob-ink-muted);letter-spacing:0.01em}
+.ob-stat-value{margin:0;font-size:calc(1.75rem * var(--ob-font-scale));line-height:1.1;font-weight:var(--ob-weight-display);color:var(--ob-ink);font-variant-numeric:tabular-nums;letter-spacing:var(--ob-tracking-display)}
+.ob-stat-hint{margin:0;font-size:var(--ob-text-micro);color:var(--ob-ink-muted);min-height:1em}
+.ob-stat-bar{height:4px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);overflow:hidden}
+.ob-stat-bar-fill{height:100%;border-radius:inherit;background:var(--ob-brand);transition:width var(--ob-dur-page) var(--ob-ease)}
+.ob-icon-tile{display:inline-flex;align-items:center;justify-content:center;flex:none;width:34px;height:34px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);color:var(--ob-ink-muted)}
+.ob-icon-tile.small{width:28px;height:28px;border-radius:calc(var(--ob-radius-control) - 3px)}
+.ob-icon-tile.large{width:44px;height:44px}
+.ob-icon-tile svg{width:17px;height:17px}
+.ob-icon-tile.small svg{width:15px;height:15px}
+.ob-icon-tile.large svg{width:21px;height:21px}
+.ob-icon-tile.brand{background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-icon-tile.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-icon-tile.warn{background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-icon-tile.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-icon-tile.info{background:var(--ob-info-soft);color:var(--ob-info)}
+.ob-bars{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ob-bar-row{display:grid;grid-template-columns:minmax(64px,110px) minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}
+.ob-bar-label{font-size:var(--ob-text-small);color:var(--ob-ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-bar-track{height:6px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);overflow:hidden}
+.ob-bar-fill{height:100%;border-radius:inherit;background:var(--ob-brand);transition:width var(--ob-dur-page) var(--ob-ease)}
+.ob-bar-value{font-size:var(--ob-text-small);font-weight:var(--ob-weight-label);color:var(--ob-ink);font-variant-numeric:tabular-nums;min-width:2ch;text-align:right}
+.ob-feed{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;min-width:0}
+.ob-feed-item{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:10px 8px;border-radius:var(--ob-radius-control);transition:background-color var(--ob-dur-control) var(--ob-ease)}
+.ob-feed-item:hover{background:var(--ob-hover)}
+.ob-feed-body{flex:1 1 auto;min-width:0}
+.ob-feed-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
+.ob-feed-meta{font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-feed-text{margin:3px 0 0;font-size:var(--ob-text-body);line-height:1.55;color:var(--ob-ink);overflow-wrap:anywhere}
+.ob-feed-time{flex:none;font-size:var(--ob-text-micro);color:var(--ob-ink-muted);font-variant-numeric:tabular-nums}
+
+/* ---------- 连接页：stepper / 端点 / 检测结果 ---------- */
+.ob-stepper{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:0;margin:0;list-style:none}
+.ob-step{display:inline-flex;align-items:center;gap:8px;flex:none;min-width:0;white-space:nowrap;font-size:var(--ob-text-small);color:var(--ob-ink-muted)}
+.ob-step-index{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);color:var(--ob-ink-muted);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);transition:background-color var(--ob-dur-standard) var(--ob-ease),color var(--ob-dur-standard) var(--ob-ease),transform var(--ob-dur-standard) var(--ob-ease)}
+.ob-step.done .ob-step-index{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-step.on{color:var(--ob-ink);font-weight:var(--ob-weight-label)}
+.ob-step.on .ob-step-index{background:var(--ob-brand);color:var(--ob-on-brand);transform:scale(1.04)}
+.ob-stepper-line{flex:1 1 24px;min-width:16px;height:2px;border-radius:var(--ob-radius-pill);background:var(--ob-border);margin:0;list-style:none}
+.ob-stepper-line.done{background:var(--ob-success)}
+.ob-endpoint-url{display:flex;align-items:center;gap:8px;min-width:0;padding:8px 10px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);font-family:var(--ob-font-mono);font-size:var(--ob-text-small);color:var(--ob-ink-muted)}
+.ob-endpoint-url .ob-truncate{flex:1 1 auto;font-family:inherit}
+.ob-probe-result{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px 14px;padding:12px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted)}
+.ob-probe-result.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-probe-result.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-probe-result .ob-probe-copy{flex:1 1 220px;min-width:0}
+.ob-probe-title{margin:0;font-size:var(--ob-text-small);font-weight:var(--ob-weight-label);color:currentColor}
+.ob-probe-desc{margin:3px 0 0;font-size:var(--ob-text-micro);line-height:1.55;color:color-mix(in srgb,currentColor 78%,var(--ob-ink-muted))}
+
+/* ---------- 消息页：列表 / 编辑器 / 事件流 ---------- */
+.ob-split{display:grid;gap:var(--ob-section-gap);grid-template-columns:minmax(0,320px) minmax(0,1fr);align-items:start}
+.ob-split.single{grid-template-columns:minmax(0,1fr)}
+.ob-list{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;min-width:0;max-height:340px;overflow:auto}
+.ob-list-item{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:8px 10px;border:1px solid transparent;border-radius:var(--ob-radius-control);background:transparent;text-align:left;cursor:pointer;transition:background-color var(--ob-dur-control) var(--ob-ease),border-color var(--ob-dur-control) var(--ob-ease),transform var(--ob-dur-control) var(--ob-ease)}
+.ob-list-item:hover{background:var(--ob-hover)}
+.ob-list-item.on{border-color:color-mix(in srgb,var(--ob-brand) 20%,transparent);background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-list-item:active{transform:scale(0.995)}
+.ob-list-avatar{display:flex;align-items:center;justify-content:center;flex:none;width:30px;height:30px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);color:var(--ob-ink-muted);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);text-transform:uppercase}
+.ob-list-item.on .ob-list-avatar{background:color-mix(in srgb,var(--ob-brand) 14%,transparent);color:var(--ob-brand)}
+.ob-list-body{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+.ob-list-title{font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);color:var(--ob-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-list-sub{font-size:var(--ob-text-micro);color:var(--ob-ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-seg{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted)}
+.ob-seg-btn{height:calc(var(--ob-control-sm) - 6px);padding:0 12px;border:0;border-radius:calc(var(--ob-radius-control) - 3px);background:transparent;color:var(--ob-ink-muted);font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);cursor:pointer;transition:background-color var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease),box-shadow var(--ob-dur-control) var(--ob-ease)}
+.ob-seg-btn.on{background:var(--ob-surface);color:var(--ob-ink);font-weight:var(--ob-weight-label);box-shadow:var(--ob-shadow-card)}
+.ob-search{display:flex;align-items:center;gap:6px;height:var(--ob-control-sm);padding:0 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink-muted)}
+.ob-search input{width:100%;min-width:0;border:0;background:transparent;outline:none;font-size:var(--ob-text-small);color:var(--ob-ink)}
+.ob-search svg{width:14px;height:14px;flex:none}
+.ob-composer{display:flex;flex-direction:column;gap:10px;min-width:0}
+.ob-composer-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-composer .ob-field + .ob-field{border-top:0}
+.ob-send-result{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:8px 10px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);font-size:var(--ob-text-small);color:var(--ob-ink-muted)}
+.ob-send-result.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-send-result.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+
+/* ---------- 配置页：左侧分组导航 ---------- */
+.ob-settings{display:grid;gap:var(--ob-section-gap);grid-template-columns:minmax(0,196px) minmax(0,1fr);align-items:start}
+.ob-settings-nav{position:sticky;top:76px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.ob-settings-nav-btn{display:flex;align-items:center;gap:8px;height:var(--ob-control-sm);padding:0 12px;border:0;border-radius:var(--ob-radius-control);background:transparent;color:var(--ob-ink-muted);font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);text-align:left;cursor:pointer;transition:background-color var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease)}
+.ob-settings-nav-btn:hover{background:var(--ob-hover);color:var(--ob-ink)}
+.ob-settings-nav-btn.on{background:var(--ob-brand-soft);color:var(--ob-brand);font-weight:var(--ob-weight-label)}
+.ob-settings-content{display:flex;flex-direction:column;gap:var(--ob-control-gap);min-width:0;scroll-margin-top:96px}
+.ob-settings-section{scroll-margin-top:96px}
+
+/* ---------- 表单控件 ---------- */
+.ob-field{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 0}
+.ob-field + .ob-field{border-top:1px solid var(--ob-border)}
+.ob-field-label{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-label);color:var(--ob-ink);overflow-wrap:anywhere}
+.ob-field-help{margin:0;font-size:var(--ob-text-micro);line-height:1.6;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-field-control{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-input,.ob-select,.ob-textarea{width:100%;min-width:0;height:var(--ob-control);padding:0 12px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);font-size:var(--ob-text-body);outline:none;box-shadow:var(--ob-shadow-card);transition:border-color var(--ob-dur-control) var(--ob-ease),background-color var(--ob-dur-control) var(--ob-ease),box-shadow var(--ob-dur-control) var(--ob-ease)}
+.ob-input::placeholder,.ob-textarea::placeholder{color:var(--ob-ink-dim)}
+.ob-input:hover,.ob-select:hover,.ob-textarea:hover{border-color:var(--ob-border-strong)}
+.ob-input:focus,.ob-select:focus,.ob-textarea:focus{border-color:var(--ob-brand);box-shadow:0 0 0 3px var(--ob-selection)}
+.ob-input[disabled],.ob-select[disabled],.ob-textarea[disabled]{opacity:0.55;cursor:not-allowed}
+.ob-textarea{height:auto;min-height:96px;padding:10px 12px;line-height:1.6;resize:vertical}
+.ob-select{appearance:none;-webkit-appearance:none;padding-right:34px;cursor:pointer;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23596579' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa6ba' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+.ob-input-wrap{position:relative;display:flex;align-items:center;width:100%;min-width:0}
+.ob-input-wrap .ob-input{padding-right:72px}
+.ob-secret-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);height:calc(var(--ob-control) - 12px);padding:0 8px;border:0;border-radius:calc(var(--ob-radius-control) - 4px);background:transparent;color:var(--ob-ink-muted);font-size:var(--ob-text-micro);cursor:pointer;transition:background-color var(--ob-dur-control) var(--ob-ease),color var(--ob-dur-control) var(--ob-ease)}
+.ob-secret-toggle:hover{background:var(--ob-hover-strong);color:var(--ob-ink)}
+.ob-field-unit{flex:none;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-field-error{margin:0;font-size:var(--ob-text-micro);color:var(--ob-danger)}
+.ob-switch{position:relative;display:inline-flex;align-items:center;flex:none;width:44px;height:26px;padding:0;border:1px solid var(--ob-border-strong);border-radius:var(--ob-radius-pill);background:var(--ob-surface-muted);cursor:pointer;transition:background-color var(--ob-dur-standard) var(--ob-ease),border-color var(--ob-dur-standard) var(--ob-ease)}
+.ob-switch::before{content:"";width:18px;height:18px;margin-left:3px;border-radius:var(--ob-radius-pill);background:var(--ob-surface);box-shadow:var(--ob-shadow-card);transform:translateX(0);transition:transform var(--ob-dur-standard) var(--ob-ease)}
+.ob-switch.on{background:var(--ob-brand);border-color:transparent}
+.ob-switch.on::before{background:var(--ob-on-brand);transform:translateX(18px)}
+.ob-switch[disabled]{opacity:0.5;cursor:not-allowed}
+.ob-tags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%;min-width:0;min-height:var(--ob-control);padding:5px 8px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface)}
+.ob-tags:focus-within{border-color:var(--ob-brand);box-shadow:0 0 0 3px var(--ob-selection)}
+.ob-tag{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border-radius:var(--ob-radius-pill);background:var(--ob-brand-soft);color:var(--ob-brand);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-medium)}
+.ob-tag button{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;padding:0;border:0;border-radius:var(--ob-radius-pill);background:transparent;color:inherit;cursor:pointer;font-size:12px;line-height:1}
+.ob-tag button:hover{background:color-mix(in srgb,var(--ob-brand) 16%,transparent)}
+.ob-tags input{flex:1 1 96px;min-width:80px;height:26px;border:0;background:transparent;outline:none;font-size:var(--ob-text-small);color:var(--ob-ink)}
+.ob-number-list{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%}
+.ob-number-list .ob-input{width:110px;flex:none}
+
+/* ---------- 日志页 ---------- */
+.ob-log{display:flex;flex-direction:column;gap:1px;min-width:0;max-height:min(62vh,620px);overflow:auto;padding:8px;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted);font-family:var(--ob-font-mono)}
+.ob-log-row{display:flex;align-items:baseline;gap:8px;min-width:0;padding:5px 8px;border-radius:calc(var(--ob-radius-control) - 4px);font-size:var(--ob-text-small);line-height:1.5;transition:background-color var(--ob-dur-control) var(--ob-ease)}
+.ob-log-row:hover{background:var(--ob-hover)}
+.ob-log-time{flex:none;color:var(--ob-ink-muted);font-size:var(--ob-text-micro);font-variant-numeric:tabular-nums}
+.ob-log-level{flex:none;min-width:42px;font-size:var(--ob-text-micro);font-weight:var(--ob-weight-heading);letter-spacing:0.04em;text-transform:uppercase}
+.ob-log-level.debug{color:var(--ob-ink-muted)}
+.ob-log-level.info{color:var(--ob-info)}
+.ob-log-level.warn{color:var(--ob-warning)}
+.ob-log-level.error{color:var(--ob-danger)}
+.ob-log-area{flex:none;color:var(--ob-ink-muted);font-size:var(--ob-text-micro)}
+.ob-log-text{flex:1 1 auto;min-width:0;color:var(--ob-ink);overflow-wrap:anywhere;word-break:break-word}
+.ob-live{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+
+/* ---------- 空态 / 错误态 / 骨架 ---------- */
+.ob-state{display:grid;place-items:center;text-align:center;min-height:14rem;padding:24px 16px}
+.ob-state.compact{min-height:9rem;padding:16px}
+.ob-state-icon{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:var(--ob-radius-panel);background:var(--ob-surface-muted);color:var(--ob-ink-muted)}
+.ob-state-icon.err{background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-state-icon.warn{background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-state-icon.ok{background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-state-icon.brand{background:var(--ob-brand-soft);color:var(--ob-brand)}
+.ob-state-icon svg{width:22px;height:22px}
+.ob-state-title{margin:14px 0 0;font-size:var(--ob-text-section);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
+.ob-state-desc{max-width:26rem;margin:6px 0 0;font-size:var(--ob-text-small);line-height:1.65;color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-state-action{margin-top:16px}
+.ob-skeleton{display:block;border-radius:var(--ob-radius-control);background:var(--ob-skeleton)}
+.ob-skeleton.strong{background:var(--ob-skeleton-strong)}
+.ob-skeleton.text{height:12px;border-radius:var(--ob-radius-pill)}
+.ob-skeleton.title{height:20px;border-radius:var(--ob-radius-pill)}
+.ob-skeleton.card{height:96px;border-radius:var(--ob-radius-panel)}
+.ob-skeleton.tile{height:112px;border-radius:var(--ob-radius-panel)}
+.ob-skel-stack{display:flex;flex-direction:column;gap:10px}
+.ob-skel-row{display:flex;align-items:center;gap:12px;min-width:0}
+.ob-skel-grow{flex:1 1 auto;min-width:0}
+
+/* ---------- 反馈：banner / toast / savebar ---------- */
+.ob-banner{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px;padding:11px 14px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface);color:var(--ob-ink);font-size:var(--ob-text-small);line-height:1.6;box-shadow:var(--ob-shadow-card)}
+.ob-banner.ok{border-color:color-mix(in srgb,var(--ob-success) 22%,transparent);background:var(--ob-success-soft);color:var(--ob-success)}
+.ob-banner.warn{border-color:color-mix(in srgb,var(--ob-warning) 22%,transparent);background:var(--ob-warning-soft);color:var(--ob-warning)}
+.ob-banner.err{border-color:color-mix(in srgb,var(--ob-danger) 22%,transparent);background:var(--ob-danger-soft);color:var(--ob-danger)}
+.ob-banner-msg{flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.ob-banner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ob-banner .ob-icon-tile{background:color-mix(in srgb,currentColor 12%,transparent);color:inherit}
+.ob-toast{position:fixed;left:50%;bottom:24px;z-index:60;transform:translateX(-50%);display:flex;align-items:center;gap:9px;max-width:min(92vw,460px);padding:11px 16px;border-radius:var(--ob-radius-panel);background:var(--ob-surface);color:var(--ob-ink);font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);box-shadow:var(--ob-shadow-toast);border:1px solid var(--ob-border)}
+.ob-toast.ok{border-color:color-mix(in srgb,var(--ob-success) 30%,transparent);color:var(--ob-success)}
+.ob-toast.err{border-color:color-mix(in srgb,var(--ob-danger) 30%,transparent);color:var(--ob-danger)}
+.ob-toast-mark{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border-radius:var(--ob-radius-pill);background:color-mix(in srgb,currentColor 14%,transparent);font-size:var(--ob-text-micro);font-weight:var(--ob-weight-display)}
+.ob-savebar{position:sticky;bottom:16px;z-index:8;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px;margin-top:4px;padding:12px 16px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-panel);background:color-mix(in srgb,var(--ob-surface) 92%,transparent);box-shadow:var(--ob-shadow-overlay);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2)}
+.ob-savebar-msg{display:inline-flex;align-items:center;gap:8px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);color:var(--ob-ink);min-width:0}
+.ob-savebar-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* ---------- 关于页 ---------- */
+.ob-about-hero{display:flex;flex-wrap:wrap;align-items:center;gap:16px 20px;min-width:0}
+.ob-about-mark{display:flex;align-items:center;justify-content:center;flex:none;width:56px;height:56px;border-radius:var(--ob-radius-shell);background:var(--ob-brand);color:var(--ob-on-brand);box-shadow:var(--ob-shadow-card)}
+.ob-about-mark svg{width:30px;height:30px}
+.ob-about-detail{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ob-about-name{margin:0;font-size:var(--ob-text-title);font-weight:var(--ob-weight-display);letter-spacing:var(--ob-tracking-display);color:var(--ob-ink)}
+.ob-about-desc{margin:0;font-size:var(--ob-text-small);line-height:1.6;color:var(--ob-ink-muted)}
+.ob-code{display:inline-flex;align-items:center;max-width:100%;padding:3px 7px;border-radius:6px;background:var(--ob-surface-muted);font-family:var(--ob-font-mono);font-size:var(--ob-text-micro);color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-link{display:inline-flex;align-items:center;gap:4px;color:var(--ob-brand);font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium)}
+
+/* ---------- 描述列表（KV） ---------- */
+.ob-kv{display:flex;flex-direction:column;gap:0;margin:8px 0 0;padding:0}
+.ob-kv-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:9px 0;border-bottom:1px solid var(--ob-border);min-width:0}
+.ob-kv-row:last-child{border-bottom:0;padding-bottom:0}
+.ob-kv-k{flex:0 0 132px;margin:0;font-size:var(--ob-text-small);color:var(--ob-ink-muted);overflow-wrap:anywhere}
+.ob-kv-v{flex:1 1 200px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;margin:0;font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);color:var(--ob-ink);overflow-wrap:anywhere}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:960px){
+  .ob-split{grid-template-columns:minmax(0,1fr)}
+  .ob-settings{grid-template-columns:minmax(0,1fr)}
+  .ob-settings-nav{position:static;flex-direction:row;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+  .ob-settings-nav::-webkit-scrollbar{display:none}
+  .ob-settings-nav-btn{flex:none;white-space:nowrap}
+}
+@media (max-width:640px){
+  .ob-shell{padding:0 16px}
+  .ob-page{padding-top:18px;gap:14px}
+  .ob-display{font-size:calc(1.5rem * var(--ob-font-scale))}
+  .ob-tabs{padding:8px 0 10px}
+  .ob-stat-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,136px),1fr))}
+  .ob-header-actions{width:100%}
+  .ob-bar-row{grid-template-columns:minmax(48px,84px) minmax(0,1fr) auto}
+}
+@media (max-width:420px){
+  .ob-shell{padding:0 12px}
+  .ob-panel-head{padding:14px 14px 8px}
+  .ob-panel-body{padding:8px 14px 14px}
+  .ob-hero-facts{grid-template-columns:minmax(0,1fr)}
+  .ob-btn{padding:0 12px}
+  .ob-toast{left:12px;right:12px;transform:none;max-width:none}
+}
+@media (pointer:coarse){
+  .ob-input,.ob-select,.ob-textarea,.ob-tags input{font-size:16px}
+  .ob-tab{height:var(--ob-control)}
+}
+@media (hover:none){
+  .ob-stat:hover{transform:none;box-shadow:var(--ob-shadow-card);border-color:var(--ob-border)}
+}
+`
+
+    // =====================================================================
+    // 样式注入 + 动效运行时（Motion Policy / Reveal / AsyncRegion / Presence /
+    // Trickle Progress / CountUp / Now ticker / Tab 指示器）
+    // 只做语义与生命周期，具体时长/缓动全部来自 TOKEN_CSS / MOTION_CSS。
+    // =====================================================================
 
     function ensureStyleElement() {
       if (typeof document === 'undefined' || !document.head) return null
       const existing = document.getElementById(STYLE_ID)
-      if (existing) return existing
+      if (existing) {
+        // 同页插件热更新时替换为新样式，避免残留旧 CSS。
+        existing.textContent = TOKEN_CSS + MOTION_CSS + PANEL_CSS
+        return existing
+      }
       const el = document.createElement('style')
       el.id = STYLE_ID
-      el.textContent = PANEL_CSS
+      el.textContent = TOKEN_CSS + MOTION_CSS + PANEL_CSS
       document.head.appendChild(el)
       return el
     }
@@ -858,10 +1634,6 @@ window.__ModuleLoader__.load({
       }, [])
     }
 
-    // =====================================================================
-    // 基础控件
-    // =====================================================================
-
     function cx() {
       const parts = []
       for (let i = 0; i < arguments.length; i += 1) {
@@ -871,58 +1643,480 @@ window.__ModuleLoader__.load({
       return parts.join(' ')
     }
 
-    function OneBotIcon(props) {
-      const size = (props && props.size) || 18
+    // ---- Motion Policy：system / full / reduced / off ----
+
+    const DEFAULT_MOTION = { mode: 'full', systemReduced: false, categories: motionCategories('full') }
+    const MotionContext = React.createContext(DEFAULT_MOTION)
+
+    /** 读取系统 prefers-reduced-motion 并保持更新（只读监听，不写全局状态）。 */
+    function useSystemReducedMotion() {
+      const [reduced, setReduced] = useState(() => prefersReducedMotion())
+      useEffect(() => {
+        let media = null
+        try {
+          if (typeof matchMedia !== 'function') return undefined
+          media = matchMedia('(prefers-reduced-motion: reduce)')
+        } catch (error) {
+          return undefined
+        }
+        const onChange = () => setReduced(media.matches === true)
+        try {
+          if (typeof media.addEventListener === 'function') media.addEventListener('change', onChange)
+          else if (typeof media.addListener === 'function') media.addListener(onChange)
+        } catch (error) {}
+        return () => {
+          try {
+            if (typeof media.removeEventListener === 'function') media.removeEventListener('change', onChange)
+            else if (typeof media.removeListener === 'function') media.removeListener(onChange)
+          } catch (error) {}
+        }
+      }, [])
+      return reduced
+    }
+
+    function useMotionPreference(pref) {
+      const systemReduced = useSystemReducedMotion()
+      return useMemo(() => {
+        const mode = resolveMotionMode(pref, systemReduced)
+        return { mode, systemReduced, categories: motionCategories(mode) }
+      }, [pref, systemReduced])
+    }
+
+    function useMotion() {
+      return useContext(MotionContext)
+    }
+
+    // ---- Viewport Reveal（单例 IntersectionObserver，只播放一次） ----
+
+    const revealCallbacks = new Map()
+    let revealObserver = null
+
+    function ensureRevealObserver() {
+      if (revealObserver) return revealObserver
+      if (typeof IntersectionObserver === 'undefined') return null
+      try {
+        revealObserver = new IntersectionObserver((entries) => {
+          const latest = new Map()
+          for (const entry of entries) {
+            const previous = latest.get(entry.target)
+            if (!previous || entry.time >= previous.time) latest.set(entry.target, entry)
+          }
+          const sorted = [...latest.values()].sort(
+            (a, b) => a.boundingClientRect.top - b.boundingClientRect.top || a.boundingClientRect.left - b.boundingClientRect.left,
+          )
+          let order = 0
+          for (const entry of sorted) {
+            const callback = revealCallbacks.get(entry.target)
+            if (!callback) continue
+            revealCallbacks.delete(entry.target)
+            try {
+              revealObserver.unobserve(entry.target)
+            } catch (error) {}
+            // 从上往下已滚过的区块不重播，直接显示。
+            const aboveViewport = !entry.isIntersecting && entry.boundingClientRect.bottom <= 0
+            callback(aboveViewport ? -1 : order)
+            if (entry.isIntersecting) order += 1
+          }
+        }, { rootMargin: '0px', threshold: 0 })
+      } catch (error) {
+        revealObserver = null
+      }
+      return revealObserver
+    }
+
+    /**
+     * Reveal 容器：首次进入视口时淡入 + 8px 抬升；同批按阅读顺序 stagger 40ms/项（上限 120ms）。
+     * reduced/off/无 IntersectionObserver 时立即显示，不创建动画。
+     */
+    function Reveal(props) {
+      const motion = useMotion()
+      const enabled = Boolean(motion && motion.mode === 'full' && motion.categories.reveal)
+      const Tag = props.as || 'div'
+      const elementRef = useRef(null)
+      const [revealed, setRevealed] = useState(!enabled)
+
+      useEffect(() => {
+        const element = elementRef.current
+        if (!element) return undefined
+        if (!enabled) {
+          element.dataset.reveal = 'revealed'
+          setRevealed(true)
+          return undefined
+        }
+        element.dataset.reveal = 'pending'
+        const observer = ensureRevealObserver()
+        if (!observer) {
+          element.dataset.reveal = 'revealed'
+          setRevealed(true)
+          return undefined
+        }
+        const callback = (order) => {
+          if (order >= 0) element.style.setProperty('--ob-reveal-delay', revealDelayMs(order) + 'ms')
+          else element.style.removeProperty('--ob-reveal-delay')
+          element.dataset.reveal = 'revealed'
+          setRevealed(true)
+        }
+        revealCallbacks.set(element, callback)
+        try {
+          observer.observe(element)
+        } catch (error) {}
+        // 安全兜底：布局异常/不可见容器不会一直停在 pending。
+        const fallbackTimer = setTimeout(() => {
+          if (element.dataset.reveal !== 'revealed') callback(-1)
+        }, 1600)
+        return () => {
+          clearTimeout(fallbackTimer)
+          revealCallbacks.delete(element)
+          try {
+            observer.unobserve(element)
+          } catch (error) {}
+        }
+      }, [enabled])
+
+      const rest = Object.assign({}, props)
+      delete rest.as
+      delete rest.className
+      delete rest.children
       return h(
-        'svg',
-        { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
-        h('path', { d: 'M4 5.5h16v10H9.5L4 19v-3.5z' }),
-        h('circle', { cx: 9, cy: 10.5, r: 0.9, fill: 'currentColor', stroke: 'none' }),
-        h('circle', { cx: 15, cy: 10.5, r: 0.9, fill: 'currentColor', stroke: 'none' }),
+        Tag,
+        Object.assign({}, rest, {
+          ref: elementRef,
+          className: cx('ob-reveal', props.className),
+          'data-reveal': revealed ? 'revealed' : 'pending',
+        }),
+        props.children,
       )
     }
 
-    function RefreshIcon() {
+    // ---- AsyncRegion：initial 骨架 / refresh 保留内容 / error / empty ----
+
+    function AsyncRegion(props) {
+      const motion = useMotion()
+      const phase = props.phase || 'initial'
+      const contentAvailable = phase === 'ready' || phase === 'refreshing' || phase === 'background'
+      const [entering, setEntering] = useState(false)
+      const previousPhase = useRef(phase)
+      useEffect(() => {
+        const previous = previousPhase.current
+        previousPhase.current = phase
+        if (phase !== 'ready' || previous === 'refreshing' || previous === 'background' || previous === 'ready') return
+        if (!shouldAnimate(motion && motion.mode, 'async')) return
+        setEntering(true)
+        const timer = setTimeout(() => setEntering(false), 400)
+        return () => clearTimeout(timer)
+      }, [phase, motion])
+      const contentClass = cx('ob-async-content', contentAvailable ? 'is-ready' : '', entering ? pageTransitionClass('default') : '')
       return h(
-        'svg',
-        { width: 14, height: 14, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
-        h('path', { d: 'M20 11a8 8 0 1 0-2.4 6.4' }),
-        h('path', { d: 'M20 4.5V11h-6.5' }),
+        'div',
+        { className: 'ob-async', role: 'region', 'aria-label': props.label || '内容', 'aria-busy': phase === 'initial' || phase === 'refreshing' ? true : undefined },
+        phase === 'initial' ? props.skeleton || null : null,
+        phase === 'error' ? props.error || null : null,
+        phase === 'empty' ? props.empty || null : null,
+        phase === 'refreshing' ? props.refreshing || null : null,
+        h(
+          'div',
+          { className: contentClass, hidden: !contentAvailable },
+          props.children,
+        ),
       )
     }
 
-    function Switch(props) {
-      const on = Boolean(props.on)
-      return h('button', {
-        type: 'button',
-        role: 'switch',
-        'aria-checked': on,
-        'aria-label': props.label || undefined,
-        className: cx('ob-switch', on && 'on'),
-        disabled: Boolean(props.disabled),
-        title: props.title || undefined,
-        onClick: () => {
-          if (props.disabled) return
-          if (typeof props.onChange === 'function') props.onChange(!on)
+    // ---- Feedback Presence：enter / stable / exit ----
+
+    function Presence(props) {
+      const motion = useMotion()
+      const enabled = Boolean(motion && motion.mode === 'full')
+      const visible = Boolean(props.visible)
+      const [phase, setPhase] = useState(visible ? (enabled ? 'enter' : 'stable') : 'unmounted')
+      const elementRef = useRef(null)
+
+      useEffect(() => {
+        setPhase((previous) => {
+          if (!enabled) return visible ? 'stable' : 'unmounted'
+          return nextPresence(previous, visible)
+        })
+      }, [enabled, visible])
+
+      useEffect(() => {
+        if (!enabled) return undefined
+        const element = elementRef.current
+        if (!element) return undefined
+        const onEnd = () => setPhase((previous) => nextPresence(previous, visible))
+        element.addEventListener('animationend', onEnd)
+        return () => element.removeEventListener('animationend', onEnd)
+      }, [enabled, visible, phase])
+
+      if (phase === 'unmounted') return null
+      const exiting = phase === 'exit'
+      const rest = Object.assign({}, props)
+      delete rest.visible
+      delete rest.className
+      delete rest.children
+      return h(
+        'div',
+        Object.assign({}, rest, {
+          ref: elementRef,
+          className: cx('ob-presence', props.className),
+          'data-presence': phase,
+          'aria-hidden': exiting ? true : undefined,
+          inert: exiting ? '' : undefined,
+        }),
+        props.children,
+      )
+    }
+
+    // ---- progress.trickle：显式操作的顶部进度 ----
+
+    function useTrickleProgress(active, motion) {
+      const enabled = Boolean(motion && motion.mode === 'full')
+      const [phase, setPhase] = useState('idle')
+      const phaseRef = useRef('idle')
+      phaseRef.current = phase
+      const timerRef = useRef(null)
+      useEffect(() => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current)
+          timerRef.current = null
+        }
+        if (!enabled) {
+          setPhase('idle')
+          return undefined
+        }
+        if (active) {
+          setPhase('pending')
+          return undefined
+        }
+        if (phaseRef.current === 'pending') {
+          setPhase('completing')
+          timerRef.current = setTimeout(() => {
+            setPhase('idle')
+            timerRef.current = null
+          }, 360)
+        } else if (phaseRef.current !== 'completing') {
+          setPhase('idle')
+        }
+        return () => {
+          if (timerRef.current) {
+            clearTimeout(timerRef.current)
+            timerRef.current = null
+          }
+        }
+      }, [active, enabled])
+      return enabled ? phase : 'idle'
+    }
+
+    // ---- 数字滚动（默认 240ms ease-out；reduced/off 直接跳值） ----
+
+    function useCountUp(value, motion, duration) {
+      const target = Number(value)
+      const numeric = value !== null && value !== '' && Number.isFinite(target)
+      const [display, setDisplay] = useState(numeric ? target : value)
+      const fromRef = useRef(numeric ? 0 : null)
+      const frameRef = useRef(0)
+      useEffect(() => {
+        if (!numeric) {
+          setDisplay(value)
+          return undefined
+        }
+        const animate = Boolean(motion && motion.mode === 'full')
+        if (!animate) {
+          fromRef.current = target
+          setDisplay(target)
+          return undefined
+        }
+        const from = Number.isFinite(fromRef.current) ? fromRef.current : 0
+        const start = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now()
+        const total = Math.max(120, Number(duration) || 240)
+        const step = (now) => {
+          const progress = Math.min(1, (now - start) / total)
+          setDisplay(countUpValue(from, target, progress))
+          if (progress < 1) frameRef.current = requestAnimationFrame(step)
+          else fromRef.current = target
+        }
+        frameRef.current = requestAnimationFrame(step)
+        return () => {
+          if (frameRef.current) cancelAnimationFrame(frameRef.current)
+        }
+      }, [numeric, target, motion && motion.mode, duration])
+      return numeric ? display : value
+    }
+
+    /** 相对时间/连接时长的低频心跳：5s 一次，页面隐藏时暂停。 */
+    function useNow(intervalMs) {
+      const [now, setNow] = useState(() => Date.now())
+      useEffect(() => {
+        const timer = setInterval(() => {
+          if (pageHidden()) return
+          setNow(Date.now())
+        }, Math.max(1000, Number(intervalMs) || 5000))
+        return () => clearInterval(timer)
+      }, [intervalMs])
+      return now
+    }
+
+    /** Tab 滑块指示器：测量当前 tab 的偏移与宽度，写入 CSS 变量。 */
+    function useTabIndicator(current, motion, deps) {
+      const listRef = useRef(null)
+      const [indicator, setIndicator] = useState({ transform: 'translateX(0px)', width: '0px' })
+      const measure = useCallback(() => {
+        const list = listRef.current
+        if (!list) return
+        let button = null
+        try {
+          button = list.querySelector('[data-tab-id="' + current + '"]')
+        } catch (error) {
+          button = null
+        }
+        if (!button || !button.getBoundingClientRect) {
+          setIndicator({ transform: 'translateX(0px)', width: '0px' })
+          return
+        }
+        const listRect = list.getBoundingClientRect()
+        const rect = button.getBoundingClientRect()
+        const left = rect.left - listRect.left + (list.scrollLeft || 0)
+        setIndicator({ transform: 'translateX(' + Math.max(0, left) + 'px)', width: Math.max(0, rect.width) + 'px' })
+      }, [current])
+      useLayoutEffect(() => {
+        measure()
+      }, [measure].concat(deps || []))
+      useEffect(() => {
+        ensureResizeListener()
+        allResizeListeners.push(measure)
+        return () => {
+          const index = allResizeListeners.indexOf(measure)
+          if (index >= 0) allResizeListeners.splice(index, 1)
+        }
+      }, [measure])
+      useEffect(() => {
+        const list = listRef.current
+        if (!list) return
+        let button = null
+        try {
+          button = list.querySelector('[data-tab-id="' + current + '"]')
+        } catch (error) {
+          button = null
+        }
+        if (!button || !button.getBoundingClientRect || !list.scrollTo) return
+        const listRect = list.getBoundingClientRect()
+        const rect = button.getBoundingClientRect()
+        if (rect.left < listRect.left + 8 || rect.right > listRect.right - 8) {
+          const smooth = shouldAnimate(motion && motion.mode, 'screen')
+          try {
+            list.scrollTo({ left: Math.max(0, list.scrollLeft + rect.left - listRect.left - 12), behavior: smooth ? 'smooth' : 'auto' })
+          } catch (error) {}
+        }
+      }, [current, motion])
+      return { listRef, indicator }
+    }
+
+    // 窗口尺寸变化时统一重测（单例监听，避免每个组件各自 addEventListener）。
+    const allResizeListeners = []
+    let resizeBound = false
+    function ensureResizeListener() {
+      if (resizeBound || typeof window === 'undefined') return
+      resizeBound = true
+      try {
+        window.addEventListener('resize', () => {
+          for (const listener of allResizeListeners.slice()) {
+            try {
+              listener()
+            } catch (error) {}
+          }
+        })
+      } catch (error) {}
+    }
+
+    function BusyIndicator(props) {
+      return h(
+        'span',
+        { className: 'ob-hint-inline', role: 'status', 'aria-label': props.label || '处理中' },
+        h('i', { className: 'ob-spinner ob-spin', 'aria-hidden': true }),
+        props.showLabel === false ? null : h('span', null, props.label || '处理中…'),
+      )
+    }
+
+    // =====================================================================
+    // UI 原语：图标 / 页头 / 面板 / 统计 / 状态 / 骨架 / 标签栏 / 表单控件 / 列表行
+    // 全部为无依赖的 React.createElement 组件（单文件浏览器 bundle，不用 JSX）。
+    // =====================================================================
+
+    const ICON_PATHS = {
+      overview: ['M4 4h7v7H4z', 'M13 4h7v4h-7z', 'M13 10h7v10h-7z', 'M4 13h7v7H4z'],
+      connect: ['M9 7V4a3 3 0 0 1 6 0v3', 'M7 7h10v5a5 5 0 0 1-10 0z', 'M12 17v3'],
+      message: ['M4 6h16v10H8l-4 3z', 'M8 10h8', 'M8 13h5'],
+      config: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M12 2v3', 'M12 19v3', 'M2 12h3', 'M19 12h3', 'M4.9 4.9l2.1 2.1', 'M17 17l2.1 2.1', 'M19.1 4.9 17 7', 'M7 17l-2.1 2.1'],
+      logs: ['M5 4h14', 'M5 9h9', 'M5 14h14', 'M5 19h7'],
+      about: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 10v6', 'M12 7h.01'],
+      refresh: ['M20 11a8 8 0 1 0-2.3 5.7', 'M20 5v6h-6'],
+      play: ['M8 5l11 7-11 7z'],
+      stop: ['M6 6h12v12H6z'],
+      send: ['M21 3 3 10l7 3 3 7z', 'M21 3l-9 9'],
+      check: ['M20 6 9 17l-5-5'],
+      alert: ['M12 4 3 20h18z', 'M12 10v5', 'M12 18h.01'],
+      inbox: ['M4 13h4l2 3h4l2-3h4', 'M4 13 6 5h12l2 8v6H4z'],
+      search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z', 'M21 21l-4.3-4.3'],
+      chevron: ['m6 9 6 6 6-6'],
+      plus: ['M12 5v14', 'M5 12h14'],
+      close: ['M6 6l12 12', 'M18 6 6 18'],
+      copy: ['M9 9h10v12H9z', 'M5 15H3V3h12v2'],
+      eye: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z'],
+      eyeOff: ['M3 3l18 18', 'M10.6 10.6a3 3 0 0 0 4.2 4.2', 'M9.9 5.2A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.1 4.2', 'M6.1 6.1A17.4 17.4 0 0 0 2 12s3.5 7 10 7a10.8 10.8 0 0 0 2.1-.2'],
+      link: ['M10 13a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1', 'M14 11a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1'],
+      users: ['M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M22 19v-1a4 4 0 0 0-3-3.9', 'M16 3.1a4 4 0 0 1 0 7.8'],
+      group: ['M4 4h16v12H8l-4 4z', 'M8 9h8', 'M8 12h5'],
+      clock: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 7v5l3 2'],
+      shield: ['M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6z'],
+      bolt: ['M13 2 4 14h6l-1 8 9-12h-6z'],
+      filter: ['M3 5h18', 'M6 12h12', 'M10 19h4'],
+      trash: ['M4 7h16', 'M9 7V4h6v3', 'M6 7l1 14h10l1-14'],
+      pause: ['M8 5v14', 'M16 5v14'],
+      bell: ['M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
+      plug: ['M9 2v6', 'M15 2v6', 'M7 8h10v5a5 5 0 0 1-10 0z', 'M12 18v4'],
+    }
+
+    function Icon(props) {
+      const paths = ICON_PATHS[props.name] || ICON_PATHS.about
+      return h(
+        'svg',
+        {
+          viewBox: '0 0 24 24',
+          width: props.size || 18,
+          height: props.size || 18,
+          fill: 'none',
+          stroke: 'currentColor',
+          strokeWidth: props.strokeWidth || 1.7,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          'aria-hidden': true,
+          focusable: 'false',
         },
-      })
+        paths.map((d, index) => h('path', { key: index, d })),
+      )
+    }
+
+    function OneBotIcon(props) {
+      return h(Icon, { name: 'message', size: (props && props.size) || 18 })
+    }
+
+    function RefreshIcon(props) {
+      return h(Icon, { name: 'refresh', size: (props && props.size) || 16 })
     }
 
     function Btn(props) {
-      const kind = props.kind ? ' ' + props.kind : ''
-      const size = props.small ? ' sm' : ''
+      const busy = Boolean(props.busy)
+      const disabled = Boolean(props.disabled || busy)
       return h(
         'button',
         {
           type: props.type || 'button',
-          className: 'ob-btn' + kind + size,
-          disabled: Boolean(props.disabled) || Boolean(props.busy),
-          title: props.title || undefined,
-          'aria-busy': props.busy ? 'true' : undefined,
-          onClick: props.onClick,
+          className: cx('ob-btn', props.kind, props.small && 'small', props.large && 'large', props.block && 'block', props.className),
+          disabled,
+          title: props.title,
+          'aria-busy': busy ? true : undefined,
+          onClick: disabled ? undefined : props.onClick,
         },
-        props.busy ? h('span', { className: 'ob-spin', 'aria-hidden': true }) : null,
-        h('span', null, props.children),
+        busy ? h('i', { className: 'ob-spinner ob-spin', 'aria-hidden': true }) : props.icon ? h(Icon, { name: props.icon, size: props.small ? 14 : 16 }) : null,
+        props.children === undefined ? null : h('span', null, props.children),
       )
     }
 
@@ -931,52 +2125,136 @@ window.__ModuleLoader__.load({
         'button',
         {
           type: 'button',
-          className: 'ob-icon-btn',
-          title: props.title || undefined,
-          'aria-label': props.label || props.title || '操作',
+          className: cx('ob-icon-btn', props.small && 'small', props.className),
+          title: props.title,
+          'aria-label': props.label || props.title,
           onClick: props.onClick,
+          disabled: props.disabled,
         },
-        props.children,
+        props.icon ? h(Icon, { name: props.icon, size: props.small ? 15 : 18 }) : props.children,
       )
     }
 
-    function Card(props) {
+    function StatusPill(props) {
       return h(
-        'div',
-        { className: cx('ob-card', props.className) },
-        props.title || props.right
-          ? h('div', { className: 'ob-card-head' }, props.title ? h('h2', null, props.title) : null, h('span', { className: 'ob-spacer' }), props.right || null)
-          : null,
-        props.desc ? h('p', { className: 'ob-card-desc' }, props.desc) : null,
-        props.children,
-      )
-    }
-
-    function Empty(props) {
-      return h('div', { className: 'ob-empty' }, h('div', { className: 'ob-empty-icon', 'aria-hidden': true }, props.icon || '·'), h('div', null, props.text || '暂无内容'), props.children || null)
-    }
-
-    function Loading(props) {
-      return h('div', { className: 'ob-loading' }, h('span', { className: 'ob-spin', 'aria-hidden': true }), h('span', null, props.text || '加载中…'))
-    }
-
-    function ErrorNote(props) {
-      return h(
-        'div',
-        { className: 'ob-banner err', role: 'alert' },
-        h('span', { className: 'ob-banner-msg' }, props.message || '操作失败'),
-        props.onRetry
-          ? h('span', { className: 'ob-banner-actions' }, h(Btn, { small: true, onClick: props.onRetry, busy: props.retrying }, props.retryLabel || '重试'))
-          : null,
+        'span',
+        { className: cx('ob-status-pill', props.tone) },
+        h('i', { className: 'ob-dot', 'data-live': props.live ? 'true' : 'false', 'aria-hidden': true }),
+        h('span', null, props.text),
+        props.extra ? h('span', { className: 'ob-status-extra' }, props.extra) : null,
       )
     }
 
     function Badge(props) {
-      return h('span', { className: cx('ob-badge', props.tone), title: props.title || undefined }, props.children)
+      return h('span', { className: cx('ob-badge', props.tone) }, props.children)
     }
 
-    function Stat(props) {
-      return h('div', { className: 'ob-card ob-stat' }, h('div', { className: 'ob-stat-n' }, props.value == null || props.value === '' ? '0' : props.value), h('div', { className: 'ob-stat-l' }, props.label), props.hint ? h('div', { className: 'ob-stat-h' }, props.hint) : null)
+    function SoftIcon(props) {
+      const size = props.size === 'small' ? 15 : props.size === 'large' ? 21 : 17
+      return h('span', { className: cx('ob-icon-tile', props.tone, props.size), 'aria-hidden': true }, h(Icon, { name: props.name, size }))
+    }
+
+    function PageHeader(props) {
+      return h(
+        'header',
+        { className: 'ob-header' },
+        h(
+          'div',
+          { className: 'ob-header-main' },
+          props.eyebrow
+            ? h('p', { className: 'ob-eyebrow' }, h('i', { className: 'ob-eyebrow-dot', 'aria-hidden': true }), props.eyebrow)
+            : null,
+          h('h1', { className: 'ob-display' }, props.title),
+          props.description ? h('p', { className: 'ob-subtitle' }, props.description) : null,
+          props.meta ? h('div', { className: 'ob-header-meta' }, props.meta) : null,
+        ),
+        props.actions ? h('div', { className: 'ob-header-actions' }, props.actions) : null,
+      )
+    }
+
+    function Panel(props) {
+      const appearance = props.appearance || 'elevated'
+      const hasHead = props.title || props.description || props.actions
+      return h(
+        'section',
+        { className: cx('ob-panel', appearance === 'elevated' ? '' : appearance, props.className) },
+        hasHead
+          ? h(
+              'div',
+              { className: cx('ob-panel-head', props.line === false ? '' : 'with-line', props.headClassName) },
+              h(
+                'div',
+                { className: 'ob-stack', style: { gap: '2px', minWidth: 0, flex: '1 1 220px' } },
+                props.title ? h('h2', { className: 'ob-panel-title' }, props.title) : null,
+                props.description ? h('p', { className: 'ob-panel-desc' }, props.description) : null,
+              ),
+              props.actions ? h('div', { className: 'ob-panel-actions' }, props.actions) : null,
+            )
+          : null,
+        h('div', { className: cx('ob-panel-body', props.flush && 'flush', props.bodyClassName) }, props.children),
+        props.footer ? h('div', { className: 'ob-panel-foot' }, props.footer) : null,
+      )
+    }
+
+    function Section(props) {
+      return h(
+        'div',
+        { className: cx('ob-section', props.className), id: props.id },
+        props.title || props.actions
+          ? h(
+              'div',
+              { className: 'ob-spread' },
+              h(
+                'div',
+                { className: 'ob-stack', style: { gap: '2px', minWidth: 0 } },
+                props.title ? h('h2', { className: 'ob-section-title' }, props.title) : null,
+                props.description ? h('p', { className: 'ob-panel-desc' }, props.description) : null,
+              ),
+              props.actions ? h('div', { className: 'ob-row' }, props.actions) : null,
+            )
+          : null,
+        props.children,
+      )
+    }
+
+    function StatTile(props) {
+      const motion = useMotion()
+      const numeric = typeof props.value === 'number' && Number.isFinite(props.value)
+      const shown = useCountUp(numeric ? props.value : 0, motion, 240)
+      const display = numeric ? formatCount(shown) + (props.denominator != null ? ' / ' + formatCount(props.denominator) : '') : String(props.value == null ? '—' : props.value)
+      return h(
+        'div',
+        { className: 'ob-stat' },
+        h(
+          'div',
+          { className: 'ob-stat-top' },
+          h('p', { className: 'ob-stat-label' }, props.label),
+          props.icon ? h(SoftIcon, { name: props.icon, tone: props.tone, size: 'small' }) : null,
+        ),
+        h('p', { className: 'ob-stat-value', 'aria-label': props.label + '：' + display }, display),
+        props.hint ? h('p', { className: 'ob-stat-hint' }, props.hint) : null,
+        props.progress != null
+          ? h('div', { className: 'ob-stat-bar' }, h('div', { className: 'ob-stat-bar-fill', style: { width: (clamp01(props.progress) * 100).toFixed(1) + '%' } }))
+          : null,
+      )
+    }
+
+    function MiniBars(props) {
+      const rows = safeArray(props.rows)
+      const max = rows.reduce((value, row) => Math.max(value, Number(row.value) || 0), 0) || 1
+      return h(
+        'div',
+        { className: 'ob-bars', 'aria-label': props.label || '分布' },
+        rows.map((row, index) =>
+          h(
+            'div',
+            { className: 'ob-bar-row', key: row.label || index },
+            h('span', { className: 'ob-bar-label' }, row.label),
+            h('div', { className: 'ob-bar-track' }, h('div', { className: 'ob-bar-fill', style: { width: (((Number(row.value) || 0) / max) * 100).toFixed(1) + '%', background: row.color } })),
+            h('span', { className: 'ob-bar-value' }, formatCount(row.value || 0)),
+          ),
+        ),
+      )
     }
 
     function KV(props) {
@@ -985,20 +2263,413 @@ window.__ModuleLoader__.load({
         'dl',
         { className: 'ob-kv' },
         rows.map((row, index) =>
+          h('div', { className: 'ob-kv-row', key: (row && row[0]) || index }, h('dt', { className: 'ob-kv-k' }, row[0]), h('dd', { className: 'ob-kv-v' }, row[1])),
+        ),
+      )
+    }
+
+    function EmptyState(props) {
+      return h(
+        'div',
+        { className: cx('ob-state', props.compact && 'compact'), role: props.role },
+        h('span', { className: cx('ob-state-icon', props.tone), 'aria-hidden': true }, h(Icon, { name: props.icon || 'inbox', size: 22 })),
+        h('h3', { className: 'ob-state-title' }, props.title || '暂无内容'),
+        props.description ? h('p', { className: 'ob-state-desc' }, props.description) : null,
+        props.action ? h('div', { className: 'ob-state-action' }, props.action) : null,
+      )
+    }
+
+    function Skeleton(props) {
+      const variant = props.variant || ''
+      const style = Object.assign({}, props.style || null, props.width ? { width: props.width } : null, props.height ? { height: props.height } : null)
+      return h('span', { className: cx('ob-skeleton', variant, props.className), 'aria-hidden': true, style })
+    }
+
+    function PanelSkeleton(props) {
+      const rows = Math.max(1, Number(props.rows) || 3)
+      return h(
+        'div',
+        { className: 'ob-panel' },
+        h(
+          'div',
+          { className: 'ob-panel-body' },
+          h('div', { className: 'ob-skel-stack' }, h(Skeleton, { variant: 'title', width: '36%' }), h(Skeleton, { variant: 'text', width: '72%' })),
           h(
-            Fragment,
-            { key: index },
-            h('dt', null, row && row[0] != null ? row[0] : ''),
-            h('dd', null, row && row[1] != null && row[1] !== '' ? row[1] : '—'),
+            'div',
+            { className: 'ob-skel-stack', style: { marginTop: '16px' } },
+            Array.from({ length: rows }).map((_, index) => h(Skeleton, { key: index, variant: 'text', width: index % 2 ? '86%' : '100%' })),
           ),
         ),
       )
     }
 
+    function StatSkeleton() {
+      return h(
+        'div',
+        { className: 'ob-stat' },
+        h('div', { className: 'ob-stat-top' }, h(Skeleton, { variant: 'text', width: '52%' }), h(Skeleton, { className: 'ob-skeleton', width: '30px', height: '30px', style: { borderRadius: '12px' } })),
+        h(Skeleton, { variant: 'title', width: '62%', style: { marginTop: '10px' } }),
+        h(Skeleton, { variant: 'text', width: '44%' }),
+      )
+    }
+
+    function FieldRow(props) {
+      const spec = props.spec || {}
+      const id = 'ob-field-' + String(spec.path || '').replace(/[^a-zA-Z0-9_-]/g, '-')
+      return h(
+        'div',
+        { className: 'ob-field', 'data-field': spec.path },
+        h(
+          'label',
+          { className: 'ob-field-label', htmlFor: id },
+          spec.label || spec.path,
+          spec.type === 'secret' ? h(Badge, { tone: 'brand' }, '密钥') : null,
+        ),
+        h('div', { className: 'ob-field-control' }, h(FieldControl, { id, spec, value: props.value, onChange: props.onChange, disabled: props.disabled })),
+        spec.help ? h('p', { className: 'ob-field-help' }, spec.help) : null,
+      )
+    }
+
+    function FieldControl(props) {
+      const spec = props.spec || {}
+      const value = props.value
+      const disabled = Boolean(props.disabled)
+      const onChange = props.onChange || (() => {})
+      const id = props.id
+      if (spec.type === 'switch') {
+        return h(Switch, { id, on: Boolean(value), onChange, disabled, label: spec.label })
+      }
+      if (spec.type === 'secret') {
+        return h(SecretField, { id, spec, value, onChange, disabled })
+      }
+      if (spec.type === 'string-list') {
+        return h(StringListField, { id, spec, value, onChange, disabled })
+      }
+      if (spec.type === 'number-list') {
+        return h(NumberListField, { id, spec, value, onChange, disabled })
+      }
+      if (spec.type === 'select') {
+        return h(
+          'select',
+          { id, className: 'ob-select', value: value == null ? '' : String(value), disabled, onChange: (event) => onChange(event.target.value) },
+          safeArray(spec.options).map((option) =>
+            h('option', { key: String(option.value), value: String(option.value) }, option.label == null ? String(option.value) : String(option.label)),
+          ),
+        )
+      }
+      if (spec.type === 'number') {
+        return h(
+          'span',
+          { className: 'ob-row', style: { flexWrap: 'nowrap', width: '100%' } },
+          h('input', {
+            id,
+            className: 'ob-input',
+            type: 'number',
+            value: value == null ? '' : value,
+            min: spec.min,
+            max: spec.max,
+            step: spec.step,
+            placeholder: spec.placeholder,
+            disabled,
+            onChange: (event) => {
+              const raw = event.target.value
+              onChange(raw === '' ? '' : Number(raw))
+            },
+          }),
+          spec.unit ? h('span', { className: 'ob-field-unit' }, spec.unit) : null,
+        )
+      }
+      if (spec.type === 'textarea') {
+        return h('textarea', {
+          id,
+          className: 'ob-textarea',
+          value: value == null ? '' : String(value),
+          placeholder: spec.placeholder,
+          disabled,
+          onChange: (event) => onChange(event.target.value),
+        })
+      }
+      return h('input', {
+        id,
+        className: 'ob-input',
+        type: 'text',
+        value: value == null ? '' : String(value),
+        placeholder: spec.placeholder,
+        disabled,
+        onChange: (event) => onChange(event.target.value),
+      })
+    }
+
+    function SecretField(props) {
+      const [shown, setShown] = useState(false)
+      const spec = props.spec || {}
+      return h(
+        'span',
+        { className: 'ob-input-wrap' },
+        h('input', {
+          id: props.id,
+          className: 'ob-input',
+          type: shown ? 'text' : 'password',
+          value: props.value == null ? '' : String(props.value),
+          placeholder: spec.placeholder || '留空则不修改/不启用',
+          disabled: props.disabled,
+          autoComplete: 'off',
+          spellCheck: false,
+          onChange: (event) => props.onChange(event.target.value),
+        }),
+        h(
+          'button',
+          { type: 'button', className: 'ob-secret-toggle', onClick: () => setShown((previous) => !previous), disabled: props.disabled, 'aria-label': shown ? '隐藏密钥' : '显示密钥' },
+          h(Icon, { name: shown ? 'eyeOff' : 'eye', size: 14 }),
+          shown ? '隐藏' : '显示',
+        ),
+      )
+    }
+
+    function StringListField(props) {
+      const value = safeArray(props.value)
+      const [draft, setDraft] = useState('')
+      const commit = (raw) => {
+        const text = String(raw == null ? '' : raw).trim()
+        if (!text) return
+        const next = value.slice()
+        if (!next.includes(text)) next.push(text)
+        props.onChange(next)
+        setDraft('')
+      }
+      return h(
+        'div',
+        { className: 'ob-tags' },
+        value.map((item) =>
+          h(
+            'span',
+            { className: 'ob-tag', key: item },
+            String(item),
+            h('button', { type: 'button', 'aria-label': '移除 ' + item, onClick: () => props.onChange(value.filter((entry) => entry !== item)) }, '×'),
+          ),
+        ),
+        h('input', {
+          id: props.id,
+          value: draft,
+          placeholder: '输入后回车添加，逗号分隔可一次多个',
+          disabled: props.disabled,
+          onChange: (event) => {
+            const raw = event.target.value
+            if (/[,，]/.test(raw)) {
+              raw.split(/[,，]/).forEach(commit)
+            } else {
+              setDraft(raw)
+            }
+          },
+          onKeyDown: (event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              commit(draft)
+            } else if (event.key === 'Backspace' && !draft && value.length) {
+              props.onChange(value.slice(0, -1))
+            }
+          },
+        }),
+      )
+    }
+
+    function formatNumberList(value) {
+      const list = safeArray(value)
+        .map((item) => Number(item))
+        .filter((item) => Number.isFinite(item))
+      return list.join(', ')
+    }
+
+    function NumberListField(props) {
+      const [draft, setDraft] = useState(() => formatNumberList(props.value))
+      const focusedRef = useRef(false)
+      const external = formatNumberList(props.value)
+      useEffect(() => {
+        if (!focusedRef.current) setDraft(external)
+      }, [external])
+      return h('input', {
+        id: props.id,
+        className: 'ob-input',
+        type: 'text',
+        value: draft,
+        placeholder: '例如：1000, 3000, 5000',
+        disabled: props.disabled,
+        onFocus: () => {
+          focusedRef.current = true
+        },
+        onChange: (event) => {
+          const raw = event.target.value
+          setDraft(raw)
+          const list = raw
+            .split(/[,，\s]+/)
+            .map((item) => Number(item))
+            .filter((item) => Number.isFinite(item))
+          props.onChange(list)
+        },
+        onBlur: () => {
+          focusedRef.current = false
+          const formatted = formatNumberList(draft)
+          setDraft(formatted)
+        },
+      })
+    }
+
+    function Switch(props) {
+      return h('button', {
+        id: props.id,
+        type: 'button',
+        role: 'switch',
+        'aria-checked': Boolean(props.on),
+        'aria-label': props.label,
+        className: cx('ob-switch', props.on && 'on'),
+        disabled: props.disabled,
+        onClick: () => props.onChange && props.onChange(!props.on),
+      })
+    }
+
+    function Seg(props) {
+      const options = safeArray(props.options)
+      return h(
+        'div',
+        { className: 'ob-seg', role: 'group', 'aria-label': props.label || '分段选择' },
+        options.map((option) =>
+          h(
+            'button',
+            {
+              key: String(option.value),
+              type: 'button',
+              className: cx('ob-seg-btn', option.value === props.value && 'on'),
+              'aria-pressed': option.value === props.value,
+              onClick: () => props.onChange(option.value),
+              disabled: props.disabled,
+            },
+            option.label,
+          ),
+        ),
+      )
+    }
+
+    function Block(props) {
+      return h('div', { className: 'ob-stack' }, props.children)
+    }
+
+    function ProgressBar(props) {
+      const max = Number(props.max) || 0
+      const value = Number(props.value) || 0
+      const ratio = max > 0 ? clamp01(value / max) : 0
+      return h(
+        'div',
+        {
+          className: 'ob-stat-bar',
+          role: 'progressbar',
+          'aria-label': props.label || '进度',
+          'aria-valuemin': 0,
+          'aria-valuemax': max,
+          'aria-valuenow': value,
+        },
+        h('div', { className: 'ob-stat-bar-fill', style: { width: (ratio * 100).toFixed(1) + '%', background: props.color } }),
+      )
+    }
+
+    function ListItem(props) {
+      return h(
+        'li',
+        null,
+        h(
+          'button',
+          { type: 'button', className: cx('ob-list-item', props.selected && 'on'), onClick: props.onClick, title: props.title },
+          h('span', { className: 'ob-list-avatar', 'aria-hidden': true }, props.initials || '?'),
+          h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, props.title), props.sub ? h('span', { className: 'ob-list-sub' }, props.sub) : null),
+          props.trailing ? h('span', { className: 'ob-feed-meta' }, props.trailing) : null,
+        ),
+      )
+    }
+
+    function Kbd(props) {
+      return h('span', { className: 'ob-kbd' }, props.children)
+    }
+
+    function Code(props) {
+      const text = String(props.children == null ? '' : props.children)
+      return h('code', { className: 'ob-code', title: text }, text)
+    }
+
+    function LinkOut(props) {
+      return h('a', { className: 'ob-link', href: props.href, target: '_blank', rel: 'noreferrer noopener' }, props.children, h(Icon, { name: 'link', size: 12 }))
+    }
+
+    function nowOf(props, value) {
+      const time = Number(value)
+      return formatRelative(Number.isFinite(time) ? time : undefined, props && props.now)
+    }
+
+    function EventLine(props) {
+      const described = describeEvent(props.event)
+      const tone = described.kind === 'message' ? 'brand' : described.kind === 'notice' ? 'warn' : described.kind === 'request' ? 'info' : 'muted'
+      const iconName = described.kind === 'message' ? (described.chatType === 'group' ? 'group' : 'message') : described.kind === 'notice' ? 'bell' : described.kind === 'request' ? 'users' : 'bolt'
+      const raw = safeObject(props.event)
+      const at = Number(raw.receivedAt) || (Number(raw.time) ? Number(raw.time) * 1000 : undefined)
+      return h(
+        'li',
+        { className: 'ob-feed-item' },
+        h(SoftIcon, { name: iconName, tone, size: 'small' }),
+        h(
+          'div',
+          { className: 'ob-feed-body' },
+          h(
+            'div',
+            { className: 'ob-feed-head' },
+            h(Badge, { tone }, described.kindLabel),
+            described.chatLabel ? h('span', { className: 'ob-feed-meta' }, described.chatLabel) : null,
+            described.senderName ? h('span', { className: 'ob-feed-meta' }, described.senderName) : null,
+          ),
+          h('p', { className: 'ob-feed-text' }, described.summary || '（没有可展示的文本内容）'),
+        ),
+        h('span', { className: 'ob-feed-time' }, nowOf(props, at)),
+      )
+    }
+
+    function LogLine(props) {
+      const entry = normalizeLogEntry(props.entry)
+      return h(
+        'div',
+        { className: 'ob-log-row' },
+        h('span', { className: 'ob-log-time' }, entry.time),
+        h('span', { className: 'ob-log-level ' + entry.level }, entry.level),
+        entry.area ? h('span', { className: 'ob-log-area' }, entry.area) : null,
+        h('span', { className: 'ob-log-text' }, entry.text),
+      )
+    }
+
+    // =====================================================================
+    // 标签栏 / 反馈（banner / toast / savebar）/ 顶部进度
+    // =====================================================================
+
+    const TABS = [
+      { id: 'overview', label: '概览', icon: 'overview' },
+      { id: 'connect', label: '连接', icon: 'connect' },
+      { id: 'messages', label: '消息', icon: 'message' },
+      { id: 'config', label: '配置', icon: 'config' },
+      { id: 'logs', label: '日志', icon: 'logs' },
+      { id: 'about', label: '关于', icon: 'about' },
+    ]
+
     function Tabs(props) {
+      const motion = useMotion()
       const tabs = safeArray(props.tabs)
       const current = props.current
-      const ref = useRef(null)
+      const { listRef, indicator } = useTabIndicator(current, motion, [tabs.length, props.dirty])
+
+      const activate = (id, focus) => {
+        props.onChange(id)
+        if (!focus) return
+        try {
+          const list = listRef.current
+          const button = list && list.querySelector('[data-tab-id="' + id + '"]')
+          if (button && button.focus) button.focus()
+        } catch (error) {}
+      }
+
       const onKeyDown = (event) => {
         const index = tabs.findIndex((tab) => tab.id === current)
         let next = -1
@@ -1008,337 +2679,96 @@ window.__ModuleLoader__.load({
         else if (event.key === 'End') next = tabs.length - 1
         if (next < 0) return
         event.preventDefault()
-        props.onChange(tabs[next].id)
-        try {
-          const buttons = ref.current ? ref.current.querySelectorAll('[role="tab"]') : []
-          if (buttons[next] && buttons[next].focus) buttons[next].focus()
-        } catch (error) {}
+        activate(tabs[next].id, true)
       }
+
       return h(
-        'div',
-        { className: 'ob-tabs', role: 'tablist', 'aria-label': 'QQ 连接面板', ref, onKeyDown },
-        tabs.map((tab) =>
-          h(
-            'button',
-            {
-              key: tab.id,
-              type: 'button',
-              role: 'tab',
-              id: 'ob-tab-' + tab.id,
-              'aria-selected': current === tab.id,
-              'aria-controls': 'ob-panel-' + tab.id,
-              tabIndex: current === tab.id ? 0 : -1,
-              className: cx('ob-tab', current === tab.id && 'on'),
-              onClick: () => props.onChange(tab.id),
-            },
-            tab.label,
-            props.dirty && tab.id === 'config' ? h('i', { className: 'ob-tab-dirty', title: '有未保存的改动' }) : null,
+        'nav',
+        { className: 'ob-tabs', 'aria-label': 'QQ 连接面板' },
+        h(
+          'div',
+          { className: 'ob-tablist', role: 'tablist', ref: listRef, onKeyDown },
+          h('span', { className: 'ob-tab-pill', 'aria-hidden': true, style: indicator }),
+          tabs.map((tab) =>
+            h(
+              'button',
+              {
+                key: tab.id,
+                type: 'button',
+                role: 'tab',
+                id: 'ob-tab-' + tab.id,
+                'data-tab-id': tab.id,
+                'aria-selected': current === tab.id,
+                'aria-controls': 'ob-panel-' + tab.id,
+                tabIndex: current === tab.id ? 0 : -1,
+                className: cx('ob-tab', current === tab.id && 'on'),
+                onClick: () => activate(tab.id, false),
+              },
+              h(Icon, { name: tab.icon, size: 15 }),
+              h('span', null, tab.label),
+              props.dirty && tab.id === 'config' ? h('i', { className: 'ob-tab-dirty', title: '有未保存的改动', 'aria-label': '有未保存的改动' }) : null,
+            ),
           ),
         ),
+      )
+    }
+
+    function Banner(props) {
+      const tone = props.tone || 'warn'
+      const iconName = props.icon || (tone === 'ok' ? 'check' : tone === 'err' ? 'alert' : tone === 'warn' ? 'alert' : 'about')
+      const iconTone = tone === 'ok' ? 'ok' : tone === 'err' ? 'err' : tone === 'warn' ? 'warn' : 'info'
+      return h(
+        Presence,
+        { visible: props.visible !== false, className: cx('ob-banner', tone) },
+        h(SoftIcon, { name: iconName, tone: iconTone, size: 'small' }),
+        h('span', { className: 'ob-banner-msg' }, props.message),
+        props.actions ? h('span', { className: 'ob-banner-actions' }, props.actions) : null,
       )
     }
 
     function Toast(props) {
       const message = props.message
-      if (!message) return null
-      const kind = message.kind || 'info'
-      const mark = kind === 'ok' ? '✓' : kind === 'err' ? '!' : 'i'
+      const tone = message && message.kind ? message.kind : 'info'
+      const mark = tone === 'ok' ? '✓' : tone === 'err' ? '!' : 'i'
       return h(
-        'div',
-        { className: cx('ob-toast', kind), role: 'status', 'aria-live': 'polite' },
+        Presence,
+        { key: (message && message.uid) || 'toast', visible: Boolean(message), className: cx('ob-toast', tone), role: 'status', 'aria-live': 'polite' },
         h('span', { className: 'ob-toast-mark', 'aria-hidden': true }, mark),
-        h('span', null, message.text),
+        h('span', null, message ? message.text : ''),
       )
     }
 
-    // ---- 数据驱动字段控件 ----
-
-    function FieldControl(props) {
-      const spec = props.spec || {}
-      const type = spec.type || 'text'
-      const value = props.value
-      const onChange = typeof props.onChange === 'function' ? props.onChange : () => {}
-      const id = props.id
-      const describedBy = props.describedBy
-      if (type === 'switch') {
-        return h(Switch, { on: Boolean(value), onChange, disabled: props.disabled, label: spec.label, title: spec.help })
-      }
-      if (type === 'number') {
-        return h('input', {
-          id,
-          className: 'ob-input sm',
-          type: 'number',
-          min: spec.min,
-          max: spec.max,
-          step: spec.step === undefined ? 'any' : spec.step,
-          value: value === undefined || value === null ? '' : String(value),
-          placeholder: spec.placeholder || undefined,
-          disabled: props.disabled,
-          'aria-label': spec.label,
-          'aria-describedby': describedBy,
-          onChange: (event) => {
-            const raw = event.target.value
-            onChange(raw === '' ? '' : Number(raw))
-          },
-        })
-      }
-      if (type === 'select') {
-        const options = safeArray(spec.options)
-        return h(
-          'select',
-          {
-            id,
-            className: 'ob-select',
-            value: value === undefined || value === null ? '' : String(value),
-            disabled: props.disabled,
-            'aria-label': spec.label,
-            'aria-describedby': describedBy,
-            onChange: (event) => onChange(event.target.value),
-          },
-          options.length
-            ? options.map((option) => h('option', { key: option.value, value: option.value }, option.label))
-            : h('option', { value: '' }, '没有可选项'),
-        )
-      }
-      if (type === 'secret') return h(SecretField, { id, spec, value, onChange, disabled: props.disabled, describedBy })
-      if (type === 'string-list') return h(StringListField, { id, spec, value, onChange, disabled: props.disabled })
-      if (type === 'number-list') return h(NumberListField, { id, spec, value, onChange, disabled: props.disabled })
-      if (type === 'textarea') {
-        return h('textarea', {
-          id,
-          className: 'ob-textarea',
-          rows: 3,
-          value: value === undefined || value === null ? '' : String(value),
-          placeholder: spec.placeholder || undefined,
-          disabled: props.disabled,
-          'aria-label': spec.label,
-          'aria-describedby': describedBy,
-          onChange: (event) => onChange(event.target.value),
-        })
-      }
-      return h('input', {
-        id,
-        className: 'ob-input',
-        type: 'text',
-        value: value === undefined || value === null ? '' : String(value),
-        placeholder: spec.placeholder || undefined,
-        disabled: props.disabled,
-        'aria-label': spec.label,
-        'aria-describedby': describedBy,
-        onChange: (event) => onChange(event.target.value),
-      })
-    }
-
-    function SecretField(props) {
-      const [visible, setVisible] = useState(false)
-      const spec = props.spec || {}
+    function Savebar(props) {
       return h(
-        'div',
-        { className: 'ob-input-wrap' },
-        h('input', {
-          id: props.id,
-          className: 'ob-input',
-          type: visible ? 'text' : 'password',
-          autoComplete: 'off',
-          value: props.value === undefined || props.value === null ? '' : String(props.value),
-          placeholder: spec.placeholder || undefined,
-          disabled: props.disabled,
-          'aria-label': spec.label,
-          'aria-describedby': props.describedBy,
-          onChange: (event) => props.onChange(event.target.value),
-        }),
+        Presence,
+        { visible: Boolean(props.visible), className: 'ob-savebar' },
+        h('span', { className: 'ob-savebar-msg' }, h(Icon, { name: 'alert', size: 15 }), '有未保存的配置改动'),
         h(
-          'button',
-          {
-            type: 'button',
-            className: 'ob-eye',
-            'aria-pressed': visible,
-            'aria-label': visible ? '隐藏内容' : '显示内容',
-            onClick: () => setVisible((current) => !current),
-          },
-          visible ? '隐藏' : '显示',
+          'span',
+          { className: 'ob-savebar-actions' },
+          h('span', { className: 'ob-small ob-muted' }, h(Kbd, null, 'Ctrl'), ' + ', h(Kbd, null, 'S')),
+          h(Btn, { small: true, kind: 'ghost', onClick: props.onUndo, disabled: props.saving }, '撤销'),
+          h(Btn, { small: true, kind: 'primary', onClick: props.onSave, busy: props.saving }, props.saving ? '保存中…' : '保存'),
         ),
       )
     }
 
-    function StringListField(props) {
-      const [text, setText] = useState('')
-      const list = safeArray(props.value).map((item) => String(item))
-      const add = () => {
-        const value = text.trim()
-        if (!value) return
-        if (list.indexOf(value) < 0) props.onChange(list.concat([value]))
-        setText('')
-      }
+    function TopProgress(props) {
+      const phase = props.phase || 'idle'
       return h(
         'div',
-        { className: 'ob-tags' },
-        list.map((item) =>
-          h(
-            'span',
-            { className: 'ob-tag', key: item, title: item },
-            h('span', null, item),
-            h('button', { type: 'button', 'aria-label': '移除 ' + item, onClick: () => props.onChange(list.filter((entry) => entry !== item)) }, '×'),
-          ),
-        ),
-        h('input', {
-          id: props.id,
-          type: 'text',
-          value: text,
-          placeholder: (props.spec && props.spec.placeholder) || '输入后回车添加',
-          disabled: props.disabled,
-          'aria-label': (props.spec && props.spec.label) || '列表输入',
-          onChange: (event) => setText(event.target.value),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              add()
-            } else if (event.key === 'Backspace' && !text && list.length) {
-              props.onChange(list.slice(0, -1))
-            }
-          },
-        }),
-      )
-    }
-
-    function formatNumberList(value) {
-      return safeArray(value).join(', ')
-    }
-
-    function NumberListField(props) {
-      const current = formatNumberList(props.value)
-      const [text, setText] = useState(current)
-      const lastRef = useRef(current)
-      useEffect(() => {
-        const next = formatNumberList(props.value)
-        if (next !== lastRef.current) {
-          setText(next)
-          lastRef.current = next
-        }
-      }, [props.value])
-      return h('input', {
-        id: props.id,
-        className: 'ob-input',
-        type: 'text',
-        value: text,
-        placeholder: (props.spec && props.spec.placeholder) || '用逗号分隔，例如 1000, 3000, 5000',
-        disabled: props.disabled,
-        'aria-label': (props.spec && props.spec.label) || '数字列表',
-        onChange: (event) => {
-          const raw = event.target.value
-          setText(raw)
-          const parts = raw.split(/[,\s，;；]+/).map((item) => item.trim()).filter(Boolean)
-          const numbers = parts.map((item) => Number(item)).filter((item) => Number.isFinite(item))
-          if (numbers.length === parts.length) {
-            lastRef.current = formatNumberList(numbers)
-            props.onChange(numbers)
-          }
-        },
-        onBlur: () => {
-          const next = formatNumberList(props.value)
-          setText(next)
-          lastRef.current = next
-        },
-      })
-    }
-
-    function FieldRow(props) {
-      const spec = props.spec || {}
-      const id = 'ob-field-' + String(spec.path || '').replace(/[^a-zA-Z0-9_-]+/g, '-')
-      const describedBy = spec.help ? id + '-help' : undefined
-      const labelNode = h('b', null, spec.label || spec.path)
-      return h(
-        'div',
-        { className: 'ob-field' },
-        h(
-          'div',
-          { className: 'ob-field-label' },
-          spec.type === 'switch' ? labelNode : h('label', { htmlFor: id }, labelNode),
-          spec.help ? h('small', { id: id + '-help' }, spec.help) : null,
-        ),
-        h(
-          'div',
-          { className: 'ob-field-ctl' },
-          h(FieldControl, { id, spec, value: props.value, onChange: props.onChange, disabled: props.disabled, describedBy }),
-          spec.unit ? h('span', { className: 'ob-unit' }, spec.unit) : null,
-        ),
-      )
-    }
-
-    function Seg(props) {
-      const options = safeArray(props.options)
-      return h(
-        'div',
-        { className: 'ob-seg', role: 'group', 'aria-label': props.label || '选择' },
-        options.map((option) =>
-          h(
-            'button',
-            {
-              key: option.value,
-              type: 'button',
-              className: props.value === option.value ? 'on' : '',
-              'aria-pressed': props.value === option.value,
-              disabled: props.disabled,
-              onClick: () => props.onChange(option.value),
-            },
-            option.label,
-          ),
-        ),
-      )
-    }
-
-    function EventLine(props) {
-      const data = props.data || describeEvent(props.event)
-      const chips = []
-      safeArray(data.segments).forEach((segment, index) => {
-        if (!isPlainObject(segment)) return
-        const type = String(segment.type || '')
-        if (!type || type === 'text' || type === 'reply') return
-        const label = segmentText(segment)
-        if (label) chips.push(label)
-      })
-      safeArray(data.mentions).forEach((mention) => {
-        if (!isPlainObject(mention)) return
-        chips.push('@' + String(mention.name || mention.userId || ''))
-      })
-      safeArray(data.images).forEach((image) => {
-        const summary = isPlainObject(image) ? String(image.summary || image.file || '') : ''
-        chips.push('[图片]' + (summary ? ' ' + truncateText(summary, 40) : ''))
-      })
-      return h(
-        'div',
-        { className: 'ob-event' },
-        h(
-          'div',
-          { className: 'ob-event-head' },
-          h('span', null, data.time),
-          h(Badge, null, data.kindLabel),
-          data.chatLabel ? h('span', null, data.chatLabel) : null,
-          data.senderName ? h('span', { className: 'ob-nowrap' }, data.senderName) : null,
-          data.seq !== undefined ? h('span', { className: 'ob-dim' }, '#' + data.seq) : null,
-        ),
-        h('div', { className: 'ob-event-text', title: data.fullText || undefined }, data.summary || '（没有可显示的正文）'),
-        chips.length ? h('div', { className: 'ob-chips' }, chips.slice(0, 12).map((label, index) => h('span', { className: 'ob-chip', key: index, title: label }, label))) : null,
-      )
-    }
-
-    function LogLine(props) {
-      const entry = props.entry || {}
-      return h(
-        'div',
-        { className: cx('ob-log', entry.level) },
-        h('span', { className: 'ob-log-time' }, entry.time || '—'),
-        h(Badge, { tone: entry.level === 'error' ? 'err' : entry.level === 'warn' ? 'warn' : undefined }, entry.level || 'info'),
-        entry.area ? h('span', { className: 'ob-log-area' }, entry.area) : null,
-        h('span', { className: 'ob-log-text', title: entry.text || undefined }, entry.text || ''),
+        { className: 'ob-progress', 'data-phase': phase, 'aria-hidden': 'true' },
+        h('div', { className: 'ob-progress-track' }),
+        h('div', { className: 'ob-progress-fill' }),
       )
     }
 
     // =====================================================================
-    // 标签页：概览
+    // 标签页：概览（状态 hero / 统计 / 分布 / 最近事件 / 快捷操作）
     // =====================================================================
 
     function Overview(props) {
+      const motion = useMotion()
       const status = props.status
       const gateway = safeObject(status && status.gateway)
       const events = safeObject(status && status.events)
@@ -1350,7 +2780,18 @@ window.__ModuleLoader__.load({
       const byKind = safeObject(events.byKind)
       const byChat = safeObject(events.byChat)
       const recent = safeArray(status && status.recentEvents)
+      const now = props.now || Date.now()
       const [busy, setBusy] = useState('')
+      const connected = gateway.state === 'connected'
+      const connecting = gateway.state === 'connecting'
+      const paused = gateway.state === 'paused'
+      const configured = Boolean(gateway.configured)
+      const live = connected || connecting
+      const buffered = Number(events.buffered) || 0
+      const capacity = Number(events.capacity) || 0
+      const stateTone = state.tone === 'ok' ? 'ok' : state.tone === 'err' ? 'err' : state.tone === 'warn' ? 'warn' : 'muted'
+      const ringTone = connected ? 'ok' : connecting ? 'brand' : paused ? 'err' : configured ? 'warn' : 'muted'
+      const ringIcon = connected ? 'check' : connecting ? 'refresh' : paused ? 'pause' : 'plug'
 
       const act = async (name, label) => {
         setBusy(name)
@@ -1361,120 +2802,180 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const connected = gateway.state === 'connected'
-      const connecting = gateway.state === 'connecting'
+      const heroTitle = connected ? 'QQ 网关已连接' : connecting ? '正在连接 QQ 网关…' : paused ? '连接已暂停' : configured ? '连接已停止' : '还没有配置 QQ 网关'
+      let heroDesc = '在下方「连接」页填写 WebSocket / HTTP 地址并保存后即可连接。'
+      if (connected) {
+        heroDesc = login && login.userId
+          ? '登录账号 ' + String(login.nickname || '') + '（' + String(login.userId) + '）' + (gateway.loginCheck === 'ok' ? '，账号核验通过。' : '。')
+          : '网关已连接；登录账号信息稍后会显示在这里。'
+      } else if (connecting) {
+        heroDesc = '正在建立 WebSocket 连接并核验登录账号，请稍候…'
+      } else if (paused) {
+        heroDesc = '登录账号与配置不一致，自动重连已暂停。确认机器人 QQ 号或网关登录账号后重新连接。'
+      } else if (configured) {
+        heroDesc = '地址已配置。点「连接」开始接收 QQ 事件。'
+      }
+
+      const actionButtons = []
+      if (connected || connecting) {
+        actionButtons.push(h(Btn, { key: 'disc', kind: 'ghost', icon: 'stop', onClick: () => act('disconnect', '断开'), busy: busy === 'disconnect' }, '断开'))
+      } else {
+        actionButtons.push(h(Btn, { key: 'conn', kind: 'primary', icon: 'play', onClick: () => act('connect', '连接'), busy: busy === 'connect' }, '连接'))
+      }
+      actionButtons.push(h(Btn, { key: 'rec', icon: 'refresh', onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'))
+      actionButtons.push(h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => props.refreshAll() }))
+
       return h(
         'div',
-        { className: 'ob-stack' },
-        !gateway.configured
-          ? h(
-              'div',
-              { className: 'ob-banner warn' },
-              h('span', { className: 'ob-banner-msg' }, '还没有可用的 OneBot 地址：去「连接」填 WebSocket / HTTP 地址并保存，再点「连接」'),
-              h('span', { className: 'ob-banner-actions' }, h(Btn, { small: true, onClick: () => props.go('connect') }, '去连接')),
-            )
+        { className: 'ob-page' },
+        !configured
+          ? h(Banner, {
+              tone: 'warn',
+              icon: 'plug',
+              message: '还没有可用的 OneBot 地址：去「连接」填写 WebSocket / HTTP 地址并保存，然后点「连接」。',
+              actions: [h(Btn, { key: 'go', small: true, kind: 'secondary', onClick: () => props.go('connect') }, '去连接')],
+            })
           : null,
-        gateway.state === 'paused'
-          ? h('div', { className: 'ob-banner err' }, h('span', { className: 'ob-banner-msg' }, '登录账号与配置不一致，自动重连已暂停：确认机器人 QQ 号或网关登录的账号后，到「连接」页重新连接'))
+        paused
+          ? h(Banner, {
+              tone: 'err',
+              message: '登录账号与配置不一致，自动重连已暂停。确认机器人 QQ 号或网关登录的账号后重新连接。',
+              actions: [h(Btn, { key: 'go', small: true, kind: 'secondary', onClick: () => props.go('connect') }, '去处理')],
+            })
           : null,
-        gateway.lastError
-          ? h('div', { className: 'ob-banner err' }, h('span', { className: 'ob-banner-msg' }, '最近错误：' + String(gateway.lastError)))
+        gateway.lastError && !paused
+          ? h(Banner, {
+              tone: 'err',
+              message: '最近错误：' + String(gateway.lastError),
+            })
           : null,
+
         h(
-          'div',
-          { className: 'ob-grid' },
-          h(
-            Card,
-            { title: '连接状态' },
-            h(KV, {
-              rows: [
-                ['状态', h('span', { className: 'ob-kv-state' }, h('i', { className: cx('ob-dot', state.tone) }), ' ' + state.text)],
-                ['已配置', gateway.configured ? '是' : '否'],
-                ['网关模式', endpointModeLabel(gateway.endpoint && gateway.endpoint.mode)],
-                [
-                  '连接时间',
-                  gateway.connectedAt
-                    ? formatRelative(gateway.connectedAt) + (connected ? ' · 已连接 ' + formatDuration(Date.now() - Number(gateway.connectedAt)) : '')
-                    : '—',
-                ],
-                ['上次断开', gateway.lastDisconnectAt ? formatRelative(gateway.lastDisconnectAt) : '—'],
-                ['重连次数', gateway.reconnects == null ? '—' : String(gateway.reconnects)],
-                ['登录尝试', gateway.loginAttempts == null ? '—' : String(gateway.loginAttempts)],
-              ],
-            }),
-          ),
-          h(
-            Card,
-            { title: '登录账号', desc: '连上后通过 get_login_info 核验；核验结果会显示在这里。' },
-            h(KV, {
-              rows: [
-                ['登录账号', login ? String(login.nickname || '') + (login.userId ? '（' + String(login.userId) + '）' : '') : '未获取'],
-                ['期望账号', gateway.expectedBotQQ || config.botQQ || '未填写'],
-                ['核验结果', h('span', null, h(Badge, { tone: check.tone }, check.text))],
-                ['不一致时', accountCheckLabel(gateway.accountCheck || config.accountCheck)],
-              ],
-            }),
-          ),
-        ),
-        h(
-          'div',
-          { className: 'ob-grid-4' },
-          h(Stat, { label: '收到事件', value: events.received || 0 }),
-          h(Stat, { label: '已接受', value: events.accepted || 0 }),
-          h(Stat, { label: '已丢弃', value: events.dropped || 0 }),
-          h(Stat, { label: '事件缓冲', value: (events.buffered || 0) + ' / ' + (events.capacity || 0) }),
-          h(Stat, { label: '日志总数', value: logs.total || 0, hint: '缓冲 ' + (logs.buffered || 0) + ' 条' }),
-        ),
-        h(
-          'div',
-          { className: 'ob-grid' },
-          h(
-            Card,
-            { title: '按类型统计' },
-            h(KV, {
-              rows: EVENT_KINDS.map((kind) => [eventKindLabel(kind), String(byKind[kind] || 0)]),
-            }),
-          ),
-          h(
-            Card,
-            { title: '按会话统计' },
-            h(KV, {
-              rows: [
-                ['私聊', String(byChat.private || 0)],
-                ['群聊', String(byChat.group || 0)],
-                ['其他', String(byChat.other || 0)],
-                ['最后事件', events.lastAt ? formatRelative(events.lastAt) : '—'],
-              ],
-            }),
-          ),
-        ),
-        h(
-          Card,
-          {
-            title: '最近事件',
-            right: h(Btn, { small: true, kind: 'ghost', onClick: () => props.go('messages') }, '去消息页查看全部 →'),
-          },
-          recent.length
-            ? h('div', null, recent.slice(-8).reverse().map((event, index) => h(EventLine, { key: (event && event.seq) || index, event })))
-            : h(Empty, { icon: '📡', text: '还没有收到事件。连上网关后，收到的消息会出现在这里' }),
-        ),
-        h(
-          Card,
-          { title: '快捷操作', desc: '操作作用于已保存的配置；如果刚改过地址，请先保存。' },
+          Reveal,
+          { as: 'section', className: 'ob-panel brand' },
           h(
             'div',
-            { className: 'ob-chips' },
-            h(Btn, { kind: 'primary', onClick: () => act('connect', '连接'), busy: busy === 'connect', disabled: connected || connecting }, connected ? '已连接' : '连接'),
-            h(Btn, { onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'),
-            h(Btn, { onClick: () => act('disconnect', '断开'), busy: busy === 'disconnect', disabled: gateway.state === 'stopped' }, '断开'),
-            h(Btn, { kind: 'ghost', onClick: () => props.refreshAll(), busy: false }, '刷新状态'),
+            { className: 'ob-panel-body' },
+            h(
+              'div',
+              { className: 'ob-hero' },
+              h(
+                'div',
+                { className: 'ob-hero-main' },
+                h('span', { className: 'ob-ring ' + ringTone }, h(Icon, { name: ringIcon, size: 26 })),
+                h(
+                  'div',
+                  { className: 'ob-hero-copy' },
+                  h('div', { className: 'ob-hero-title' }, heroTitle, live ? h('i', { className: 'ob-dot', 'data-live': 'true', 'aria-hidden': true }) : null),
+                  h('p', { className: 'ob-hero-sub' }, heroDesc),
+                ),
+                h('div', { className: 'ob-hero-actions' }, actionButtons),
+              ),
+              h(
+                'div',
+                { className: 'ob-hero-facts' },
+                h('div', null, h('p', { className: 'ob-fact-k' }, '网关模式'), h('p', { className: 'ob-fact-v' }, endpointModeLabel(gateway.endpoint && gateway.endpoint.mode))),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '期望账号'), h('p', { className: 'ob-fact-v' }, gateway.expectedBotQQ || config.botQQ || '未填写')),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '核验结果'), h('p', { className: 'ob-fact-v' }, h(Badge, { tone: check.tone === 'ok' ? 'ok' : check.tone === 'err' ? 'err' : 'warn' }, check.text))),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '连接时长'), h('p', { className: 'ob-fact-v' }, gateway.connectedAt && connected ? formatDuration(now - Number(gateway.connectedAt)) : gateway.connectedAt ? formatRelative(Number(gateway.connectedAt), now) : '—')),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '重连次数'), h('p', { className: 'ob-fact-v' }, gateway.reconnects == null ? '—' : String(gateway.reconnects))),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '登录尝试'), h('p', { className: 'ob-fact-v' }, gateway.loginAttempts == null ? '—' : String(gateway.loginAttempts))),
+                h('div', null, h('p', { className: 'ob-fact-k' }, '上次断开'), h('p', { className: 'ob-fact-v' }, gateway.lastDisconnectAt ? formatRelative(Number(gateway.lastDisconnectAt), now) : '—')),
+              ),
+            ),
+          ),
+        ),
+
+        h(
+          Reveal,
+          { className: 'ob-stat-grid' },
+          h(StatTile, { label: '收到事件', value: Number(events.received) || 0, icon: 'inbox', tone: 'brand', hint: '自插件启动以来' }),
+          h(StatTile, { label: '已接受', value: Number(events.accepted) || 0, icon: 'check', tone: 'ok', hint: '通过过滤规则' }),
+          h(StatTile, { label: '已丢弃', value: Number(events.dropped) || 0, icon: 'filter', tone: 'warn', hint: '被过滤或无效事件' }),
+          h(StatTile, { label: '事件缓冲', value: buffered, denominator: capacity, icon: 'bolt', tone: 'info', hint: '环形缓冲上限 ' + (capacity || '—'), progress: capacity ? buffered / capacity : 0 }),
+          h(StatTile, { label: '日志总数', value: Number(logs.total) || 0, icon: 'logs', tone: 'muted', hint: '当前缓冲 ' + (Number(logs.buffered) || 0) + ' 条' }),
+        ),
+
+        h(
+          Reveal,
+          { className: 'ob-grid two' },
+          h(
+            Panel,
+            { title: '事件类型分布', description: '按 OneBot 事件大类统计；只统计已接受的事件。' },
+            h(MiniBars, {
+              label: '事件类型分布',
+              rows: EVENT_KINDS.map((kind, index) => ({ label: eventKindLabel(kind), value: Number(byKind[kind]) || 0, color: 'var(--ob-chart-' + ((index % 5) + 1) + ')' })),
+            }),
+          ),
+          h(
+            Panel,
+            {
+              title: '会话分布',
+              description: '私聊 / 群聊 / 其它，以及最近一条事件时间。',
+              actions: h(Btn, { small: true, kind: 'ghost', onClick: () => props.go('messages') }, '去消息页'),
+            },
+            h(MiniBars, {
+              label: '会话分布',
+              rows: [
+                { label: '私聊', value: Number(byChat.private) || 0, color: 'var(--ob-chart-1)' },
+                { label: '群聊', value: Number(byChat.group) || 0, color: 'var(--ob-chart-2)' },
+                { label: '其它', value: Number(byChat.other) || 0, color: 'var(--ob-chart-4)' },
+              ],
+            }),
+            h('p', { className: 'ob-feed-meta', style: { marginBottom: 0, marginTop: '14px' } }, '最后事件：' + (events.lastAt ? formatRelative(Number(events.lastAt), now) : '—')),
+          ),
+        ),
+
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '最近事件'), h('p', { className: 'ob-panel-desc' }, '最新 8 条规范化事件；完整事件流在「消息」页。')),
+            h('div', { className: 'ob-panel-actions' }, h(Btn, { small: true, kind: 'ghost', icon: 'message', onClick: () => props.go('messages') }, '查看全部')),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            recent.length
+              ? h('ul', { className: 'ob-feed' }, recent.slice(-8).reverse().map((event, index) => h(EventLine, { key: (event && event.seq) || index, event, now })))
+              : h(EmptyState, {
+                  tone: 'brand',
+                  icon: 'inbox',
+                  title: '还没有收到事件',
+                  description: '连接 QQ 网关后，收到的消息、通知与请求会实时出现在这里。',
+                  action: configured ? null : h(Btn, { small: true, kind: 'secondary', onClick: () => props.go('connect') }, '去配置连接'),
+                }),
+          ),
+        ),
+
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '快捷操作'), h('p', { className: 'ob-panel-desc' }, '作用于已保存的配置；如果刚改过地址，请先保存。')),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            h(
+              'div',
+              { className: 'ob-hero-actions' },
+              h(Btn, { kind: 'primary', icon: connected ? 'check' : 'play', onClick: () => act('connect', '连接'), busy: busy === 'connect', disabled: connected || connecting }, connected ? '已连接' : '连接'),
+              h(Btn, { icon: 'refresh', onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'),
+              h(Btn, { kind: 'ghost', icon: 'stop', onClick: () => act('disconnect', '断开'), busy: busy === 'disconnect', disabled: gateway.state === 'stopped' }, '断开'),
+              h(Btn, { kind: 'ghost', icon: 'settings', onClick: () => props.go('config') }, '配置'),
+            ),
           ),
         ),
       )
     }
 
     // =====================================================================
-    // 标签页：连接
+    // 标签页：连接（stepper / 端点 / SnowLuma / 检测探测 / 状态诊断）
     // =====================================================================
 
     function Connect(props) {
@@ -1487,14 +2988,14 @@ window.__ModuleLoader__.load({
       const [detect, setDetect] = useState(null)
       const [probing, setProbing] = useState(false)
       const [probe, setProbe] = useState(null)
+      const now = props.now || Date.now()
 
       if (!configInfo || !draft) {
         return h(
-          Card,
-          { title: '连接' },
-          configInfo === null
-            ? h(ErrorNote, { message: '配置读取失败，无法显示连接字段', onRetry: () => props.refreshAll(), retryLabel: '重新读取' })
-            : h(Loading, { text: '正在读取配置…' }),
+          'div',
+          { className: 'ob-page' },
+          h(PanelSkeleton, { rows: 4 }),
+          h(PanelSkeleton, { rows: 2 }),
         )
       }
 
@@ -1502,13 +3003,14 @@ window.__ModuleLoader__.load({
       const renderField = (path) => {
         const spec = fieldSpecByPath(groups, path)
         if (!spec) return null
-        return h(FieldRow, { spec, value: getByPath(draft, path), onChange: (value) => setField(path, value) })
+        return h(FieldRow, { key: path, spec, value: getByPath(draft, path), onChange: (value) => setField(path, value), disabled: props.saving })
       }
 
       const doDetect = async () => {
         setDetecting(true)
         setDetect(null)
-        const result = describeDetect(await get('/gateway/detect'))
+        const run = props.runWithProgress || ((task) => task())
+        const result = describeDetect(await run(() => get('/gateway/detect')))
         setDetect(result)
         setDetecting(false)
         if (!result.ok) props.toast('检测失败：' + result.message, 'err')
@@ -1517,7 +3019,8 @@ window.__ModuleLoader__.load({
       const doProbe = async () => {
         setProbing(true)
         setProbe(null)
-        const result = describeProbe(await post('/probe', { endpoint: probeEndpointFromDraft(draft) }))
+        const run = props.runWithProgress || ((task) => task())
+        const result = describeProbe(await run(() => post('/probe', { endpoint: probeEndpointFromDraft(draft) })))
         setProbe(result)
         setProbing(false)
         if (result.ok) props.toast('探测成功', 'ok')
@@ -1535,122 +3038,196 @@ window.__ModuleLoader__.load({
 
       const endpoint = safeObject(gateway.endpoint)
       const state = stateLabel(gateway.state)
+      const configured = Boolean(gateway.configured)
+      const connected = gateway.state === 'connected'
+      const connecting = gateway.state === 'connecting'
+      const verified = gateway.loginCheck === 'ok'
+      const steps = [
+        { key: 'address', label: '地址配置', done: configured, on: !configured },
+        { key: 'link', label: '建立连接', done: connected, on: configured && !connected },
+        { key: 'verify', label: '账号核验', done: verified, on: connected && !verified },
+      ]
+
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-page' },
         h(
-          Card,
-          {
-            title: '网关模式',
-            desc: '连接已有 OneBot v11 地址，或让插件只读 SnowLuma 自己的配置。这里不下载、不启动、不注入任何进程。',
-            right: props.dirty
-              ? h(Btn, { small: true, kind: 'primary', onClick: () => props.save(), busy: props.saving, disabled: props.saving }, '保存改动')
-              : h(Badge, null, '已保存'),
-          },
-          renderField('gateway'),
-          renderField('onebot.wsUrl'),
-          renderField('onebot.httpUrl'),
-          renderField('onebot.wsToken'),
-          renderField('onebot.httpToken'),
-          renderField('onebot.httpAuth'),
-        ),
-        h(
-          Card,
-          { title: 'SnowLuma 地址读取', desc: 'SnowLuma 模式会从它的 config/onebot*.json 读取端口与 token；本插件只读，不启动它。' },
-          renderField('snowluma.autoDetect'),
-          renderField('snowluma.dir'),
-          renderField('snowluma.uin'),
-        ),
-        h(
-          Card,
-          {
-            title: '检测与探测',
-            desc: '「检测」只读取本机 SnowLuma 安装与端点解析结果；「探测」只调用一次 get_login_info，不改变当前连接。',
-            right: h(
-              'span',
-              { className: 'ob-banner-actions' },
-              h(Btn, { small: true, onClick: doDetect, busy: detecting }, detecting ? '检测中…' : '检测 SnowLuma'),
-              h(Btn, { small: true, onClick: doProbe, busy: probing }, probing ? '探测中…' : '探测登录'),
-            ),
-          },
-          detecting ? h(Loading, { text: '正在检测本机 SnowLuma…' }) : null,
-          !detecting && detect
-            ? detect.ok
-              ? h(
-                  'div',
-                  null,
-                  h(KV, {
-                    rows: [
-                      ['SnowLuma', detect.snowluma ? (detect.snowluma.installed ? '已安装' : '未检测到') : '无结果'],
-                      ['安装目录', detect.snowluma && detect.snowluma.dir ? detect.snowluma.dir : '—'],
-                      ['版本', detect.snowluma && detect.snowluma.version ? detect.snowluma.version : '—'],
-                      ['OneBot 端点', detect.snowluma ? (detect.snowluma.endpointFound ? '已找到' : '未找到') : '—'],
-                      ['端点来源', detect.endpoint && detect.endpoint.source ? detect.endpoint.source : '—'],
-                      ['WebSocket', detect.endpoint && detect.endpoint.wsUrl ? maskEndpoint(detect.endpoint.wsUrl) : '—'],
-                      ['HTTP', detect.endpoint && detect.endpoint.httpUrl ? maskEndpoint(detect.endpoint.httpUrl) : '—'],
-                    ],
-                  }),
-                  detect.reason ? h('div', { className: 'ob-note' }, '检测提示：' + detect.reason) : null,
-                  detect.snowluma && detect.snowluma.error ? h('div', { className: 'ob-note' }, 'SnowLuma 检测提示：' + detect.snowluma.error) : null,
-                )
-              : h(ErrorNote, { message: '检测失败：' + detect.message, onRetry: doDetect, retryLabel: '重试' })
-            : null,
-          !detecting && !detect ? h('div', { className: 'ob-note' }, '还没有检测结果。点右上角「检测 SnowLuma」查看本机安装情况') : null,
-          probing ? h(Loading, { text: '正在探测网关登录信息…' }) : null,
-          !probing && probe
-            ? probe.ok
-              ? h(
-                  'div',
-                  null,
-                  h(KV, {
-                    rows: [
-                      ['探测结果', h(Badge, { tone: 'ok' }, '成功')],
-                      ['端点提示', probe.endpointHint ? maskEndpoint(probe.endpointHint) : '—'],
-                      ['登录账号', probe.login ? String(probe.login.nickname || '') + (probe.login.userId ? '（' + String(probe.login.userId) + '）' : '') : '未返回'],
-                      ['HTTP 状态', probe.httpStatus ? String(probe.httpStatus) : '—'],
-                      ['耗时', probe.elapsedMs ? probe.elapsedMs + ' ms' : '—'],
-                    ],
-                  }),
-                )
-              : h(ErrorNote, { message: '探测失败：' + (probe.error || probe.message || '未知错误'), onRetry: doProbe, retryLabel: '重试' })
-            : null,
-          !probing && !probe ? h('div', { className: 'ob-note' }, '「探测登录」会用当前表单里的地址调用一次 HTTP get_login_info，适合在保存前确认地址和 token 是否正确') : null,
-        ),
-        h(
-          Card,
-          {
-            title: '连接控制',
-            right: h(Badge, { tone: state.tone }, state.text),
-          },
+          Reveal,
+          { as: 'section', className: 'ob-panel muted' },
           h(
             'div',
-            { className: 'ob-chips' },
-            h(Btn, { kind: 'primary', onClick: () => act('connect', '连接'), busy: busy === 'connect', disabled: gateway.state === 'connected' || gateway.state === 'connecting' }, '连接'),
-            h(Btn, { onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'),
-            h(Btn, { onClick: () => act('disconnect', '断开'), busy: busy === 'disconnect', disabled: gateway.state === 'stopped' }, '断开'),
-            h(Btn, { kind: 'ghost', onClick: () => props.refreshAll() }, '刷新状态'),
+            { className: 'ob-panel-body' },
+            h(
+              'ol',
+              { className: 'ob-stepper' },
+              steps.reduce((items, step, index) => {
+                items.push(
+                  h(
+                    'li',
+                    { key: step.key, className: cx('ob-step', step.done && 'done', step.on && 'on') },
+                    h('span', { className: 'ob-step-index' }, step.done ? h(Icon, { name: 'check', size: 12 }) : String(index + 1)),
+                    h('span', null, step.label),
+                  ),
+                )
+                if (index < steps.length - 1) {
+                  items.push(h('li', { key: 'line-' + step.key, className: cx('ob-stepper-line', step.done && 'done'), 'aria-hidden': true }))
+                }
+                return items
+              }, []),
+            ),
           ),
-          h('div', { className: 'ob-note' }, '连接使用已保存的配置；上方表单改动后需要保存才会生效。'),
-          gateway.lastError ? h('div', { className: 'ob-banner err' }, h('span', { className: 'ob-banner-msg' }, '最近错误：' + String(gateway.lastError))) : null,
         ),
+
         h(
-          Card,
-          { title: '当前端点（脱敏）', desc: '只展示协议、主机、端口与路径；token 一律打码。' },
-          h(KV, {
-            rows: [
-              ['模式', endpointModeLabel(endpoint.mode)],
-              ['WebSocket', endpoint.wsUrlSafe ? maskEndpoint(endpoint.wsUrlSafe) : '—'],
-              ['HTTP', endpoint.httpUrlSafe ? maskEndpoint(endpoint.httpUrlSafe) : '—'],
-              ['WS 已配置', endpoint.wsConfigured ? '是' : '否'],
-              ['HTTP 已配置', endpoint.httpConfigured ? '是' : '否'],
-            ],
-          }),
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '网关与端点'), h('p', { className: 'ob-panel-desc' }, 'OneBot v11 正向 WebSocket 收事件、HTTP 调接口；HTTP 留空时所有调用走 WS。')),
+            h('div', { className: 'ob-panel-actions' }, h(Badge, { tone: configured ? 'ok' : 'warn' }, configured ? '已配置' : '未配置')),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            renderField('gateway'),
+            renderField('onebot.wsUrl'),
+            renderField('onebot.httpUrl'),
+            renderField('onebot.wsToken'),
+            renderField('onebot.httpToken'),
+            renderField('onebot.httpAuth'),
+            h('div', { className: 'ob-row', style: { marginTop: '10px' } },
+              h(Badge, { tone: endpoint.wsConfigured ? 'ok' : 'warn' }, endpoint.wsConfigured ? 'WS 已配置' : 'WS 未配置'),
+              h(Badge, { tone: endpoint.httpConfigured ? 'ok' : 'warn' }, endpoint.httpConfigured ? 'HTTP 已配置' : 'HTTP 未配置'),
+              endpoint.wsUrlSafe ? h(Code, null, maskEndpoint(endpoint.wsUrlSafe)) : null,
+              endpoint.httpUrlSafe ? h(Code, null, maskEndpoint(endpoint.httpUrlSafe)) : null,
+            ),
+          ),
+        ),
+
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, 'SnowLuma 地址读取'), h('p', { className: 'ob-panel-desc' }, 'SnowLuma 模式会从 config/onebot*.json 读取端口与 token；本插件只读，不启动、不注入 SnowLuma。')),
+          ),
+          h('div', { className: 'ob-panel-body' }, renderField('snowluma.autoDetect'), renderField('snowluma.dir'), renderField('snowluma.uin')),
+        ),
+
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '检测与探测'), h('p', { className: 'ob-panel-desc' }, '「检测」只读 SnowLuma 安装与端点解析；「探测」只调用一次 get_login_info，不改变当前连接。')),
+            h(
+              'div',
+              { className: 'ob-panel-actions' },
+              h(Btn, { small: true, icon: 'search', onClick: doDetect, busy: detecting }, detecting ? '检测中…' : '检测 SnowLuma'),
+              h(Btn, { small: true, kind: 'secondary', icon: 'plug', onClick: doProbe, busy: probing }, probing ? '探测中…' : '探测登录'),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            !detect && !probe
+              ? h(EmptyState, {
+                  compact: true,
+                  tone: 'brand',
+                  icon: 'search',
+                  title: '还没有检测结果',
+                  description: '点上方按钮可以读取 SnowLuma 安装信息，或探测当前 HTTP 端点的登录账号。',
+                })
+              : null,
+            detect
+              ? h(
+                  'div',
+                  { className: 'ob-probe-result ' + (detect.ok ? '' : 'err'), style: { marginBottom: '10px' } },
+                  h(SoftIcon, { name: detect.ok ? 'check' : 'alert', tone: detect.ok ? 'ok' : 'err', size: 'small' }),
+                  h(
+                    'div',
+                    { className: 'ob-probe-copy' },
+                    h('p', { className: 'ob-probe-title' }, detect.ok ? 'SnowLuma 检测完成' : 'SnowLuma 检测失败'),
+                    h('p', { className: 'ob-probe-desc' },
+                      detect.snowluma
+                        ? (detect.snowluma.installed
+                            ? '已安装' + (detect.snowluma.version ? '（v' + detect.snowluma.version + '）' : '') + (detect.snowluma.dir ? '：' + detect.snowluma.dir : '')
+                            : '未安装：' + (detect.snowluma.error || '未找到'))
+                        : detect.message || '—',
+                      detect.endpoint
+                        ? '；端点解析：WS ' + (detect.endpoint.wsConfigured ? '已配置' : '未配置') + '，HTTP ' + (detect.endpoint.httpConfigured ? '已配置' : '未配置')
+                        : '',
+                    ),
+                  ),
+                )
+              : null,
+            probe
+              ? h(
+                  'div',
+                  { className: 'ob-probe-result ' + (probe.ok ? 'ok' : 'err') },
+                  h(SoftIcon, { name: probe.ok ? 'check' : 'alert', tone: probe.ok ? 'ok' : 'err', size: 'small' }),
+                  h(
+                    'div',
+                    { className: 'ob-probe-copy' },
+                    h('p', { className: 'ob-probe-title' }, probe.ok ? '探测成功' : '探测失败'),
+                    h('p', { className: 'ob-probe-desc' },
+                      probe.ok
+                        ? '登录账号 ' + String((probe.login && probe.login.nickname) || '') + (probe.login && probe.login.userId ? '（' + String(probe.login.userId) + '）' : '') + (probe.elapsedMs != null ? '，耗时 ' + probe.elapsedMs + 'ms' : '')
+                        : String(probe.error || probe.message || '未知错误'),
+                    ),
+                  ),
+                )
+              : null,
+          ),
+        ),
+
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '连接控制'), h('p', { className: 'ob-panel-desc' }, '操作作用于已保存的配置；改动地址后请先保存再连接。')),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            h(
+              'div',
+              { className: 'ob-hero-actions' },
+              h(Btn, { kind: 'primary', icon: 'play', onClick: () => act('connect', '连接'), busy: busy === 'connect', disabled: connected || connecting }, connected ? '已连接' : '连接'),
+              h(Btn, { icon: 'refresh', onClick: () => act('reconnect', '重连'), busy: busy === 'reconnect' }, '重连'),
+              h(Btn, { kind: 'ghost', icon: 'stop', onClick: () => act('disconnect', '断开'), busy: busy === 'disconnect', disabled: gateway.state === 'stopped' }, '断开'),
+            ),
+            gateway.lastError
+              ? h('div', { className: 'ob-probe-result err', style: { marginTop: '12px' } },
+                  h(SoftIcon, { name: 'alert', tone: 'err', size: 'small' }),
+                  h('div', { className: 'ob-probe-copy' },
+                    h('p', { className: 'ob-probe-title' }, '最近错误'),
+                    h('p', { className: 'ob-probe-desc' }, String(gateway.lastError)),
+                  ),
+                )
+              : null,
+            h(KV, {
+              rows: [
+                ['当前状态', h(StatusPill, { tone: state.tone, text: state.text })],
+                ['已配置', configured ? '是' : '否'],
+                ['连接时间', gateway.connectedAt ? formatRelative(Number(gateway.connectedAt), now) : '—'],
+                ['上次断开', gateway.lastDisconnectAt ? formatRelative(Number(gateway.lastDisconnectAt), now) : '—'],
+                ['重连次数', gateway.reconnects == null ? '—' : String(gateway.reconnects)],
+                ['核验结果', h(Badge, { tone: verified ? 'ok' : gateway.loginCheck === 'mismatch' || gateway.loginCheck === 'error' ? 'err' : 'warn' }, loginCheckLabel(gateway.loginCheck).text)],
+              ],
+            }),
+          ),
         ),
       )
     }
 
     // =====================================================================
-    // 标签页：消息
+    // 标签页：消息（发送目标列表 / 发送表单 / 事件流）
     // =====================================================================
 
     function Messages(props) {
@@ -1662,6 +3239,8 @@ window.__ModuleLoader__.load({
       const [sendResult, setSendResult] = useState(null)
       const [friends, setFriends] = useState({ loading: false, error: '', items: null })
       const [groups, setGroups] = useState({ loading: false, error: '', items: null })
+      const [listTab, setListTab] = useState('friends')
+      const [search, setSearch] = useState('')
       const [events, setEvents] = useState([])
       const [eventsError, setEventsError] = useState('')
       const [eventsLoading, setEventsLoading] = useState(true)
@@ -1670,6 +3249,7 @@ window.__ModuleLoader__.load({
       const sinceRef = useRef(0)
       const pausedRef = useRef(false)
       pausedRef.current = paused
+      const now = props.now || Date.now()
 
       const loadList = useCallback(async (which) => {
         const setState = which === 'friends' ? setFriends : setGroups
@@ -1679,8 +3259,7 @@ window.__ModuleLoader__.load({
           setState({ loading: false, error: parsed.message, items: [] })
           return
         }
-        const items = safeArray(parsed.data[which])
-        setState({ loading: false, error: '', items })
+        setState({ loading: false, error: '', items: safeArray(parsed.data[which]) })
       }, [])
 
       useEffect(() => {
@@ -1760,182 +3339,342 @@ window.__ModuleLoader__.load({
       }
 
       const filtered = kindFilter ? events.filter((event) => event && event.kind === kindFilter) : events
-
       const fillTarget = (type, id) => {
         setChatType(type)
         setChatId(String(id || ''))
         props.toast('已填入发送目标', 'ok')
       }
 
-      const renderList = (state, which) => {
-        if (state.loading && state.items === null) return h(Loading, { text: '正在加载列表…' })
-        if (state.error) return h(ErrorNote, { message: state.error, onRetry: () => loadList(which), retryLabel: '重试' })
-        const items = safeArray(state.items)
-        if (!items.length) return h(Empty, { icon: which === 'friends' ? '👥' : '👪', text: which === 'friends' ? '没有好友，或网关没有返回好友列表' : '没有群，或网关没有返回群列表' })
+      const keyword = String(search || '').trim().toLowerCase()
+      const listState = listTab === 'friends' ? friends : groups
+      const listItems = safeArray(listState.items).filter((item) => {
+        const normalized = listTab === 'friends' ? normalizeFriend(item) : normalizeGroup(item)
+        if (!keyword) return true
+        return (normalized.name + ' ' + normalized.id + ' ' + (normalized.nickname || '')).toLowerCase().indexOf(keyword) >= 0
+      })
+
+      const renderList = () => {
+        if (listState.loading && listState.items === null) {
+          return h('div', { className: 'ob-skel-stack', style: { padding: '8px 0' } }, Array.from({ length: 5 }).map((_, index) => h(Skeleton, { key: index, variant: 'text', width: index % 2 ? '76%' : '92%' })))
+        }
+        if (listState.error) {
+          return h(EmptyState, {
+            compact: true,
+            tone: 'err',
+            icon: 'alert',
+            title: '列表读取失败',
+            description: listState.error,
+            action: h(Btn, { small: true, onClick: () => loadList(listTab) }, '重试'),
+          })
+        }
+        if (!listItems.length) {
+          return h(EmptyState, {
+            compact: true,
+            tone: 'brand',
+            icon: listTab === 'friends' ? 'users' : 'group',
+            title: keyword ? '没有匹配的结果' : listTab === 'friends' ? '没有好友' : '没有群',
+            description: keyword ? '换个关键词试试。' : '网关没有返回' + (listTab === 'friends' ? '好友' : '群') + '列表。',
+          })
+        }
         return h(
-          'div',
-          { className: 'ob-list ob-scroll' },
-          items.map((item, index) => {
-            if (which === 'friends') {
+          'ul',
+          { className: 'ob-list' },
+          listItems.map((item, index) => {
+            if (listTab === 'friends') {
               const friend = normalizeFriend(item)
-              return h(
-                'div',
-                { className: 'ob-item', key: friend.id || index },
-                h('button', { type: 'button', className: 'ob-item-main', title: '填入发送目标', onClick: () => fillTarget('private', friend.id) }, h('b', null, friend.name || friend.id), h('small', null, 'QQ ' + (friend.id || '未知') + (friend.nickname && friend.nickname !== friend.name ? ' · ' + friend.nickname : ''))),
-              )
+              return h(ListItem, {
+                key: friend.id || index,
+                title: friend.name || friend.id,
+                sub: 'QQ ' + (friend.id || '未知') + (friend.nickname && friend.nickname !== friend.name ? ' · ' + friend.nickname : ''),
+                initials: String(friend.name || friend.id || '?').slice(0, 1),
+                onClick: () => fillTarget('private', friend.id),
+              })
             }
             const group = normalizeGroup(item)
-            return h(
-              'div',
-              { className: 'ob-item', key: group.id || index },
-              h('button', { type: 'button', className: 'ob-item-main', title: '填入发送目标', onClick: () => fillTarget('group', group.id) }, h('b', null, group.name || group.id), h('small', null, '群 ' + (group.id || '未知') + (group.memberCount != null ? ' · ' + group.memberCount + ' 人' : ''))),
-            )
+            return h(ListItem, {
+              key: group.id || index,
+              title: group.name || group.id,
+              sub: '群 ' + (group.id || '未知') + (group.memberCount != null ? ' · ' + group.memberCount + ' 人' : ''),
+              initials: String(group.name || group.id || '?').slice(0, 1),
+              onClick: () => fillTarget('group', group.id),
+            })
           }),
         )
       }
 
       return h(
         'div',
-        { className: 'ob-stack' },
-        h(
-          Card,
-          { title: '发送消息', desc: '消息文本会原样交给 OneBot v11 网关；发送结果里的 message_id 会显示在下面。' },
-          h(
-            'div',
-            { className: 'ob-field' },
-            h('div', { className: 'ob-field-label' }, h('b', null, '会话类型')),
-            h('div', { className: 'ob-field-ctl' }, h(Seg, { value: chatType, label: '会话类型', options: [{ value: 'private', label: '私聊' }, { value: 'group', label: '群聊' }], onChange: setChatType })),
-          ),
-          h(
-            'div',
-            { className: 'ob-field' },
-            h('div', { className: 'ob-field-label' }, h('label', { htmlFor: 'ob-send-chatid' }, h('b', null, chatType === 'group' ? '群号' : 'QQ 号'))),
-            h('div', { className: 'ob-field-ctl' }, h('input', { id: 'ob-send-chatid', className: 'ob-input', type: 'text', inputMode: 'numeric', value: chatId, placeholder: chatType === 'group' ? '例如 123456789' : '例如 10001', onChange: (event) => setChatId(event.target.value) })),
-          ),
-          h(
-            'div',
-            { className: 'ob-field' },
-            h('div', { className: 'ob-field-label' }, h('label', { htmlFor: 'ob-send-text' }, h('b', null, '消息内容'))),
-            h('div', { className: 'ob-field-ctl' }, h('textarea', { id: 'ob-send-text', className: 'ob-textarea', rows: 3, value: text, placeholder: '输入要发送的文字', onChange: (event) => setText(event.target.value) })),
-          ),
-          h(
-            'div',
-            { className: 'ob-chips' },
-            h(Btn, { kind: 'primary', onClick: send, busy: sending, disabled: sending }, sending ? '发送中…' : '发送'),
-            h(Btn, { kind: 'ghost', onClick: () => { setText(''); setSendResult(null) } }, '清空输入'),
-          ),
-          sendResult
-            ? sendResult.ok
-              ? h('div', { className: 'ob-note' }, h(Badge, { tone: 'ok' }, '成功'), ' ' + sendResult.message)
-              : h(ErrorNote, { message: sendResult.message })
-            : null,
-        ),
+        { className: 'ob-page' },
         h(
           'div',
-          { className: 'ob-grid' },
-          h(Card, { title: '好友列表', desc: 'GET /friends；点一条可以填入发送目标。', right: h(Btn, { small: true, kind: 'ghost', onClick: () => loadList('friends') }, '刷新') }, renderList(friends, 'friends')),
-          h(Card, { title: '群列表', desc: 'GET /groups；点一条可以填入发送目标。', right: h(Btn, { small: true, kind: 'ghost', onClick: () => loadList('groups') }, '刷新') }, renderList(groups, 'groups')),
-        ),
-        h(
-          Card,
-          {
-            title: '事件流',
-            desc: '增量拉取宿主事件缓冲（GET /events?since=&limit=）；按类型过滤只影响显示。',
-            right: h(
-              'span',
-              { className: 'ob-banner-actions' },
-              h(
-                'select',
-                {
-                  className: 'ob-select',
-                  value: kindFilter,
-                  'aria-label': '按事件类型过滤',
-                  onChange: (event) => setKindFilter(event.target.value),
-                },
-                h('option', { value: '' }, '全部类型'),
-                EVENT_KINDS.map((kind) => h('option', { key: kind, value: kind }, eventKindLabel(kind))),
-              ),
-              h(Btn, { small: true, onClick: () => setPaused((value) => !value) }, paused ? '继续' : '暂停'),
-              h(Btn, { small: true, kind: 'danger', onClick: clearEvents }, '清空'),
-              h(Btn, { small: true, kind: 'ghost', onClick: () => loadEvents(true) }, '刷新'),
+          { className: 'ob-split' },
+          h(
+            Reveal,
+            { as: 'section', className: 'ob-panel' },
+            h(
+              'div',
+              { className: 'ob-panel-head with-line' },
+              h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '发送目标'), h('p', { className: 'ob-panel-desc' }, '点一条填入右侧的发送目标。')),
             ),
-          },
-          h('div', { className: 'ob-note' }, paused ? '已暂停：不再自动拉取新事件，点「继续」恢复。' : '自动刷新中（每 ' + refreshMs + ' 毫秒增量拉取一次）。'),
-          eventsError ? h(ErrorNote, { message: '事件拉取失败：' + eventsError, onRetry: () => loadEvents(false), retryLabel: '重试' }) : null,
-          eventsLoading ? h(Loading, { text: '正在读取事件缓冲…' }) : null,
-          !eventsLoading && !filtered.length ? h(Empty, { icon: '📨', text: events.length ? '没有符合过滤条件的事件' : '事件缓冲是空的。收到 QQ 事件后会出现在这里' }) : null,
-          !eventsLoading && filtered.length ? h('div', { className: 'ob-scroll' }, filtered.slice(-120).reverse().map((event, index) => h(EventLine, { key: (event && event.seq) || index, event }))) : null,
+            h(
+              'div',
+              { className: 'ob-panel-body' },
+              h(
+                'div',
+                { className: 'ob-stack' },
+                h(
+                  'div',
+                  { className: 'ob-row', style: { justifyContent: 'space-between' } },
+                  h(Seg, {
+                    value: listTab,
+                    label: '列表类型',
+                    options: [{ value: 'friends', label: '好友' }, { value: 'groups', label: '群' }],
+                    onChange: (value) => {
+                      setListTab(value)
+                      setSearch('')
+                    },
+                  }),
+                  h(IconBtn, { small: true, title: '刷新列表', icon: 'refresh', onClick: () => loadList(listTab) }),
+                ),
+                h(
+                  'label',
+                  { className: 'ob-search' },
+                  h(Icon, { name: 'search', size: 14 }),
+                  h('input', { value: search, placeholder: '搜索名称或号码', onChange: (event) => setSearch(event.target.value), 'aria-label': '搜索列表' }),
+                ),
+                renderList(),
+              ),
+            ),
+          ),
+          h(
+            'div',
+            { className: 'ob-stack' },
+            h(
+              Reveal,
+              { as: 'section', className: 'ob-panel' },
+              h(
+                'div',
+                { className: 'ob-panel-head with-line' },
+                h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '发送消息'), h('p', { className: 'ob-panel-desc' }, '消息文本原样交给 OneBot 网关；message_id 显示在下方。')),
+              ),
+              h(
+                'div',
+                { className: 'ob-panel-body' },
+                h(
+                  'div',
+                  { className: 'ob-composer' },
+                  h(
+                    'div',
+                    { className: 'ob-field', style: { padding: 0 } },
+                    h('div', { className: 'ob-field-label' }, '会话类型'),
+                    h('div', { className: 'ob-composer-row' }, h(Seg, { value: chatType, label: '会话类型', options: [{ value: 'private', label: '私聊' }, { value: 'group', label: '群聊' }], onChange: setChatType })),
+                  ),
+                  h(
+                    'div',
+                    { className: 'ob-field', style: { padding: 0 } },
+                    h('label', { className: 'ob-field-label', htmlFor: 'ob-send-chatid' }, chatType === 'group' ? '群号' : 'QQ 号'),
+                    h('input', { id: 'ob-send-chatid', className: 'ob-input', type: 'text', inputMode: 'numeric', value: chatId, placeholder: chatType === 'group' ? '例如 123456789' : '例如 10001', onChange: (event) => setChatId(event.target.value) }),
+                  ),
+                  h(
+                    'div',
+                    { className: 'ob-field', style: { padding: 0 } },
+                    h('label', { className: 'ob-field-label', htmlFor: 'ob-send-text' }, '消息内容'),
+                    h('textarea', { id: 'ob-send-text', className: 'ob-textarea', rows: 4, value: text, placeholder: '输入要发送的文字', onChange: (event) => setText(event.target.value) }),
+                  ),
+                  h(
+                    'div',
+                    { className: 'ob-hero-actions' },
+                    h(Btn, { kind: 'primary', icon: 'send', onClick: send, busy: sending, disabled: sending }, sending ? '发送中…' : '发送'),
+                    h(Btn, { kind: 'ghost', onClick: () => { setText(''); setSendResult(null) } }, '清空输入'),
+                  ),
+                  sendResult
+                    ? h(
+                        'div',
+                        { className: 'ob-send-result ' + (sendResult.ok ? 'ok' : 'err') },
+                        h(Icon, { name: sendResult.ok ? 'check' : 'alert', size: 14 }),
+                        h('span', null, sendResult.message),
+                      )
+                    : null,
+                ),
+              ),
+            ),
+            h(
+              Reveal,
+              { as: 'section', className: 'ob-panel' },
+              h(
+                'div',
+                { className: 'ob-panel-head with-line' },
+                h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '事件流'), h('p', { className: 'ob-panel-desc' }, '增量拉取宿主事件缓冲；过滤只影响显示，不影响缓冲。')),
+                h(
+                  'div',
+                  { className: 'ob-panel-actions' },
+                  h(
+                    'select',
+                    { className: 'ob-select', style: { width: 'auto', height: 'var(--ob-control-sm)' }, value: kindFilter, 'aria-label': '按事件类型过滤', onChange: (event) => setKindFilter(event.target.value) },
+                    h('option', { value: '' }, '全部类型'),
+                    EVENT_KINDS.map((kind) => h('option', { key: kind, value: kind }, eventKindLabel(kind))),
+                  ),
+                  h(IconBtn, { small: true, title: paused ? '继续自动刷新' : '暂停自动刷新', icon: paused ? 'play' : 'pause', onClick: () => setPaused((value) => !value) }),
+                  h(IconBtn, { small: true, title: '清空事件缓冲', icon: 'trash', onClick: clearEvents }),
+                  h(IconBtn, { small: true, title: '刷新事件', icon: 'refresh', onClick: () => loadEvents(true) }),
+                ),
+              ),
+              h(
+                'div',
+                { className: 'ob-panel-body' },
+                paused ? h('p', { className: 'ob-feed-meta', style: { marginTop: 0 } }, '已暂停：不再自动拉取新事件，点播放按钮恢复。') : null,
+                eventsError
+                  ? h(Banner, {
+                      tone: 'err',
+                      message: '事件拉取失败：' + eventsError,
+                      actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: () => loadEvents(false) }, '重试')],
+                    })
+                  : null,
+                eventsLoading
+                  ? h('div', { className: 'ob-skel-stack' }, Array.from({ length: 4 }).map((_, index) => h(Skeleton, { key: index, variant: 'text', width: index % 2 ? '72%' : '94%' })))
+                  : !filtered.length
+                    ? h(EmptyState, {
+                        compact: true,
+                        tone: 'brand',
+                        icon: 'inbox',
+                        title: events.length ? '没有符合过滤条件的事件' : '事件缓冲是空的',
+                        description: events.length ? '切换类型过滤再看看。' : '收到 QQ 事件后会实时出现在这里。',
+                      })
+                    : h(
+                        'ul',
+                        { className: 'ob-feed', role: 'log', 'aria-label': '事件流', style: { maxHeight: '520px', overflow: 'auto' } },
+                        filtered.slice(-120).reverse().map((event, index) => h(EventLine, { key: (event && event.seq) || index, event, now })),
+                      ),
+              ),
+            ),
+          ),
         ),
       )
     }
 
     // =====================================================================
-    // 标签页：配置
+    // 标签页：配置（左侧分组导航 + 服务端字段表驱动）
     // =====================================================================
 
     function ConfigTab(props) {
       const configInfo = props.configInfo
       const draft = props.draft
       const groups = useMemo(() => buildFieldSpecs(configInfo && configInfo.groups), [configInfo])
+      const [active, setActive] = useState('')
+      const motionMode = useMotionModeValue(props)
+      useEffect(() => {
+        if (!groups.length) return
+        if (!groups.some((group) => group.id === active)) setActive(groups[0].id)
+      }, [groups, active])
+
       if (!configInfo || !draft) {
         return h(
-          Card,
-          { title: '配置' },
-          configInfo === null
-            ? h(ErrorNote, { message: '配置读取失败，无法渲染字段表', onRetry: () => props.refreshAll(), retryLabel: '重新读取' })
-            : h(Loading, { text: '正在读取配置…' }),
+          'div',
+          { className: 'ob-page' },
+          h(PanelSkeleton, { rows: 5 }),
         )
       }
       if (!groups.length) {
-        return h(Card, { title: '配置' }, h(ErrorNote, { message: '服务端没有返回可渲染的配置字段表（groups 为空）', onRetry: () => props.refreshAll(), retryLabel: '重新读取' }))
+        return h(
+          'div',
+          { className: 'ob-page' },
+          h(Panel, null, h(EmptyState, {
+            tone: 'err',
+            icon: 'alert',
+            title: '服务端没有返回可渲染的字段表',
+            description: 'groups 为空，面板无法生成配置表单。',
+            action: h(Btn, { small: true, onClick: () => props.refreshAll() }, '重新读取'),
+          })),
+        )
       }
+
       const setField = (path, value) => props.updateDraft((previous) => setByPath(previous || {}, path, value))
+      const focusSection = (groupId) => {
+        setActive(groupId)
+        try {
+          const el = document.getElementById('ob-config-' + groupId)
+          if (el && el.scrollIntoView) {
+            const smooth = shouldAnimate(motionMode, 'screen')
+            el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
+          }
+        } catch (error) {}
+      }
+
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-page' },
+        props.issues.length
+          ? h(Banner, {
+              tone: 'warn',
+              message: h('span', null, '保存结果有 ' + props.issues.length + ' 条提示：', h('ul', { className: 'ob-issue-list' }, props.issues.map((issue, index) => h('li', { key: index }, issue)))),
+            })
+          : null,
         h(
           'div',
-          { className: 'ob-note' },
-          '所有配置项都来自服务端字段表；改动后点底部「保存」或按 ',
-          h('span', { className: 'ob-kbd' }, 'Ctrl'),
-          ' + ',
-          h('span', { className: 'ob-kbd' }, 'S'),
-          ' 保存。带单位/范围的字段保存时由服务端规范化并给出提示。',
-        ),
-        props.issues.length
-          ? h(
-              'div',
-              { className: 'ob-banner warn', role: 'status' },
-              h('span', { className: 'ob-banner-msg' }, '保存结果有 ' + props.issues.length + ' 条提示：'),
-              h('ul', { className: 'ob-issue-list' }, props.issues.map((issue, index) => h('li', { key: index }, issue))),
-            )
-          : null,
-        groups.map((group) =>
+          { className: 'ob-settings' },
           h(
-            Card,
-            { key: group.id, title: group.title, desc: group.description || undefined },
-            group.fields.map((field) =>
-              h(FieldRow, { key: field.path, spec: field, value: getByPath(draft, field.path), onChange: (value) => setField(field.path, value), disabled: props.saving }),
+            'nav',
+            { className: 'ob-settings-nav', 'aria-label': '配置分组' },
+            groups.map((group) =>
+              h(
+                'button',
+                {
+                  key: group.id,
+                  type: 'button',
+                  className: cx('ob-settings-nav-btn', active === group.id && 'on'),
+                  onClick: () => focusSection(group.id),
+                },
+                h(Icon, { name: group.id === 'ui' ? 'config' : group.id === 'onebot' ? 'plug' : group.id === 'gateway' ? 'connect' : group.id === 'security' ? 'shield' : 'logs', size: 15 }),
+                group.title,
+              ),
             ),
           ),
-        ),
-        h(
-          Card,
-          { title: '保存与重置' },
           h(
             'div',
-            { className: 'ob-chips' },
-            h(Btn, { kind: 'primary', onClick: () => props.save(), busy: props.saving, disabled: props.saving || !props.dirty }, props.saving ? '保存中…' : '保存配置'),
-            h(Btn, { onClick: () => props.undo(), disabled: props.saving || !props.dirty }, '撤销改动'),
-            h(Btn, { kind: 'danger', onClick: () => props.reset(), disabled: props.saving }, '恢复默认'),
+            { className: 'ob-settings-content' },
+            groups.map((group) =>
+              h(
+                'div',
+                { key: group.id, className: 'ob-settings-section', id: 'ob-config-' + group.id },
+                h(
+                  Panel,
+                  { title: group.title, description: group.description || undefined },
+                  group.fields.map((field) =>
+                    h(FieldRow, { key: field.path, spec: field, value: getByPath(draft, field.path), onChange: (value) => setField(field.path, value), disabled: props.saving }),
+                  ),
+                ),
+              ),
+            ),
+            h(
+              Panel,
+              {
+                title: '保存与重置',
+                description: '保存会规范化字段并把非法值回退为默认值；恢复默认会立即写盘，需要确认。',
+                footer: h(
+                  'div',
+                  { className: 'ob-row' },
+                  h(Btn, { kind: 'primary', icon: 'check', onClick: () => props.save(), busy: props.saving, disabled: props.saving || !props.dirty }, props.saving ? '保存中…' : '保存配置'),
+                  h(Btn, { kind: 'ghost', onClick: props.undo, disabled: props.saving || !props.dirty }, '撤销改动'),
+                  h(Btn, { kind: 'danger', onClick: props.reset, disabled: props.saving }, '恢复默认'),
+                ),
+              },
+              h('p', { className: 'ob-note' }, '快捷键：', h(Kbd, null, 'Ctrl'), ' + ', h(Kbd, null, 'S'), ' 保存。当前配置文件由宿主写入数据目录，刷新页面不会丢失。'),
+            ),
           ),
-          h('div', { className: 'ob-note' }, '「恢复默认」会把所有配置项重置为服务端默认值（需要确认）；当前文件会立即写盘。'),
         ),
       )
     }
 
+    // 小工具：读取当前配置中的 motion（ConfigTab 需要判断滚动是否平滑）。
+    function useMotionModeValue(props) {
+      const config = safeObject(props.configInfo && props.configInfo.config)
+      const systemReduced = useSystemReducedMotion()
+      const prefs = normalizeUiPreferences(config.ui)
+      return resolveMotionMode(prefs.motion, systemReduced)
+    }
+
     // =====================================================================
-    // 标签页：日志
+    // 标签页：日志（级别过滤 / 暂停 / 清空）
     // =====================================================================
 
     function Logs(props) {
@@ -1950,6 +3689,7 @@ window.__ModuleLoader__.load({
       const pausedRef = useRef(false)
       const firstLevelRef = useRef(true)
       pausedRef.current = paused
+      const now = props.now || Date.now()
 
       const load = useCallback(async (reset) => {
         const since = reset ? 0 : sinceRef.current
@@ -2007,33 +3747,61 @@ window.__ModuleLoader__.load({
         load(true)
       }
 
+      const counts = useMemo(() => {
+        const result = { debug: 0, info: 0, warn: 0, error: 0 }
+        for (const entry of entries) {
+          if (result[entry.level] !== undefined) result[entry.level] += 1
+        }
+        return result
+      }, [entries])
+
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-page' },
         h(
-          Card,
-          {
-            title: '日志',
-            desc: '增量拉取宿主日志环形缓冲（GET /logs?since=&level=&limit=）；token 已在服务端脱敏。',
-            right: h(
-              'span',
-              { className: 'ob-banner-actions' },
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '日志缓冲区'), h('p', { className: 'ob-panel-desc' }, paused ? '已暂停：不再自动拉取新日志。' : '自动刷新中（每 ' + refreshMs + ' 毫秒增量拉取一次）。')),
+            h(
+              'div',
+              { className: 'ob-panel-actions' },
               h(
                 'select',
-                { className: 'ob-select', value: level, 'aria-label': '日志级别过滤', onChange: (event) => setLevel(event.target.value) },
+                { className: 'ob-select', style: { width: 'auto', height: 'var(--ob-control-sm)' }, value: level, 'aria-label': '日志级别过滤', onChange: (event) => setLevel(event.target.value) },
                 h('option', { value: '' }, '全部级别'),
                 LOG_LEVELS.map((name) => h('option', { key: name, value: name }, name)),
               ),
-              h(Btn, { small: true, onClick: () => setPaused((value) => !value) }, paused ? '继续' : '暂停'),
-              h(Btn, { small: true, kind: 'danger', onClick: clearLogs }, '清空'),
-              h(Btn, { small: true, kind: 'ghost', onClick: () => load(true) }, '刷新'),
             ),
-          },
-          h('div', { className: 'ob-note' }, paused ? '已暂停：不再自动拉取新日志，点「继续」恢复。' : '自动刷新中（每 ' + refreshMs + ' 毫秒增量拉取一次）。'),
-          error ? h(ErrorNote, { message: '日志拉取失败：' + error, onRetry: () => load(false), retryLabel: '重试' }) : null,
-          loading ? h(Loading, { text: '正在读取日志…' }) : null,
-          !loading && !entries.length ? h(Empty, { icon: '📝', text: '还没有日志' }) : null,
-          !loading && entries.length ? h('div', { className: 'ob-logs' }, entries.slice(-400).reverse().map((entry, index) => h(LogLine, { key: entry.seq === undefined ? index : entry.seq, entry }))) : null,
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            error
+              ? h(Banner, {
+                  tone: 'err',
+                  message: '日志拉取失败：' + error,
+                  actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: () => load(false) }, '重试')],
+                })
+              : null,
+            loading
+              ? h('div', { className: 'ob-log', style: { '--ob-log-loading': 'true' } }, Array.from({ length: 8 }).map((_, index) => h(Skeleton, { key: index, variant: 'text', width: index % 3 ? '86%' : '64%' })))
+              : !entries.length
+                ? h(EmptyState, {
+                    compact: true,
+                    tone: 'brand',
+                    icon: 'logs',
+                    title: '还没有日志',
+                    description: '宿主日志缓冲为空；触发一次连接或操作后会出现日志。',
+                  })
+                : h(
+                    'div',
+                    { className: 'ob-log', role: 'log', 'aria-label': '插件日志' },
+                    entries.slice(-400).reverse().map((entry, index) => h(LogLine, { key: entry.seq === undefined ? index : entry.seq, entry, now })),
+                  ),
+          ),
         ),
       )
     }
@@ -2048,60 +3816,108 @@ window.__ModuleLoader__.load({
       const version = configInfo.version || status.version || '—'
       const apiVersion = configInfo.apiVersion || status.apiVersion
       const dataDir = configInfo.dataDir || status.dataDir || '—'
+      const [copied, setCopied] = useState(false)
+      const copyDir = async () => {
+        try {
+          await navigator.clipboard.writeText(String(dataDir))
+          setCopied(true)
+          props.toast('数据目录已复制', 'ok')
+          setTimeout(() => setCopied(false), 1600)
+        } catch (error) {
+          props.toast('复制失败：' + (error && error.message ? error.message : String(error)), 'err')
+        }
+      }
+      const capabilities = [
+        ['plug', '连接管理', '连接已有 OneBot v11 正向 WS / HTTP 网关（NapCat / SnowLuma / Lagrange / LLOneBot）。'],
+        ['shield', '只读 SnowLuma', 'SnowLuma 模式只读取它自己的 config/onebot*.json，不下载、不启动、不注入。'],
+        ['bolt', '事件规范化', '消息 / 通知 / 请求 / 元事件统一规范化并进入环形缓冲，供后续记忆与认知插件消费。'],
+        ['config', '全量可配置', '重连退避、超时、过滤、缓冲容量、日志级别、界面偏好全部来自服务端配置。'],
+        ['message', '消息发送', '私聊 / 群聊文本发送，返回 message_id 与错误信息。'],
+        ['logs', '可观测性', '状态、事件、日志、账号核验与连接诊断都可在面板查看。'],
+      ]
       return h(
         'div',
-        { className: 'ob-stack' },
+        { className: 'ob-page' },
         h(
-          Card,
-          { title: 'dsh-onebot-qq', desc: 'DeepSeek Harness 的 OneBot v11 QQ 接入插件：连接管理、事件规范化与缓冲、消息发送、完整网页面板与持久化配置。' },
-          h(KV, {
-            rows: [
-              ['插件名', 'dsh-onebot-qq'],
-              ['插件版本', String(version)],
-              ['接口版本', apiVersion === undefined || apiVersion === null ? '—' : String(apiVersion)],
-              ['数据目录', h('span', { className: 'ob-mono' }, String(dataDir))],
-              ['许可证', 'MIT'],
-            ],
-          }),
-        ),
-        h(
-          Card,
-          { title: '能力与边界' },
-          h('ul', { className: 'ob-about-list' },
-            h('li', null, '连接已有 OneBot v11 网关（NapCat / SnowLuma / Lagrange / LLOneBot），只填地址，不下载、不启动、不注入任何进程。'),
-            h('li', null, 'SnowLuma 模式只读取它自己的 config/onebot*.json，用来解析端口与 token。'),
-            h('li', null, '规范化事件（消息 / 通知 / 请求 / 元事件）并缓冲，供后续认知、记忆、防抖等插件消费。'),
-            h('li', null, '所有可调参数都在配置里（含重连退避、超时、过滤、缓冲容量、日志级别等），面板不写死默认值。'),
-            h('li', null, '本插件只做「QQ 感知与执行接入层」；人格、记忆、认知与行为策略由后续插件在本层之上构建。'),
+          Reveal,
+          { as: 'section', className: 'ob-panel brand' },
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            h(
+              'div',
+              { className: 'ob-about-hero' },
+              h('span', { className: 'ob-about-mark' }, h(OneBotIcon, { size: 30 })),
+              h(
+                'div',
+                { className: 'ob-about-detail' },
+                h('h2', { className: 'ob-about-name' }, 'dsh-onebot-qq'),
+                h('p', { className: 'ob-about-desc' }, 'QQ 感知与执行接入层：只负责与 OneBot 网关通信和提供面板；人格、记忆、认知与行为策略由后续插件在本层之上构建。'),
+              ),
+            ),
           ),
         ),
         h(
-          Card,
-          { title: '第三方与许可' },
-          h(KV, {
-            rows: [
-              ['本项目许可', 'MIT'],
-              ['参考实现', 'aureth-labs/dsh-aurabot-qq（MIT）：OneBot 客户端、数据目录、脱敏、日志与面板写法参考'],
-              ['OneBot 协议', h('a', { className: 'ob-a', href: 'https://github.com/botuniverse/onebot-11', target: '_blank', rel: 'noreferrer noopener' }, 'OneBot v11 规范')],
-            ],
-          }),
-          h('p', { className: 'ob-note' }, 'SnowLuma / NapCat 是独立的第三方项目，仅作为外部网关地址接入；使用非官方 QQ 工具存在账号风险，建议使用小号。'),
+          Reveal,
+          { className: 'ob-grid two' },
+          h(
+            Panel,
+            { title: '版本与数据', description: '插件版本、接口版本与宿主数据目录。' },
+            h(KV, {
+              rows: [
+                ['插件名', 'dsh-onebot-qq'],
+                ['插件版本', String(version)],
+                ['接口版本', apiVersion === undefined || apiVersion === null ? '—' : String(apiVersion)],
+                ['数据目录', h('span', { className: 'ob-row', style: { gap: '8px' } }, h(Code, null, String(dataDir)), h(Btn, { small: true, kind: 'ghost', icon: 'copy', onClick: copyDir }, copied ? '已复制' : '复制'))],
+                ['许可证', 'MIT'],
+              ],
+            }),
+          ),
+          h(
+            Panel,
+            { title: '能力与边界', description: '这里列出的能力全部由当前插件自身实现。' },
+            h(
+              'div',
+              { className: 'ob-grid', style: { gap: '10px' } },
+              capabilities.map((item) =>
+                h(
+                  'div',
+                  { key: item[1], className: 'ob-row', style: { alignItems: 'flex-start', flexWrap: 'nowrap' } },
+                  h(SoftIcon, { name: item[0], tone: 'brand', size: 'small' }),
+                  h('div', { style: { minWidth: 0 } }, h('p', { className: 'ob-feed-text', style: { margin: 0, fontWeight: 'var(--ob-weight-label)' } }, item[1]), h('p', { className: 'ob-field-help', style: { margin: 0 } }, item[2])),
+                ),
+              ),
+            ),
+          ),
+        ),
+        h(
+          Reveal,
+          { as: 'section', className: 'ob-panel' },
+          h(
+            'div',
+            { className: 'ob-panel-head with-line' },
+            h('div', { className: 'ob-stack', style: { gap: '2px' } }, h('h2', { className: 'ob-panel-title' }, '第三方与许可'), h('p', { className: 'ob-panel-desc' }, 'SnowLuma / NapCat 是独立第三方项目，仅作为外部网关地址接入。')),
+          ),
+          h(
+            'div',
+            { className: 'ob-panel-body' },
+            h(KV, {
+              rows: [
+                ['本项目许可', 'MIT'],
+                ['参考实现', 'aureth-labs/dsh-aurabot-qq（MIT）：OneBot 客户端、数据目录、脱敏、日志与面板写法参考'],
+                ['UI/UX 参考', 'console-web（用户自有项目）：设计令牌、动效配方与页面结构参考，未复制源码'],
+                ['OneBot 协议', h(LinkOut, { href: 'https://github.com/botuniverse/onebot-11' }, 'OneBot v11 规范')],
+              ],
+            }),
+            h('p', { className: 'ob-note', style: { marginTop: '12px' } }, '使用非官方 QQ 工具存在账号风险，建议使用小号；本插件不提供也不修改任何网关实现。'),
+          ),
         ),
       )
     }
 
     // =====================================================================
-    // 根组件
+    // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
-
-    const TABS = [
-      { id: 'overview', label: '概览' },
-      { id: 'connect', label: '连接' },
-      { id: 'messages', label: '消息' },
-      { id: 'config', label: '配置' },
-      { id: 'logs', label: '日志' },
-      { id: 'about', label: '关于' },
-    ]
 
     function configInfoFromPayload(payload) {
       const data = safeObject(payload)
@@ -2112,6 +3928,55 @@ window.__ModuleLoader__.load({
         version: data.version,
         apiVersion: data.apiVersion,
         dataDir: data.dataDir,
+      }
+    }
+
+    function pageHeaderFor(tab, status) {
+      const gateway = safeObject(status && status.gateway)
+      const connected = gateway.state === 'connected'
+      const connecting = gateway.state === 'connecting'
+      const login = isPlainObject(gateway.login) ? gateway.login : null
+      switch (tab) {
+        case 'connect':
+          return {
+            eyebrow: 'CONNECTION',
+            title: '连接',
+            description: '连接已有 OneBot v11 正向 WS / HTTP 地址，或只读 SnowLuma 自己的配置；插件不下载、不启动、不注入任何网关。',
+          }
+        case 'messages':
+          return {
+            eyebrow: 'MESSAGES & EVENTS',
+            title: '消息',
+            description: '向私聊 / 群聊发送文本，并实时观察收到的 QQ 事件。发送只调用 OneBot 的 send_private_msg / send_group_msg 接口。',
+          }
+        case 'config':
+          return {
+            eyebrow: 'PREFERENCES',
+            title: '配置',
+            description: '所有配置项都来自服务端字段表；改动后点底部「保存」或按 Ctrl + S。外观偏好保存后立即生效，不需要重连。',
+          }
+        case 'logs':
+          return {
+            eyebrow: 'DIAGNOSTICS',
+            title: '日志',
+            description: '增量拉取宿主日志环形缓冲；token 与密钥已在服务端脱敏。',
+          }
+        case 'about':
+          return {
+            eyebrow: 'ABOUT',
+            title: '关于 dsh-onebot-qq',
+            description: 'DeepSeek Harness 的 OneBot v11 QQ 接入插件：连接管理、事件规范化与缓冲、消息发送、完整网页面板与持久化配置。',
+          }
+        default:
+          return {
+            eyebrow: 'ONEBOT V11 · QQ BRIDGE',
+            title: 'QQ 连接',
+            description: connected
+              ? '连接正常' + (login && login.nickname ? '（登录账号 ' + String(login.nickname) + '）' : '') + '，面板会实时刷新 QQ 事件、核验状态与日志。'
+              : connecting
+                ? '正在建立 WebSocket 连接并核验登录账号，请稍候…'
+                : '通过 OneBot v11 连接 NapCat / SnowLuma / Lagrange / LLOneBot，并在这里观察连接与事件状态。',
+          }
       }
     }
 
@@ -2127,6 +3992,7 @@ window.__ModuleLoader__.load({
       const [toastMessage, setToastMessage] = useState(null)
       const [saving, setSaving] = useState(false)
       const [issues, setIssues] = useState([])
+      const [busyCount, setBusyCount] = useState(0)
 
       const draftRef = useRef(null)
       const configInfoRef = useRef(null)
@@ -2136,6 +4002,19 @@ window.__ModuleLoader__.load({
       const errorDismissedRef = useRef(false)
       const lastErrorRef = useRef('')
 
+      const systemReduced = useSystemReducedMotion()
+      const uiPrefs = useMemo(() => {
+        const ui = safeObject((draft && draft.ui) || (configInfo && configInfo.config && configInfo.config.ui))
+        return normalizeUiPreferences(ui)
+      }, [draft, configInfo])
+      const motion = useMemo(() => {
+        const mode = resolveMotionMode(uiPrefs.motion, systemReduced)
+        return { mode, systemReduced, categories: motionCategories(mode) }
+      }, [uiPrefs.motion, systemReduced])
+      const rootData = useMemo(() => uiRootData(uiPrefs, systemReduced), [uiPrefs, systemReduced])
+      const now = useNow(5000)
+      const progress = useTrickleProgress(Boolean(loading || refreshing || saving || busyCount > 0), motion)
+
       const dirty = useMemo(() => Boolean(configInfo && draft) && !deepEqual(draft, configInfo.config), [draft, configInfo])
       dirtyRef.current = dirty
       configInfoRef.current = configInfo
@@ -2144,7 +4023,7 @@ window.__ModuleLoader__.load({
       const toast = useCallback((text, kind) => {
         const value = String(text == null ? '' : text).trim() || '操作完成'
         const tone = kind === 'ok' || kind === 'err' ? kind : 'info'
-        setToastMessage({ text: value, kind: tone })
+        setToastMessage({ text: value, kind: tone, uid: Date.now() + '-' + Math.random() })
         if (toastTimer.current) clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setToastMessage(null), 3600)
       }, [])
@@ -2156,7 +4035,6 @@ window.__ModuleLoader__.load({
         [],
       )
 
-      // 错误横幅：同一条错误被用户关掉后不再每次轮询都弹回来；错误内容变化时重新出现。
       const showError = useCallback((message) => {
         const text = String(message == null ? '' : message).trim()
         if (!text) return
@@ -2169,6 +4047,15 @@ window.__ModuleLoader__.load({
       const clearError = useCallback(() => {
         errorDismissedRef.current = true
         setError('')
+      }, [])
+
+      const runWithProgress = useCallback(async (task) => {
+        setBusyCount((value) => value + 1)
+        try {
+          return await task()
+        } finally {
+          setBusyCount((value) => Math.max(0, value - 1))
+        }
       }, [])
 
       const loadConfig = useCallback(async () => {
@@ -2246,7 +4133,7 @@ window.__ModuleLoader__.load({
       const refreshMs = useMemo(() => computeRefreshMs(configInfo && configInfo.config, configInfo && configInfo.groups), [configInfo])
 
       useEffect(() => {
-        if (loading) return
+        if (loading) return undefined
         let alive = true
         const timer = setInterval(() => {
           if (!alive || pageHidden()) return
@@ -2330,7 +4217,7 @@ window.__ModuleLoader__.load({
       }, [toast])
 
       useEffect(() => {
-        if (typeof window === 'undefined') return
+        if (typeof window === 'undefined') return undefined
         const onKey = (event) => {
           if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key || '').toLowerCase() === 's') {
             if (!dirtyRef.current) return
@@ -2350,29 +4237,29 @@ window.__ModuleLoader__.load({
       const gatewayAction = useCallback(
         async (name, label) => {
           const actionLabel = label || (name === 'connect' ? '连接' : name === 'disconnect' ? '断开' : '重连')
-          const parsed = parseApiResponse(await post('/' + name))
-          if (!parsed.ok) {
-            toast(actionLabel + '失败：' + parsed.message, 'err')
-            return { ok: false, message: parsed.message }
-          }
-          if (parsed.data && isPlainObject(parsed.data.gateway)) applyGateway(parsed.data.gateway)
-          toast(actionLabel + '成功', 'ok')
-          refreshStatus()
-          return { ok: true }
+          return runWithProgress(async () => {
+            const parsed = parseApiResponse(await post('/' + name))
+            if (!parsed.ok) {
+              toast(actionLabel + '失败：' + parsed.message, 'err')
+              return { ok: false, message: parsed.message }
+            }
+            if (parsed.data && isPlainObject(parsed.data.gateway)) applyGateway(parsed.data.gateway)
+            toast(actionLabel + '成功', 'ok')
+            refreshStatus()
+            return { ok: true }
+          })
         },
-        [applyGateway, refreshStatus, toast],
+        [applyGateway, refreshStatus, toast, runWithProgress],
       )
 
       const go = useCallback((id) => setTab(id), [])
-
-      if (loading && !status && !configInfo) {
-        return h('div', { className: 'ob-root' }, h('div', { className: 'ob-wrap' }, h('div', { className: 'ob-loading' }, h('span', { className: 'ob-spin', 'aria-hidden': true }), h('span', null, '正在读取插件状态…'))))
-      }
 
       const gateway = safeObject(status && status.gateway)
       const state = stateLabel(gateway.state)
       const login = isPlainObject(gateway.login) ? gateway.login : null
       const version = (configInfo && configInfo.version) || (status && status.version) || ''
+      const headerInfo = pageHeaderFor(tab, status)
+
       const tabProps = {
         status,
         configInfo,
@@ -2383,13 +4270,16 @@ window.__ModuleLoader__.load({
         gatewayAction,
         refreshAll,
         refreshStatus,
+        runWithProgress,
         saving,
         dirty,
         issues,
         save,
         reset,
         undo,
+        now,
       }
+
       let body = null
       if (tab === 'overview') body = h(Overview, tabProps)
       else if (tab === 'connect') body = h(Connect, tabProps)
@@ -2398,61 +4288,83 @@ window.__ModuleLoader__.load({
       else if (tab === 'logs') body = h(Logs, tabProps)
       else body = h(About, tabProps)
 
+      const loadingShell =
+        loading && !status && !configInfo
+          ? h(
+              'div',
+              { className: 'ob-page' },
+              h(
+                'div',
+                { className: 'ob-header' },
+                h(
+                  'div',
+                  { className: 'ob-header-main' },
+                  h(Skeleton, { variant: 'text', width: '96px' }),
+                  h(Skeleton, { variant: 'title', width: 'min(420px, 62%)', style: { marginTop: '14px', height: '38px' } }),
+                  h(Skeleton, { variant: 'text', width: 'min(560px, 84%)', style: { marginTop: '12px' } }),
+                ),
+              ),
+              h('div', { className: 'ob-stat-grid' }, [0, 1, 2, 3, 4].map((index) => h(StatSkeleton, { key: index }))),
+              h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 4 }), h(PanelSkeleton, { rows: 4 })),
+            )
+          : null
+
       return h(
-        'div',
-        { className: 'ob-root' },
+        MotionContext.Provider,
+        { value: motion },
         h(
           'div',
-          { className: 'ob-wrap' },
+          Object.assign({ className: 'ob-root' }, rootData),
           h(
             'div',
-            { className: 'ob-head' },
-            h(
-              'div',
-              { className: 'ob-title' },
-              h('h1', null, 'QQ 连接'),
-              h('p', null, 'OneBot v11 接入' + (version ? ' · v' + version : '') + ' · ' + (login && login.nickname ? '登录账号 ' + String(login.nickname) : '连接 NapCat / SnowLuma / Lagrange / LLOneBot')),
-            ),
-            h(
-              'div',
-              { className: 'ob-head-actions' },
-              h(
-                'span',
-                { className: 'ob-status', title: '网关状态' },
-                h('i', { className: cx('ob-dot', state.tone), 'aria-hidden': true }),
-                h('span', { className: 'ob-status-text' }, state.text),
-                login && login.nickname ? h('span', { className: 'ob-status-extra' }, String(login.nickname)) : null,
-              ),
-              h(Btn, { small: true, onClick: () => refreshAll(), busy: refreshing }, refreshing ? '刷新中…' : '刷新'),
-            ),
-          ),
-          error
-            ? h(
-                'div',
-                { className: 'ob-banner err', role: 'alert' },
-                h('span', { className: 'ob-banner-msg' }, error),
-                h(
-                  'span',
-                  { className: 'ob-banner-actions' },
-                  h(Btn, { small: true, onClick: () => refreshAll(), busy: refreshing }, '重试'),
-                  h(IconBtn, { title: '关闭提示', label: '关闭提示', onClick: clearError }, '×'),
+            { className: 'ob-shell' },
+            loadingShell
+              ? loadingShell
+              : h(
+                  'div',
+                  { className: 'ob-page' },
+                  error
+                    ? h(Banner, {
+                        tone: 'err',
+                        message: error,
+                        actions: [
+                          h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: () => refreshAll(), busy: refreshing }, '重试'),
+                          h(IconBtn, { key: 'close', small: true, title: '关闭提示', label: '关闭提示', icon: 'close', onClick: clearError }),
+                        ],
+                      })
+                    : null,
+                  h(PageHeader, {
+                    eyebrow: headerInfo.eyebrow,
+                    title: headerInfo.title,
+                    description: headerInfo.description,
+                    meta: [
+                      h(StatusPill, { key: 'state', tone: state.tone, text: state.text, live: gateway.state === 'connected' || gateway.state === 'connecting', extra: login && login.nickname ? String(login.nickname) : '' }),
+                      h(Badge, { key: 'mode', tone: 'brand' }, endpointModeLabel(gateway.endpoint && gateway.endpoint.mode)),
+                      version ? h(Badge, { key: 'version', tone: 'muted' }, 'v' + String(version)) : null,
+                      dirty ? h(Badge, { key: 'dirty', tone: 'warn' }, '有未保存的改动') : null,
+                    ],
+                    actions: [
+                      dirty ? h(Btn, { key: 'save', small: true, kind: 'primary', icon: 'check', onClick: () => save(), busy: saving, disabled: saving }, '保存') : null,
+                      h(IconBtn, { key: 'refresh', title: '刷新状态', icon: 'refresh', onClick: () => refreshAll(), disabled: refreshing }),
+                    ],
+                  }),
+                  h(Tabs, { tabs: TABS, current: tab, onChange: go, dirty }),
+                  h(TopProgress, { phase: progress }),
+                  h(
+                    'div',
+                    {
+                      className: 'ob-content',
+                      id: 'ob-panel-' + tab,
+                      role: 'tabpanel',
+                      'aria-labelledby': 'ob-tab-' + tab,
+                    },
+                    h('div', { key: tab, className: pageTransitionClass(uiPrefs.pageTransition) }, body),
+                  ),
+                  h(Savebar, { visible: dirty, saving, onSave: () => save(), onUndo: undo }),
                 ),
-              )
-            : null,
-          h(Tabs, { tabs: TABS, current: tab, onChange: go, dirty }),
-          h('div', { id: 'ob-panel-' + tab, role: 'tabpanel', 'aria-labelledby': 'ob-tab-' + tab }, body),
-          dirty
-            ? h(
-                'div',
-                { className: 'ob-savebar' },
-                h('span', { className: 'ob-savebar-msg' }, '有未保存的配置改动'),
-                h('span', { className: 'ob-small ob-muted' }, h('span', { className: 'ob-kbd' }, 'Ctrl'), ' + ', h('span', { className: 'ob-kbd' }, 'S')),
-                h(Btn, { kind: 'ghost', onClick: undo, disabled: saving }, '撤销'),
-                h(Btn, { kind: 'primary', onClick: () => save(), busy: saving, disabled: saving }, saving ? '保存中…' : '保存'),
-              )
-            : null,
+          ),
+          h(Toast, { message: toastMessage }),
         ),
-        h(Toast, { message: toastMessage }),
       )
     }
 
@@ -2494,6 +4406,8 @@ window.__ModuleLoader__.load({
     exports.PANEL_ID = PANEL_ID
     exports.API_PREFIX = API
     exports.STYLE_ID = STYLE_ID
+    exports.TOKEN_CSS = TOKEN_CSS
+    exports.MOTION_CSS = MOTION_CSS
     exports.PANEL_CSS = PANEL_CSS
     exports.TABS = TABS
     exports.OneBotPage = OneBotPage
@@ -2501,12 +4415,39 @@ window.__ModuleLoader__.load({
     exports.Overview = Overview
     exports.Connect = Connect
     exports.Messages = Messages
-    // 注意：这里刻意导出发为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
+    // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。
     exports.ConfigTab = ConfigTab
     exports.Logs = Logs
     exports.About = About
+    exports.UI_ACCENTS = UI_ACCENTS
+    exports.UI_DENSITIES = UI_DENSITIES
+    exports.UI_FONT_SCALES = UI_FONT_SCALES
+    exports.UI_CONTENT_WIDTHS = UI_CONTENT_WIDTHS
+    exports.UI_MOTION_MODES = UI_MOTION_MODES
+    exports.UI_PAGE_TRANSITIONS = UI_PAGE_TRANSITIONS
+    exports.DEFAULT_UI = DEFAULT_UI
+    exports.ACCENT_TOKENS = ACCENT_TOKENS
+    exports.DENSITY_METRICS = DENSITY_METRICS
+    exports.resolveMotionMode = resolveMotionMode
+    exports.motionCategories = motionCategories
+    exports.motionDisabled = motionDisabled
+    exports.shouldAnimate = shouldAnimate
+    exports.revealDelayMs = revealDelayMs
+    exports.countUpValue = countUpValue
+    exports.easeOutCubic = easeOutCubic
+    exports.nextPresence = nextPresence
+    exports.pageTransitionClass = pageTransitionClass
+    exports.accentValues = accentValues
+    exports.fontScalePercent = fontScalePercent
+    exports.densityMetrics = densityMetrics
+    exports.contentMaxWidth = contentMaxWidth
+    exports.normalizeUiPreferences = normalizeUiPreferences
+    exports.uiRootData = uiRootData
+    exports.splitBufferValue = splitBufferValue
+    exports.formatCount = formatCount
+    exports.formatNumberList = formatNumberList
     exports.clampNumber = clampNumber
     exports.deepEqual = deepEqual
     exports.getByPath = getByPath

@@ -149,13 +149,24 @@ export function normalizeEvent(raw, cfg) -> null | {
   - `ctx.slots.register({ name:'main', key:'onebot-qq' }, Panel)`
   - 通过 `ctx.slots.inject(...)` 注册（参考 aurabot `client/client.js` 末尾写法）。
 - 只经 `/onebot-qq/api/*` 读写宿主，不直接碰 QQ。
-- 样式：沿用 `var(--dsw-alias-*)` 语义 token，浅/深色都要可读；字重 ≤500；圆角/间距参照
-  `docs/ui-radius.md`；不得引入 UI 库或 Tailwind。必须遵循 `dsh-client-ui-ux` skill：
-  反馈面（toast/就地提示）、loading 态、空态、可关闭浮层、190–390px 宽度不重叠。
+- 样式/动效分为三层，均由**同一个** `<style>` 注入（`STYLE_ID = dsh-onebot-qq-panel-style`）：
+  - `TOKEN_CSS`：唯一允许十六进制色值的区块。显式声明 console-web 的浅色/暗色调色板、4 套强调色 +
+    `inherit`（跟随 DSH 主题）、密度/字号/内容宽度映射、圆角/阴影/字重/动效时长变量；暗色通过
+    `body[data-ds-dark-theme] .ob-root` 覆盖，强调色通过 `data-accent` 选择器覆盖。
+  - `MOTION_CSS`：唯一允许 `@keyframes` 与 `animation:` 的区块。实现语义配方 `content.enter` /
+    `content.swap` / `viewport.reveal` / `feedback.enter+exit` / `progress.trickle` / 状态脉冲；
+    `data-motion="reduced|off"` 与 `prefers-reduced-motion` 统一降级为 0.01ms，状态仍立即完成。
+  - `PANEL_CSS`：布局/组件类，只消费 `--ob-*` 变量；不写裸色值、不写裸字重（字重走
+    `--ob-weight-*` 令牌）、不声明动画。
+- 外观偏好全部来自 `ui.*` 配置（`accent/density/fontScale/contentWidth/motion/pageTransition`），
+  根节点以 `data-*` 属性声明语义；客户端不写死默认值，保存后即时重渲染，无需重连。
+- 无障碍与响应式：统一 `:focus-visible` 焦点环、tab 方向键/Home/End 导航、toast `aria-live`、
+  reduced-motion 合规；190–390px 单列、tab 可横向滚动、无横向溢出；动效只使用 opacity/transform/width，
+  不动画高度或滚动容器。
 - 标签页：**概览 / 连接 / 消息 / 配置 / 日志 / 关于**。
-- 配置页字段按分组渲染，支持保存、撤销、恢复默认、Ctrl+S；所有配置来自 `GET /config`，
-  不得在客户端写死默认值。
-- 未保存改动要有 dirty 提示；保存失败要有可读错误。
+- 配置页字段按分组渲染（左侧分组导航 + 右侧分组卡片），支持保存、撤销、恢复默认、Ctrl+S；
+  所有配置来自 `GET /config`，不得在客户端写死默认值。
+- 未保存改动要有 dirty 提示（页头徽标 + 吸底保存条）；保存失败要有可读错误。
 
 ### 3.7 实现补充（gateway 实际形状，集成后核对）
 

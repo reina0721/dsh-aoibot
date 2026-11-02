@@ -1,0 +1,269 @@
+{
+  "errors": [],
+  "consoleErrors": [
+    "[deepseek-account] account read failed [object Object]"
+  ],
+  "checks": {
+    "bootActivationOk": true,
+    "hasTabs": true,
+    "revealPlayed": true,
+    "revealStagger": true,
+    "lightModeDetected": true,
+    "tabTransitionClass": true,
+    "tabTransitionAnimation": true,
+    "tabPillMoved": true,
+    "messagesFilled": true,
+    "configNav": true,
+    "configPrefsVisible": true,
+    "logsRendered": true,
+    "aboutRendered": true,
+    "fadeUpApplied": true,
+    "reducedModeAttr": true,
+    "reducedNoLongAnimation": true,
+    "restoredMotionAttr": true,
+    "prefsApplied": true,
+    "prefsAccentColor": true,
+    "prefsDensity": true,
+    "prefsFontScale": true,
+    "prefsContentWidth": true,
+    "offModeApplied": true,
+    "darkThemeDetected": true,
+    "darkRootBg": "rgb(13, 17, 28)",
+    "narrowNoHorizontalOverflow": true,
+    "hasHeaderEyebrow": true,
+    "hasStatusPill": true,
+    "hasLoginNickname": true,
+    "hasChineseTabs": true,
+    "noBootFailureText": true,
+    "consoleErrors": [
+      "[deepseek-account] account read failed [object Object]"
+    ],
+    "pageErrors": []
+  },
+  "motion": {
+    "initial": {
+      "contentClass": "ob-enter-default",
+      "contentAnimations": [
+        {
+          "name": "ob-content-rise",
+          "duration": 180,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-default"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 18,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "default"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 4, 0)",
+      "pillWidth": "78px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "tabSwitch": {
+      "contentClass": "ob-enter-default",
+      "contentAnimations": [
+        {
+          "name": "ob-content-rise",
+          "duration": 180,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-default"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 8,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "default"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 84, 0)",
+      "pillWidth": "78px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "fadeUp": {
+      "contentClass": "ob-enter-up",
+      "contentAnimations": [
+        {
+          "name": "ob-content-up",
+          "duration": 240,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-up"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 18,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "fade-up"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 4, 0)",
+      "pillWidth": "78px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "reduced": {
+      "contentClass": "ob-enter-default",
+      "contentAnimations": [
+        {
+          "name": "ob-content-rise",
+          "duration": 0.01,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-default"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 6,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "reduced",
+        "data-page-transition": "default"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 84, 0)",
+      "pillWidth": "78px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "prefs": {
+      "attrs": {
+        "data-accent": "blue",
+        "data-density": "compact",
+        "data-font-scale": "large",
+        "data-content-width": "standard",
+        "data-motion": "full",
+        "data-page-transition": "default"
+      },
+      "primaryBg": "rgb(37, 99, 235)",
+      "tabHeight": "30px",
+      "shellMaxWidth": "1152px",
+      "rootFontSize": "15.75px",
+      "pillWidth": "78px"
+    },
+    "off": {
+      "motion": "off",
+      "progressDisplay": "none"
+    },
+    "dark": {
+      "contentClass": "ob-enter-default",
+      "contentAnimations": [
+        {
+          "name": "ob-content-rise",
+          "duration": 180,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-default"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 18,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "default"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 4, 0)",
+      "pillWidth": "78px",
+      "dark": true,
+      "rootBg": "rgb(13, 17, 28)",
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "rootScrollWidth": 1160,
+      "rootClientWidth": 1160
+    },
+    "narrow": {
+      "contentClass": "ob-enter-default",
+      "contentAnimations": [
+        {
+          "name": "ob-content-rise",
+          "duration": 180,
+          "delay": 0,
+          "playState": "finished",
+          "targetClass": "ob-enter-default"
+        }
+      ],
+      "revealAnimations": 5,
+      "totalAnimations": 18,
+      "rootData": {
+        "data-accent": "purple",
+        "data-density": "standard",
+        "data-font-scale": "standard",
+        "data-content-width": "wide",
+        "data-motion": "full",
+        "data-page-transition": "default"
+      },
+      "revealed": 5,
+      "pendingReveal": 0,
+      "pillTransform": "matrix(1, 0, 0, 1, 4, 0)",
+      "pillWidth": "78px",
+      "dark": false,
+      "rootBg": "rgb(246, 247, 251)",
+      "scrollWidth": 360,
+      "clientWidth": 360,
+      "rootScrollWidth": 304,
+      "rootClientWidth": 304
+    }
+  },
+  "screenshots": [
+    "01-overview-connected.png",
+    "02-connect.png",
+    "03-messages.png",
+    "04-config.png",
+    "05-logs.png",
+    "06-about.png",
+    "07-reduced-motion.png",
+    "11-prefs-blue-compact.png",
+    "08-dark-overview.png",
+    "09-dark-config.png",
+    "10-narrow-overview.png"
+  ]
+}

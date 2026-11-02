@@ -17,8 +17,11 @@ globalThis.window = {
 
 const reactShim = {
   createElement: (type, props, ...children) => ({ type, props: props || null, children }),
+  createContext: (defaultValue) => ({ Provider: 'Provider', Consumer: 'Consumer', _default: defaultValue }),
+  useContext: () => ({ mode: 'full', systemReduced: false, categories: { screen: true, async: true, reveal: true, swap: true, feedback: true, media: true } }),
   useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
   useEffect: () => {},
+  useLayoutEffect: () => {},
   useRef: (initial) => ({ current: initial === undefined ? null : initial }),
   useCallback: (fn) => fn,
   useMemo: (fn) => fn(),
@@ -78,9 +81,31 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
     'nextSince',
     'describeProbe',
     'describeDetect',
+    'resolveMotionMode',
+    'motionCategories',
+    'motionDisabled',
+    'shouldAnimate',
+    'revealDelayMs',
+    'countUpValue',
+    'easeOutCubic',
+    'nextPresence',
+    'pageTransitionClass',
+    'accentValues',
+    'fontScalePercent',
+    'densityMetrics',
+    'contentMaxWidth',
+    'normalizeUiPreferences',
+    'uiRootData',
+    'splitBufferValue',
+    'formatCount',
+    'formatNumberList',
   ]) {
     assert.equal(typeof panel[name], 'function', name + ' 应该是导出的函数')
   }
+  assert.equal(typeof panel.TOKEN_CSS, 'string')
+  assert.equal(typeof panel.MOTION_CSS, 'string')
+  assert.equal(typeof panel.ACCENT_TOKENS, 'object')
+  assert.equal(typeof panel.DEFAULT_UI, 'object')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
     ['overview', 'connect', 'messages', 'config', 'logs', 'about'],
@@ -152,16 +177,20 @@ test('apply：兼容 ctx.slots 写法，缺 slots 时不抛错', () => {
   assert.doesNotThrow(() => panel.apply(null))
 })
 
-test('OneBotPage：无网关/无 document 时可安全渲染加载态', () => {
+test('OneBotPage：无网关/无 document 时可安全渲染加载骨架', () => {
   let tree = null
   assert.doesNotThrow(() => {
     tree = panel.OneBotPage()
   })
-  assert.equal(tree.type, 'div')
-  assert.equal(tree.props.className, 'ob-root')
-  assert.match(JSON.stringify(tree), /正在读取插件状态/)
+  assert.ok(tree && typeof tree === 'object')
+  const json = JSON.stringify(tree)
+  assert.match(json, /ob-root/)
+  assert.match(json, /ob-header/, '首屏应渲染页头骨架')
+  assert.match(json, /ob-stat-grid/, '首屏应渲染统计骨架')
+  assert.doesNotMatch(json, /ob-tabs/, '首屏骨架不渲染真实标签栏')
   const icon = panel.OneBotIcon({ size: 18 })
-  assert.equal(icon.type, 'svg')
+  assert.ok(icon && typeof icon === 'object')
+  assert.equal(icon.props.name, 'message', '侧栏图标应渲染消息图标')
 })
 
 test('六个标签页：无数据与有数据都能渲染（不依赖真实网关）', () => {
@@ -176,6 +205,8 @@ test('六个标签页：无数据与有数据都能渲染（不依赖真实网�
     gatewayAction: async () => ({ ok: true }),
     refreshAll: noop,
     refreshStatus: noop,
+    runWithProgress: (task) => task(),
+    now: Date.now(),
     saving: false,
     dirty: false,
     issues: [],
@@ -564,20 +595,157 @@ test('probeEndpointFromDraft / describeProbe / describeDetect', () => {
   assert.equal(panel.describeDetect({ ok: false, message: '检测失败' }).ok, false)
 })
 
-test('样式契约：只用主题 token、字重 ≤500、无 UI 库', () => {
+test('样式契约：令牌唯一色值 / 动效唯一 keyframes / 面板样式消费变量', () => {
+  const token = panel.TOKEN_CSS
+  const motion = panel.MOTION_CSS
   const css = panel.PANEL_CSS
-  assert.equal(typeof css, 'string')
+
+  // 令牌块：console-web 浅色/暗色 palette、强调色、密度/字号/宽度与动效变量
+  assert.match(token, /--ob-canvas:#f6f7fb/)
+  assert.match(token, /--ob-surface:#ffffff/)
+  assert.match(token, /body\[data-ds-dark-theme\] \.ob-root/)
+  assert.match(token, /--ob-canvas:#0d111c/)
+  for (const accent of ['purple', 'blue', 'green', 'orange', 'inherit']) {
+    assert.match(token, new RegExp("\\[data-accent='" + accent + "'\\]"), '缺少强调色 ' + accent)
+  }
+  assert.match(token, /\[data-density='compact'\]/)
+  assert.match(token, /\[data-density='comfortable'\]/)
+  assert.match(token, /\[data-font-scale='large'\]/)
+  assert.match(token, /\[data-content-width='wide'\]/)
+  assert.match(token, /--ob-dur-fast:120ms/)
+  assert.match(token, /--ob-dur-standard:180ms/)
+  assert.match(token, /--ob-dur-slow:240ms/)
+  assert.match(token, /--ob-ease:cubic-bezier\(0\.2,0\.8,0\.2,1\)/)
+
+  // 动效块：语义配方 + reduced/off 降级
+  for (const name of ['ob-content-rise', 'ob-reveal-rise', 'ob-feedback-enter', 'ob-feedback-exit', 'ob-feed-in', 'ob-progress-grow', 'ob-ping', 'ob-pulse']) {
+    assert.match(motion, new RegExp('@keyframes ' + name), '缺少 keyframe ' + name)
+  }
+  assert.match(motion, /\.ob-enter-default/)
+  assert.match(motion, /\[data-motion='reduced'\]/)
+  assert.match(motion, /\[data-motion='off'\]/)
+  assert.match(motion, /prefers-reduced-motion: reduce/)
+
+  // 面板块：只用变量；无裸色值/裸字重/动画声明/UI 库
   assert.match(css, /\.ob-root/)
-  assert.match(css, /--dsw-radius-/)
-  assert.match(css, /var\(--dsw-alias-/)
-  assert.match(css, /@media \(hover: hover\)/)
-  assert.match(css, /@media \(pointer: coarse\)/)
-  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/)
-  assert.match(css, /\.ob-toast/)
-  assert.match(css, /\.ob-empty/)
-  assert.match(css, /\.ob-loading/)
+  assert.match(css, /\.ob-tabs/)
+  assert.match(css, /\.ob-panel/)
+  assert.match(css, /\.ob-state/)
   assert.match(css, /\.ob-savebar/)
-  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/, '样式里不应出现写死的十六进制颜色')
-  assert.doesNotMatch(css, /font-weight\s*:\s*(?:600|700|800|900)/, '字重不得超过 500')
-  assert.doesNotMatch(css, /@import|tailwind|bootstrap/i)
+  assert.match(css, /\.ob-toast/)
+  assert.match(css, /\.ob-stat-value/)
+  assert.match(css, /@media \(pointer:coarse\)/)
+  assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/, '组件样式不应写死十六进制颜色（应消耗 --ob-* 令牌）')
+  assert.doesNotMatch(css, /font-weight\s*:\s*\d/, '组件样式不应写裸字重（应消耗 --ob-weight-* 令牌）')
+  assert.doesNotMatch(css, /@keyframes|animation\s*:/, '组件样式不应声明动画（动效统一放 MOTION_CSS）')
+  assert.doesNotMatch(css + token + motion, /@import|tailwind|bootstrap|antd|element-plus/i)
+})
+
+test('Motion Policy：system/full/reduced/off 与系统偏好矩阵', () => {
+  assert.equal(panel.resolveMotionMode('system', false), 'full')
+  assert.equal(panel.resolveMotionMode('system', true), 'reduced')
+  assert.equal(panel.resolveMotionMode('full', true), 'full', 'full 显式覆盖系统减少动效')
+  assert.equal(panel.resolveMotionMode('reduced', false), 'reduced')
+  assert.equal(panel.resolveMotionMode('off', false), 'off')
+  assert.equal(panel.resolveMotionMode('weird', false), 'full', '非法值回退 system')
+  assert.equal(panel.motionDisabled('reduced'), true)
+  assert.equal(panel.motionDisabled('off'), true)
+  assert.equal(panel.motionDisabled('full'), false)
+  assert.deepEqual(panel.motionCategories('off'), { screen: false, async: false, reveal: false, swap: false, feedback: false, media: false })
+  assert.equal(panel.shouldAnimate('full', 'reveal'), true)
+  assert.equal(panel.shouldAnimate('reduced', 'reveal'), false)
+  assert.equal(panel.shouldAnimate('full', 'nope'), false)
+})
+
+test('动效数值：reveal stagger / count-up / presence / page transition', () => {
+  assert.equal(panel.revealDelayMs(0), 0)
+  assert.equal(panel.revealDelayMs(1), 40)
+  assert.equal(panel.revealDelayMs(3), 120)
+  assert.equal(panel.revealDelayMs(9), 120, 'stagger 上限 120ms')
+  assert.equal(panel.revealDelayMs(-1), 0)
+
+  assert.equal(panel.easeOutCubic(0), 0)
+  assert.equal(panel.easeOutCubic(1), 1)
+  assert.equal(panel.countUpValue(0, 100, 0), 0)
+  assert.equal(panel.countUpValue(0, 100, 1), 100)
+  assert.equal(panel.countUpValue(10, 20, 0.5), 19)
+  assert.equal(panel.countUpValue(0, 10, 2), 10, 'progress 超出范围会 clamp')
+  assert.equal(panel.countUpValue(0, 'abc', 0.5), 'abc')
+
+  assert.equal(panel.nextPresence('unmounted', true), 'enter')
+  assert.equal(panel.nextPresence('enter', true), 'stable')
+  assert.equal(panel.nextPresence('enter', false), 'exit')
+  assert.equal(panel.nextPresence('stable', false), 'exit')
+  assert.equal(panel.nextPresence('exit', true), 'enter', '快速反转安全')
+  assert.equal(panel.nextPresence('exit', false), 'unmounted')
+
+  assert.equal(panel.pageTransitionClass('default'), 'ob-enter-default')
+  assert.equal(panel.pageTransitionClass('fade-slide'), 'ob-enter-slide')
+  assert.equal(panel.pageTransitionClass('fade-up'), 'ob-enter-up')
+  assert.equal(panel.pageTransitionClass('fade-down'), 'ob-enter-down')
+  assert.equal(panel.pageTransitionClass('fade'), 'ob-enter-fade')
+  assert.equal(panel.pageTransitionClass('none'), '')
+  assert.equal(panel.pageTransitionClass('zoom'), 'ob-enter-default', '非法值回退 default')
+})
+
+test('外观偏好：accent/density/fontScale/contentWidth/motion/pageTransition 映射与回退', () => {
+  const prefs = panel.normalizeUiPreferences({
+    accent: 'blue',
+    density: 'compact',
+    fontScale: 'large',
+    contentWidth: 'standard',
+    motion: 'reduced',
+    pageTransition: 'fade',
+  })
+  assert.deepEqual(prefs, { accent: 'blue', density: 'compact', fontScale: 'large', contentWidth: 'standard', motion: 'reduced', pageTransition: 'fade' })
+  const fallback = panel.normalizeUiPreferences({ accent: 'magenta', density: 'huge', motion: 'sometimes' })
+  assert.equal(fallback.accent, 'purple')
+  assert.equal(fallback.density, 'standard')
+  assert.equal(fallback.motion, 'system')
+  assert.deepEqual(panel.normalizeUiPreferences(null), {
+    accent: 'purple',
+    density: 'standard',
+    fontScale: 'standard',
+    contentWidth: 'wide',
+    motion: 'system',
+    pageTransition: 'default',
+  })
+
+  const root = panel.uiRootData(prefs, false)
+  assert.deepEqual(root, {
+    'data-accent': 'blue',
+    'data-density': 'compact',
+    'data-font-scale': 'large',
+    'data-content-width': 'standard',
+    'data-motion': 'reduced',
+    'data-page-transition': 'fade',
+  })
+  assert.equal(panel.uiRootData({ motion: 'system' }, true)['data-motion'], 'reduced')
+  assert.equal(panel.uiRootData({ motion: 'full' }, true)['data-motion'], 'full')
+
+  assert.equal(panel.accentValues('purple', false).brand, '#5d49d6')
+  assert.equal(panel.accentValues('purple', true).brand, '#9b8cff')
+  assert.equal(panel.accentValues('inherit', false), null)
+  assert.equal(panel.fontScalePercent('small'), 93.75)
+  assert.equal(panel.fontScalePercent('large'), 112.5)
+  assert.equal(panel.fontScalePercent('weird'), 100)
+  assert.equal(panel.densityMetrics('compact').control, '2.25rem')
+  assert.equal(panel.densityMetrics('weird').control, '2.75rem')
+  assert.equal(panel.contentMaxWidth('standard'), '72rem')
+  assert.equal(panel.contentMaxWidth('auto'), 'none')
+  assert.equal(panel.contentMaxWidth('weird'), '100rem')
+})
+
+test('格式化与缓冲值：formatCount / splitBufferValue', () => {
+  assert.equal(panel.formatCount(0), '0')
+  assert.equal(panel.formatCount(999), '999')
+  assert.equal(panel.formatCount(1000), '1,000')
+  assert.equal(panel.formatCount(1234567), '1,234,567')
+  assert.equal(panel.formatCount('abc'), 'abc')
+  assert.deepEqual(panel.splitBufferValue('2 / 200'), { used: 2, capacity: 200 })
+  assert.deepEqual(panel.splitBufferValue('0/1'), { used: 0, capacity: 1 })
+  assert.equal(panel.splitBufferValue('anything'), null)
+  assert.equal(panel.splitBufferValue(null), null)
+  assert.equal(panel.formatNumberList([1000, 3000]), '1000, 3000')
+  assert.equal(panel.formatNumberList(null), '')
 })

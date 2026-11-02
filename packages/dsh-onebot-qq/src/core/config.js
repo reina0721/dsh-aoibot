@@ -79,6 +79,14 @@ export const DEFAULTS = {
     refreshMs: 2000,
     eventPageSize: 50,
     logPageSize: 100,
+    // 以下外观/动效偏好全部由面板「界面」分组读写并持久化；client.js 不写死这些值。
+    // 取值与 console-web 的 appearance preferences 对齐（accent/density/fontScale/motion/pageTransition）。
+    accent: 'purple', // purple | blue | green | orange | inherit
+    density: 'standard', // compact | standard | comfortable
+    fontScale: 'standard', // small | standard | large
+    contentWidth: 'wide', // standard(72rem) | wide(100rem) | auto
+    motion: 'system', // system | full | reduced | off
+    pageTransition: 'default', // default | fade | fade-slide | fade-up | fade-down | none
   },
   security: {
     // 面板「高级」里透传任意 OneBot action（调试用，默认关）
@@ -206,11 +214,69 @@ export const CONFIG_GROUPS = [
   {
     id: 'ui',
     title: '界面',
-    description: '面板刷新与列表分页。',
+    description: '面板刷新、列表分页与外观偏好。外观偏好保存后立即生效，不需要重连。',
     fields: [
       { path: 'ui.refreshMs', label: '状态刷新间隔', type: 'number', default: 2000, min: 500, max: 60000, step: 250, unit: 'ms' },
       { path: 'ui.eventPageSize', label: '事件列表每页条数', type: 'number', default: 50, min: 10, max: 500, step: 10 },
       { path: 'ui.logPageSize', label: '日志列表每页条数', type: 'number', default: 100, min: 10, max: 500, step: 10 },
+      {
+        path: 'ui.accent', label: '强调色', type: 'select', default: 'purple',
+        options: [
+          { value: 'purple', label: '紫（console-web 默认）' },
+          { value: 'blue', label: '蓝' },
+          { value: 'green', label: '绿' },
+          { value: 'orange', label: '橙' },
+          { value: 'inherit', label: '跟随 DSH 主题（黑白）' },
+        ],
+        help: '只影响本面板的品牌色/选中态/焦点环；不改变 DSH 其它界面。',
+      },
+      {
+        path: 'ui.density', label: '界面密度', type: 'select', default: 'standard',
+        options: [
+          { value: 'compact', label: '紧凑' },
+          { value: 'standard', label: '标准' },
+          { value: 'comfortable', label: '舒适' },
+        ],
+        help: '调整控件高度与面板内距；紧凑密度不缩小可点击区域到 32px 以下。',
+      },
+      {
+        path: 'ui.fontScale', label: '界面字号', type: 'select', default: 'standard',
+        options: [
+          { value: 'small', label: '小（93.75%）' },
+          { value: 'standard', label: '标准（100%）' },
+          { value: 'large', label: '大（112.5%）' },
+        ],
+      },
+      {
+        path: 'ui.contentWidth', label: '内容宽度', type: 'select', default: 'wide',
+        options: [
+          { value: 'standard', label: '标准（72rem）' },
+          { value: 'wide', label: '宽（100rem）' },
+          { value: 'auto', label: '自动铺满' },
+        ],
+      },
+      {
+        path: 'ui.motion', label: '动效模式', type: 'select', default: 'system',
+        options: [
+          { value: 'system', label: '跟随系统（推荐）' },
+          { value: 'full', label: '始终开启' },
+          { value: 'reduced', label: '减少动效' },
+          { value: 'off', label: '关闭动效' },
+        ],
+        help: '减少/关闭会停用进场、切换、数字滚动等动画；页面内容仍然可用。',
+      },
+      {
+        path: 'ui.pageTransition', label: '页面切换动画', type: 'select', default: 'default',
+        options: [
+          { value: 'default', label: '默认（轻抬升 + 淡入）' },
+          { value: 'fade', label: '淡入（无位移）' },
+          { value: 'fade-slide', label: '自右轻移入' },
+          { value: 'fade-up', label: '自下轻移入' },
+          { value: 'fade-down', label: '自上轻移入' },
+          { value: 'none', label: '关闭切换动画' },
+        ],
+        help: '只控制标签页内容切换；关闭后其它动效（悬停、状态脉冲等）仍保留。',
+      },
     ],
   },
   {
@@ -402,6 +468,13 @@ export function normalizeConfig(raw) {
       refreshMs: pickNumber(merged.ui?.refreshMs, DEFAULTS.ui.refreshMs, { min: 500, max: 60000 }),
       eventPageSize: pickNumber(merged.ui?.eventPageSize, DEFAULTS.ui.eventPageSize, { min: 10, max: 500, integer: true }),
       logPageSize: pickNumber(merged.ui?.logPageSize, DEFAULTS.ui.logPageSize, { min: 10, max: 500, integer: true }),
+      // 外观/动效偏好：枚举非法时回退默认值，与 console-web 的 preference 校验语义一致。
+      accent: pickEnum(merged.ui?.accent, DEFAULTS.ui.accent, ['purple', 'blue', 'green', 'orange', 'inherit']),
+      density: pickEnum(merged.ui?.density, DEFAULTS.ui.density, ['compact', 'standard', 'comfortable']),
+      fontScale: pickEnum(merged.ui?.fontScale, DEFAULTS.ui.fontScale, ['small', 'standard', 'large']),
+      contentWidth: pickEnum(merged.ui?.contentWidth, DEFAULTS.ui.contentWidth, ['standard', 'wide', 'auto']),
+      motion: pickEnum(merged.ui?.motion, DEFAULTS.ui.motion, ['system', 'full', 'reduced', 'off']),
+      pageTransition: pickEnum(merged.ui?.pageTransition, DEFAULTS.ui.pageTransition, ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']),
     },
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),

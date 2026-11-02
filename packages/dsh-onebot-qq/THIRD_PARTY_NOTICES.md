@@ -27,7 +27,7 @@ Reused/adapted files:
 | `src/core/redact.js` | `src/core/redact.js` | Secret/token redaction rules for logs and error messages. |
 | `src/core/logger.js` | `src/core/logger.js` | Leveled logger with an in-memory ring buffer. Adapted: configurable level/buffer size/persistence and monotonic sequence numbers for incremental panel polling. |
 | `src/gateway/snowluma.js` | `src/snowluma/manager.js` | `detectInstall()` and `readOneBotEndpoint()` (read-only subset). Adapted: removed process management/password injection/launching (not needed, and SnowLuma's EULA restricts automated deployment); fixed the server-enabled check to accept SnowLuma 2.x `enabled` as well as `enable`. |
-| `client.js` | `client/client.js` | Panel structure, DSH theme-token usage, form-control and tab patterns, `ctx.slots` registration and `window.__ModuleLoader__` manifest form. Rewritten for this plugin's six tabs and data-driven config form. |
+| `client.js` | `client/client.js` | Aurabot 的 `window.__ModuleLoader__` 注册形状、`ctx.slots` 用法与 DSH 主题 token 用法是起点；本版面板的视觉与动效层已按 console-web 设计体系重写（见下节）。 |
 | `test/helpers/mock-onebot.js` | `test/helpers/mock-onebot.js` | In-memory OneBot v11 mock gateway (HTTP + WS framing). Extended with token-auth modes, delay/failure injection, event-push helpers and wait helpers. |
 | `test/helpers/fake-dsh.js` | `test/helpers/fake-dsh.js` | Minimal fake DSH context (`webServer`, `effect`, `logger`, `get`) for host-level tests. Reduced to only the services this package uses. |
 
@@ -57,6 +57,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## console-web (UI/UX & motion design reference)
+
+- Reference: the user's own frontend product foundation, formerly at
+  <https://github.com/reina0721/console-web> and mirrored locally as `C:\rin\coder\rin721\console-web`
+  (branch `dsh/117-page-transitions`, commit `a154f64`).
+- What was referenced: the design-token values in `packages/design-system/src/tokens.css` (light/dark
+  palette, accent presets, radius, shadow, density/font-scale/content-width/motion policy), the
+  Motion Foundation semantics in `docs/motion-foundation.md` and `packages/design-system/src/motion.css`
+  (`content.enter`, `content.swap`, `viewport.reveal`, `feedback.enter/exit`, `progress.trickle`,
+  reduced-motion policy), the appearance preference model in `surfaces/src/preferences-model.ts`, and
+  the layout/component archetypes in `packages/surface-foundation` / `packages/ui-adapter`
+  (PageHeader, Panel/Card, StatusPill, soft Tabs, StateSurface, Skeleton, FeedbackPresence).
+- What was **not** copied: no Tailwind/HeroUI/React source, no CSS files and no runtime dependency from
+  console-web are bundled. The browser half remains a dependency-free single file that uses only the
+  React instance injected by DeepSeek Harness; the tokens/motion recipes were re-implemented as scoped
+  CSS (`TOKEN_CSS` / `MOTION_CSS` / `PANEL_CSS`) and small React components in `client.js`.
+- Console-web's reference checkout contains no `LICENSE` file at the time of use; it is the user's own
+  project and was used with the user's explicit request/permission. This package's own license remains
+  MIT (see `LICENSE`).
+
 ## DeepSeek Harness
 
 - Upstream: <https://github.com/deepseek-ai/deepseek-harness>
@@ -64,7 +84,10 @@ SOFTWARE.
 - Reused: the bundle/client-plugin contract (`dsh.bundle.patch`, `dsh.client`, `window.__ModuleLoader__`
   registration), the DSH web UI theme tokens (`--dsw-alias-*`, `--dsw-radius-*`, `--dsw-font-*`) and the
   UI/UX rules from the shipped `dsh-client-ui-ux` / `dsh-responsive-ui` skills and `docs/web-styling.md`,
-  `docs/ui-radius.md`. No DSH source files are copied into this package.
+  `docs/ui-radius.md`. No DSH source files are copied into this package. The panel's visual/motion layer
+  intentionally goes beyond the shipped "字重 ≤500 / 只用 DSH 主题色" baseline per the owner's request to
+  follow console-web: display/heading weights and the console-web palette live in token variables only,
+  and all motion still honors `prefers-reduced-motion` / `ui.motion=reduced|off`.
 
 ```
 MIT License
