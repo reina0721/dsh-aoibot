@@ -1803,6 +1803,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-persona-data-groups{display:flex;flex-wrap:wrap;gap:8px 12px;min-width:0}
 .ob-check{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-small);color:var(--ob-ink);cursor:pointer}
 .ob-check input{accent-color:var(--ob-brand)}
+.ob-persona-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px;min-width:0}
+.ob-persona-file{max-width:min(100%,260px);font-size:var(--ob-text-small)}
+.ob-oktext{color:var(--ob-brand)}
+.ob-errtext{color:var(--ob-err,var(--ob-brand))}
 .ob-diagnostic-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
@@ -6154,6 +6158,41 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }
       }
 
+      const importPersonaFile = async (event) => {
+        const file = event.target.files && event.target.files[0]
+        event.target.value = ''
+        if (!file) return
+        setImportBusy(true)
+        try {
+          const text = await file.text()
+          const bundle = JSON.parse(text)
+          const result = await cogPost(props, '/cognition/persona/import', bundle)
+          if (result) {
+            applyPersonaPayload(result)
+            setImportOpen(false)
+            await loadData()
+            props.toast && props.toast('人格已导入并切换', 'ok')
+          }
+        } catch (error) {
+          props.toast && props.toast('导入失败：' + String(error && error.message ? error.message : error), 'err')
+        } finally {
+          setImportBusy(false)
+        }
+      }
+
+      const testModel = async () => {
+        setModelTestBusy(true)
+        try {
+          const result = await cogPost(props, '/cognition/llm/test', { system: '你是模型链路测试。', user: '只回复 OK。' })
+          setModelTest(result || { ok: false, error: 'REQUEST_FAILED', message: '请求失败' })
+          if (result && result.ok) props.toast && props.toast('模型链路正常', 'ok')
+        } catch (error) {
+          setModelTest({ ok: false, error: 'REQUEST_FAILED', message: String(error && error.message ? error.message : error) })
+        } finally {
+          setModelTestBusy(false)
+        }
+      }
+
       const updateTrait = (key, value) => {
         setPersona((previous) => previous ? Object.assign({}, previous, { traits: Object.assign({}, previous.traits, { [key]: value }) }) : previous)
         setDirty(true)
@@ -6231,6 +6270,18 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(Btn, { small: true, kind: 'primary', busy: personaBusy === 'create', onClick: createPersona }, '创建'),
             h(Btn, { small: true, kind: 'ghost', onClick: () => { setNewOpen(false); setNewName('') } }, '取消'),
           ) : null,
+          h('div', { className: 'ob-persona-tools' },
+            h(Btn, { small: true, kind: 'ghost', onClick: () => setImportOpen(!importOpen) }, importOpen ? '收起导入' : '导入人格 JSON'),
+            importOpen ? h('input', {
+              className: 'ob-input ob-persona-file', type: 'file', accept: '.json,application/json',
+              disabled: importBusy, onChange: importPersonaFile,
+            }) : null,
+            h(Btn, { small: true, kind: 'ghost', busy: modelTestBusy, onClick: testModel }, '测试模型链路'),
+            modelTest ? h('span', { className: modelTest.ok ? 'ob-small ob-oktext' : 'ob-small ob-errtext' },
+              modelTest.ok
+                ? '模型正常 · ' + String(modelTest.route?.provider || '') + '/' + String(modelTest.route?.model || '') + ' · ' + String(modelTest.latencyMs || 0) + 'ms'
+                : '模型失败：' + String(modelTest.error || '') + ' · ' + String(modelTest.message || '')) : null,
+          ),
           h('p', { className: 'ob-field-help', style: { marginTop: '8px' } }, '提示：人格库只保存人格本身；群聊参与方式仍是全局配置，不随人格切换。'),
         ),
         h(Panel, {

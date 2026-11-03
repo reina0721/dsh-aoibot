@@ -1,5 +1,5 @@
 {
-  "version": "0.8.0",
+  "version": "0.9.0",
   "date": "2026-11-03",
   "keyHandling": "OpenCode Go key read from environment for the standalone script; for the desktop-after-restart check it was sent over localhost to a temporary provider and then deleted. No key is stored in the repository, docs, screenshots, this evidence file, or the final models.json",
   "script": "packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs",
@@ -24,7 +24,7 @@
     "note": "mock QQ gateway; no real QQ account"
   },
   "desktopAfterRestart": {
-    "hostVersion": "0.8.0",
+    "hostVersion": "0.9.0",
     "gatewayState": "connected",
     "providerTests": [
       { "provider": "opencode-go", "protocol": "openai-completions", "model": "deepseek-v4.1-flash", "ok": true, "latencyMs": 1706 },

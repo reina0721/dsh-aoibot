@@ -5,7 +5,7 @@
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
 - 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket` + `node:sqlite`）
-- 插件版本：`dsh-onebot-qq@0.8.0`（本版新增人格级认知数据隔离与数据复制；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核、v0.5 模型协议、v0.6 人格工作台、v0.7 多人格库）
+- 插件版本：`dsh-onebot-qq@0.9.0`（本版修复 DSH 一次性模型调用、增加人格 JSON 导入与模型链路自检，并用 Aoi 蒸馏人格做真实 probe 闭环；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核、v0.5 模型协议、v0.6 人格工作台、v0.7 多人格库、v0.8 人格级数据）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,7 +15,7 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **142 个用例**：无 key 时 138 通过 + 4 live skip；提供 OpenCode key 时 142/142 通过（18 个测试文件） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **146 个用例**：无 key 时 142 通过 + 4 live skip；提供 OpenCode key 时 146/146 通过（20 个测试文件） |
 | 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition/SQLite、persona profile、models 预设检查） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
 | 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **10 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
@@ -24,13 +24,14 @@
 | 人格工作台 UI（v0.6） | ✅ 10 标签中「人格」可见；文本人设/边界/Prompt 预览/群聊参与/高级参数渲染；360px 无溢出 |
 | 多人格库（v0.7） | ✅ 新建/复制/切换/删除；API 与浏览器 smoke：3+ 份人格、activeId 切换、UI 新建、360px 无溢出 |
 | 人格级认知数据（v0.8） | ✅ 记忆/人物/关系/情绪/策略/学习/技能/诊断按人格隔离；旧数据迁移到默认人格；指定组复制到当前人格 |
+| DSH 模型调用/人格导入（v0.9） | ✅ 一次性调用形状修复；`/cognition/llm/test` 返回真实 route/延迟/错误；Aoi 导入后私聊/群聊真实回复各 1 条 |
 | 群聊参与（v0.6） | ✅ all 模式未点名消息产生决策且 `groupSkipped=0`；addressed 模式仍跳过；冷却/概率/名字唤醒有集成测试 |
 | 模型页 UI（真实 DSH + 真实 provider） | ✅ provider 列表/编辑/测试/选择；密钥只显示后四位；360px 无溢出；无页面异常 |
 | 模型协议 live（OpenCode Go key） | ✅ OpenAI 流式/非流式 + Anthropic 流式 + 模型发现；真实认知 analysis + compose 发送成功 |
 | 模型发现（公开端点） | ✅ OpenRouter 451 个模型；Command Code 84 个可用（按 supported_endpoints 过滤） |
 | UI/动效/设置断言（`document.getAnimations()`、主题、即时保存、持久壳、浅/暗色、窄屏） | ✅ **48 / 48 布尔断言全过**（见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
-| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.8.0 需要重启一次 DSH |
-| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）、模型网关集成缺陷（§6.3）、人格/群聊可见性缺陷（§6.4）、单人格限制（§6.5）与认知数据全局共享（§6.6） |
+| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.9.0 需要重启一次 DSH |
+| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）、模型网关集成缺陷（§6.3）、人格/群聊可见性缺陷（§6.4）、单人格限制（§6.5）、认知数据全局共享（§6.6）与 DSH 一次性调用形状/无诊断问题（§6.7） |
 
 截图（本目录 `docs/verification/`）：
 
@@ -269,7 +270,7 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 
 | 检查 | 结果 |
 |---|---|
-| 全量测试 | ✅ 142/142（有 OpenCode key；无 key 128 pass + 4 live skip） |
+| 全量测试 | ✅ 146/146（有 OpenCode key；无 key 128 pass + 4 live skip） |
 | 真实 DSH `verify-plugin.ps1` | ✅ PASS；`version=0.6.0`、`groupMode=addressed`、persona profile 可读 |
 | 浏览器 10 标签 | ✅ 概览/连接/消息/配置/人格/模型/系统设置/认知/日志/关于 |
 | 人格工作台 | ✅ 名字/身份/背景/性格/风格/喜好/边界/示例；Prompt 预览；高级 12+6 参数；保存后 API 持久化 |
@@ -319,6 +320,47 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
   [`persona-data-after-copy.png`](verification/persona-data-after-copy.png)、
   [`persona-data-narrow.png`](verification/persona-data-narrow.png)。
 - 原始证据：[`persona-data-summary.json`](verification/persona-data-summary.json)。
+
+### 4.7 DSH 模型调用修复与 Aoi 人格闭环（v0.9.0）
+
+**修复前实测（desktop 0.8.0）**：
+
+```text
+groupMode=all, turns=7, decisions=7, sent=0, degraded=14
+lastTurn.outcome=degraded, reason=LLM_PROVIDER_ERROR
+persona: self, displayName="", hasProfile=false
+```
+
+结论：消息已进入认知流程，但所有生成都死在模型调用；同时没有导入人格，所以不可能看到效果。
+
+**修复**：
+
+- DSH one-shot 改为顶层 `system` + 只含 user input 的 `messages`；
+- 默认不向 DSH route 发送 `temperature`；
+- provider finish error 保留真实 `failure.message`；
+- `POST /cognition/llm/test` 用于独立验证 route。
+
+**真实 probe（真实 DSH + direct OpenCode route + mock OneBot）**：
+
+- 导入 `深作葵`，activeId 指向 Aoi；
+- `/cognition/llm/test` → `ok=true`，route `opencode-go/deepseek-v4.1-flash`；
+- 私聊“你是谁？”实际发送：
+  > 我是深作葵，原型来自《COPPELION》。这里是虚拟角色版本，由 DSH/QQ 负载运行，不是真人。先认识现在的你吧。
+- 群聊（all 模式、未 @）“今天的待办像山一样。”实际发送：
+  > 嗯，先别急着搬整座山。今天最占你精力的是哪一件？挑出来，我们先处理这一小块。
+- 人格页新增「导入人格 JSON」「测试模型链路」控件；`client.js` 构建通过，API 导入/自检由 e2e 与 probe 覆盖。
+- pipeline：`sent=2`、`degraded=0`、`groupSkipped=0`、`lastTurn.outcome=sent`；
+
+**边界**：
+
+- probe 的 DSH default route 没有 `DEEPSEEK_API_KEY`，`/llm/test` 真实返回
+  “no API key for provider route”，证明错误不再被吞；随后用 direct OpenCode route 完成闭环。
+- desktop 的 DSH route 依赖启动环境中的 provider key；重启到 v0.9 后必须先点「测试模型链路」，
+  成功后再把 Aoi 用于真实 QQ。若失败，页面会显示 provider 原文而不是只有 `LLM_PROVIDER_ERROR`。
+- Aoi 只导入核心人格（identity/style/derived traits/boundaries/examples + canon 摘要），
+  没有移植其完整 CRDE/brain 五层适配器；外部仓库没有 LICENSE，原文不进入本仓库。
+
+原始证据：`docs/verification/aoi-closed-loop.json`（本地 probe 结果，含生成回复）。
 
 ## 5. 复用与配置化核对
 
@@ -425,13 +467,22 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 | 需要“把一个人格的数据给另一个” | 人格页「认知数据」支持选来源人格 + 数据组，单向替换当前人格对应组；来源不变 |
 | 删除人格留下孤儿数据 | 删除成功后清理该人格全部 scoped 数据 |
 
+### 6.7 DSH 一次性调用与无诊断问题
+
+| 问题 | 修复 |
+|---|---|
+| DSH one-shot 把 system 伪造为 system-role Message，且强制 temperature | 改为顶层 `system` + identity-free user messages；默认不发 temperature |
+| 失败只记录 `LLM_PROVIDER_ERROR`，看不到 provider 原因 | 保留 `finish.reason.failure.message`；写日志/overview.lastFailure/`/llm/test` attempts |
+| 没有独立模型自检，无法区分“人格没效果”和“模型没通” | 新增 `POST /cognition/llm/test`，UI 人格页按钮；真实显示 route、延迟或错误 |
+| 外部人格无法导入 | 新增 `persona-import@1`、UI 文件导入、Aoi 转换脚本 |
+
 ## 7. 安装进当前 DSH profile
 
 - 当前 GUI（`http://127.0.0.1:60932`）属于 `desktop` profile。验证完成后通过 DSH 的插件管理
   （`plugin_manager` / `dsh plugin add`）把本包安装/链接进 `desktop` profile；
   安装结果与「是否需要刷新页面 / 重启 DSH」以安装工具返回的 `application` 字段为准。
-- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.8.0`（`link:` 指向本仓库的 source 目录，
-  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.8.0（新增人格级认知数据）；
+- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.9.0`（`link:` 指向本仓库的 source 目录，
+  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.9.0（DSH 调用修复、人格导入、模型自检）；
   仅刷新页面只会加载客户端部分。
 - 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；模型 provider/密钥在 `models.json`，
   不在 `config.json` 中，不会被 `/config` 回传。验证产生的临时 provider 已删除；mock 连接配置已

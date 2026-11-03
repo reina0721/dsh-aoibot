@@ -161,3 +161,37 @@ test('多人格：ID/显示名清洗、复制不共享引用', () => {
   assert.equal(service.getById('missing'), null)
   assert.equal(service.activate('missing').ok, false)
 })
+
+test('人格导入：profile/traits/style/source 一次性写入并激活，不覆盖 self', () => {
+  const clock = createClock()
+  const store = createMemoryStore()
+  const service = serviceFor(store, clock)
+  service.ensure()
+  const imported = service.importPersona({
+    name: '深作葵',
+    profile: {
+      displayName: '深作葵',
+      tagline: '虚拟角色版',
+      identity: 'COPPELION 的虚拟角色',
+      personality: '害怕与关心并存',
+      speakingStyle: '中文短句；严肃时停玩笑',
+      boundaries: ['不伪造真人经历'],
+      examples: '用户：你是谁？\n葵：我是深作葵。',
+    },
+    traits: { extraversion: 0.55, caution: 0.65 },
+    style: { formality: 0.2, warmth: 0.75 },
+    values: ['尊重边界'],
+    source: { repo: 'https://example.invalid/aoi', commit: 'abc123', version: 'test' },
+  })
+  assert.equal(imported.ok, true)
+  assert.equal(imported.activeId, imported.persona.id)
+  assert.equal(service.get().id, imported.persona.id)
+  assert.equal(imported.persona.profile.displayName, '深作葵')
+  assert.equal(imported.persona.profile.identity, 'COPPELION 的虚拟角色')
+  assert.equal(imported.persona.traits.extraversion, 0.55)
+  assert.equal(imported.persona.style.warmth, 0.75)
+  assert.deepEqual(imported.persona.values, ['尊重边界'])
+  assert.equal(imported.persona.source.commit, 'abc123')
+  assert.equal(service.getById('self').profile.displayName, '', 'self 不被覆盖')
+  assert.equal(service.list().find((item) => item.id === imported.persona.id).source.commit, 'abc123')
+})

@@ -387,6 +387,7 @@ export function createCognition({
   function personaList() { return state.services.persona?.list?.() || [] }
   function activePersonaId() { return state.services.persona?.activeId?.() || '' }
   function createPersona(patch) { return state.services.persona?.create?.(patch || {}) || null }
+  function importPersona(patch) { return state.services.persona?.importPersona?.(patch || {}) || null }
   function duplicatePersona(personaId) { return state.services.persona?.duplicate?.(personaId) || null }
   function switchPersona(personaId) { return state.services.persona?.activate?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' } }
   function deletePersona(personaId) {
@@ -402,6 +403,7 @@ export function createCognition({
     if (!persona) return null
     return { ...personaDataCounts({ base: state.store, personaId: id }), persona }
   }
+  function testLlm(payload = {}) { return state.services.llm?.test?.(payload) || { ok: false, error: 'LLM_UNAVAILABLE', message: 'LLM 服务不可用' } }
   function personaDataAll() {
     return personaList().map((item) => ({
       id: item.id,
@@ -410,8 +412,7 @@ export function createCognition({
       ...personaDataCounts({ base: state.store, personaId: item.id }),
     }))
   }
-  function copyPersonaData(from, to, groups) {
-    const source = state.services.persona?.getById?.(from)
+  function copyPersonaData(from, to, groups) {    const source = state.services.persona?.getById?.(from)
     const target = state.services.persona?.getById?.(to)
     if (!source || !target) return { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' }
     return copyPersonaDataService({ base: state.store, from: source.id, to: target.id, groups, clock })
@@ -505,12 +506,14 @@ export function createCognition({
     personaList,
     activePersonaId,
     createPersona,
+    importPersona,
     duplicatePersona,
     switchPersona,
     deletePersona,
     personaDataSummary,
     personaDataAll,
     copyPersonaData,
+    testLlm,
     editPersona,
     resetPersona,
     decisions,

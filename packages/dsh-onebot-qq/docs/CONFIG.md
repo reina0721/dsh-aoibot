@@ -202,6 +202,11 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 支持 Node.js 22.13+ 的 `node:sqlite`；不可用时自动回退为 `cognition.json`，接口保持同一套。
 升级不会重置认知状态。
 
+**DSH 模型一次性调用**：`system` 走 `GenerateOptions.system`，`messages` 只放 identity-free user input；
+默认不向 DSH route 发送 `temperature`（`cognition.llm.dshTemperature` 才显式发送）。
+`POST /cognition/llm/test` 返回真实 route、延迟、失败 attempts 与 provider message，用于区分
+“没有 API key / 模型不可用 / 参数不支持”。
+
 **文本人设 / 多人格**：每条 `persona` 记录的 `profile` 字段（`displayName/tagline/identity/background/personality/speakingStyle/likes/dislikes/boundaries/examples`）
 由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。多份人格用 `persona.activeId` setting 记录当前激活项，
 切换后下一轮消息生效；旧 `self` 自动成为默认人格。文本 profile 优先于数值 style，但不能覆盖安全/隐私边界。
@@ -210,6 +215,10 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `setting/persona/state/raw_event/turn/llm_usage/audit_log` 保持全局。旧数据在启动时迁移到默认人格，
 迁移标记为 `setting.persona.dataMigration.v08`；人格页的「复制数据」调用 `POST /cognition/persona/data/copy`，
 按数据组单向替换目标人格。
+
+**人格导入**：`POST /cognition/persona/import` 接受 `persona-import@1`：
+`{name, profile, traits, style, values, locked, source, activate}`；服务端重新 sanitize/截断，
+设置为 active；不覆盖 `self`。`scripts/import-aoi-persona.mjs` 用于把外部蒸馏包转换成该格式。
 
 ### 3.11 模型网关（`models.json`）
 

@@ -1,13 +1,13 @@
 {
     "ok":  true,
-    "startedAt":  "2026-11-03T12:22:47.1064374-05:00",
-    "finishedAt":  "2026-11-03T12:22:55.0926559-05:00",
+    "startedAt":  "2026-11-03T13:23:29.6883794-05:00",
+    "finishedAt":  "2026-11-03T13:23:37.3551302-05:00",
     "dshPath":  "C:\\Users\\Run\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\runtime\\cli\\bin\\dsh.cmd",
     "dshVersion":  "0.2.1-rc.3",
     "profile":  "lead-ui",
     "port":  3198,
     "dataDir":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\plugin-data",
-    "bootUrl":  "http://127.0.0.1:3198/?token=qT9WnizS1lzFr-z8hBwA1t0RBqqweK4gg0fqCWQATYM",
+    "bootUrl":  "http://127.0.0.1:3198/?token=ZRfx3AtpUHUQNWsI-3JltzN13i7gYM3oq9MJAj6AyoM",
     "pluginRoot":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq",
     "evidenceDir":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out",
     "steps":  [
@@ -15,169 +15,169 @@
                       "name":  "preflight: dsh CLI exists",
                       "ok":  true,
                       "detail":  "C:\\Users\\Run\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\runtime\\cli\\bin\\dsh.cmd",
-                      "at":  "2026-11-03T12:22:47.1736615-05:00"
+                      "at":  "2026-11-03T13:23:29.7343895-05:00"
                   },
                   {
                       "name":  "preflight: dsh --version",
                       "ok":  true,
                       "detail":  "0.2.1-rc.3",
-                      "at":  "2026-11-03T12:22:47.4398103-05:00"
+                      "at":  "2026-11-03T13:23:29.9465038-05:00"
                   },
                   {
                       "name":  "preflight: plugin package.json exists",
                       "ok":  true,
                       "detail":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\package.json",
-                      "at":  "2026-11-03T12:22:47.4398103-05:00"
+                      "at":  "2026-11-03T13:23:29.9475035-05:00"
                   },
                   {
                       "name":  "preflight: package name is dsh-onebot-qq",
                       "ok":  true,
                       "detail":  "dsh-onebot-qq",
-                      "at":  "2026-11-03T12:22:47.4952307-05:00"
+                      "at":  "2026-11-03T13:23:29.9882951-05:00"
                   },
                   {
                       "name":  "preflight: client.js (web panel half) exists",
                       "ok":  true,
                       "detail":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\client.js",
-                      "at":  "2026-11-03T12:22:47.4992272-05:00"
+                      "at":  "2026-11-03T13:23:29.9918162-05:00"
                   },
                   {
                       "name":  "preflight: profile name is a throwaway profile",
                       "ok":  true,
                       "detail":  "lead-ui",
-                      "at":  "2026-11-03T12:22:47.5012342-05:00"
+                      "at":  "2026-11-03T13:23:29.9948115-05:00"
                   },
                   {
                       "name":  "preflight: profile path inside $DSH_HOME/profiles",
                       "ok":  true,
                       "detail":  "C:\\Users\\Run\\.dsh\\profiles\\lead-ui",
-                      "at":  "2026-11-03T12:22:47.5111896-05:00"
+                      "at":  "2026-11-03T13:23:30.0046335-05:00"
                   },
                   {
                       "name":  "preflight: verification port is free",
                       "ok":  true,
                       "detail":  "port 3198",
-                      "at":  "2026-11-03T12:22:48.9049390-05:00"
+                      "at":  "2026-11-03T13:23:31.6472283-05:00"
                   },
                   {
                       "name":  "profile: old throwaway profile removed",
                       "ok":  true,
                       "detail":  "(none existed)",
-                      "at":  "2026-11-03T12:22:48.9049390-05:00"
+                      "at":  "2026-11-03T13:23:31.6517470-05:00"
                   },
                   {
                       "name":  "profile: created from the shipped web template",
                       "ok":  true,
                       "detail":  "exit=0; log=C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\profile-create.log",
-                      "at":  "2026-11-03T12:22:49.1983771-05:00"
+                      "at":  "2026-11-03T13:23:31.9643582-05:00"
                   },
                   {
                       "name":  "install: plugin added as profile dependency",
                       "ok":  true,
                       "detail":  "dependency=link:C:/rin/coder/rin721/dsh-bot/packages/dsh-onebot-qq; exit=0; log=C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\plugin-add.log",
-                      "at":  "2026-11-03T12:22:50.0281998-05:00"
+                      "at":  "2026-11-03T13:23:32.6991163-05:00"
                   },
                   {
                       "name":  "install: dsh-onebot-qq registered in dsh.profile.bundles",
                       "ok":  true,
                       "detail":  "@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-onebot-qq",
-                      "at":  "2026-11-03T12:22:50.0281998-05:00"
+                      "at":  "2026-11-03T13:23:32.7006251-05:00"
                   },
                   {
                       "name":  "boot: DSH started in background",
                       "ok":  true,
-                      "detail":  "pid=42808; boot log=C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\boot.log",
-                      "at":  "2026-11-03T12:22:50.1245164-05:00"
+                      "detail":  "pid=11312; boot log=C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\boot.log",
+                      "at":  "2026-11-03T13:23:32.7248981-05:00"
                   },
                   {
                       "name":  "api: GET /onebot-qq/api/health is ok",
                       "ok":  true,
-                      "detail":  "state=unconfigured; version=0.8.0; attempts=2",
-                      "at":  "2026-11-03T12:22:52.6896857-05:00"
+                      "detail":  "state=unconfigured; version=0.9.0; attempts=2",
+                      "at":  "2026-11-03T13:23:35.3022555-05:00"
                   },
                   {
                       "name":  "api: GET /onebot-qq/api/status returns a gateway snapshot",
                       "ok":  true,
                       "detail":  "gateway.state=unconfigured; apiVersion=1",
-                      "at":  "2026-11-03T12:22:53.0637389-05:00"
+                      "at":  "2026-11-03T13:23:35.3072644-05:00"
                   },
                   {
                       "name":  "api: DSH_ONEBOT_QQ_DATA_DIR override honored (isolated verification data)",
                       "ok":  true,
                       "detail":  "reported=C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\plugin-data",
-                      "at":  "2026-11-03T12:22:53.0677469-05:00"
+                      "at":  "2026-11-03T13:23:35.3124573-05:00"
                   },
                   {
                       "name":  "api: plugin wrote its config.json into the isolated data dir",
                       "ok":  true,
                       "detail":  "C:\\rin\\coder\\rin721\\dsh-bot\\packages\\dsh-onebot-qq\\verify-out\\plugin-data\\config.json",
-                      "at":  "2026-11-03T12:22:53.0677469-05:00"
+                      "at":  "2026-11-03T13:23:35.3134546-05:00"
                   },
                   {
                       "name":  "api: GET /onebot-qq/api/config exposes the field groups",
                       "ok":  true,
                       "detail":  "",
-                      "at":  "2026-11-03T12:22:53.0882421-05:00"
+                      "at":  "2026-11-03T13:23:35.3368021-05:00"
                   },
                   {
                       "name":  "cognition: overview API ready and SQLite database created",
                       "ok":  true,
                       "detail":  "ready=True; mode=sqlite; groupMode=addressed; skills=13",
-                      "at":  "2026-11-03T12:22:53.1070627-05:00"
+                      "at":  "2026-11-03T13:23:35.3560414-05:00"
                   },
                   {
                       "name":  "persona: /cognition/persona exposes editable profile + library",
                       "ok":  true,
                       "detail":  "personaVersion=1; displayName=; personas=1; activeId=self",
-                      "at":  "2026-11-03T12:22:53.1070627-05:00"
+                      "at":  "2026-11-03T13:23:35.3655340-05:00"
                   },
                   {
                       "name":  "persona data: scoped summaries + copy API ready",
                       "ok":  true,
                       "detail":  "personas=1; groups=8; total=14",
-                      "at":  "2026-11-03T12:22:53.1271099-05:00"
+                      "at":  "2026-11-03T13:23:35.3738060-05:00"
                   },
                   {
                       "name":  "models: protocol presets and provider API available",
                       "ok":  true,
                       "detail":  "presets=12; protocols=5; providers=0",
-                      "at":  "2026-11-03T12:22:53.1278685-05:00"
+                      "at":  "2026-11-03T13:23:35.3800053-05:00"
                   },
                   {
                       "name":  "web: parsed tokenized boot URL from boot.log",
                       "ok":  true,
-                      "detail":  "http://127.0.0.1:3198/?token=qT9WnizS1lzFr-z8hBwA1t0RBqqweK4gg0fqCWQATYM",
-                      "at":  "2026-11-03T12:22:53.1401528-05:00"
+                      "detail":  "http://127.0.0.1:3198/?token=ZRfx3AtpUHUQNWsI-3JltzN13i7gYM3oq9MJAj6AyoM",
+                      "at":  "2026-11-03T13:23:35.3883719-05:00"
                   },
                   {
                       "name":  "web: GET boot page with token",
                       "ok":  true,
                       "detail":  "bytes=38141; saved to boot-page.html",
-                      "at":  "2026-11-03T12:22:53.1746307-05:00"
+                      "at":  "2026-11-03T13:23:35.4285405-05:00"
                   },
                   {
                       "name":  "web: boot page references the dsh-onebot-qq client plugin",
                       "ok":  true,
                       "detail":  "expects dsh-onebot-qq in the __DSH_BOOT__ plugin list",
-                      "at":  "2026-11-03T12:22:53.1751353-05:00"
+                      "at":  "2026-11-03T13:23:35.4315648-05:00"
                   },
                   {
                       "name":  "web: boot page references client.js assets",
                       "ok":  true,
                       "detail":  "every DSH client plugin is served as client.js",
-                      "at":  "2026-11-03T12:22:53.1751353-05:00"
+                      "at":  "2026-11-03T13:23:35.4335703-05:00"
                   },
                   {
                       "name":  "cleanup: DSH process tree stopped",
                       "ok":  true,
                       "detail":  "port 3198 released",
-                      "at":  "2026-11-03T12:22:55.0621993-05:00"
+                      "at":  "2026-11-03T13:23:37.3082097-05:00"
                   },
                   {
                       "name":  "cleanup: temporary profile removed",
                       "ok":  true,
                       "detail":  "C:\\Users\\Run\\.dsh\\profiles\\lead-ui",
-                      "at":  "2026-11-03T12:22:55.0786420-05:00"
+                      "at":  "2026-11-03T13:23:37.3221990-05:00"
                   }
               ]
 }

@@ -29,6 +29,7 @@ function routeKey(route) {
 export function createLlmClient({ ctx, models = null, getConfig, store, clock, log } = {}) {
   const cfg = () => getConfig()?.cognition || {}
   let serviceWarning = ''
+  let lastFailure = null
 
   function llmService() {
     try {
@@ -140,23 +141,31 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     const controller = new AbortController()
     const timeout = Math.max(1000, Number(timeoutMs || c.timeoutMs || 45000))
     const timer = setTimeout(() => controller.abort(), timeout)
-    const messages = []
-    if (system) messages.push({ role: 'system', content: [{ type: 'text', text: String(system) }] })
-    messages.push({ role: 'user', content: [{ type: 'text', text: String(user || '') }] })
+    // DSH 的手工一次性调用只放 identity-free user input；system 必须走顶层字段。
+    // 旧写法把 system 伪装成 system-role Message（缺 id/source），并强制 temperature；
+    // 某些 provider 会因此返回 provider error。
+    const messages = [{ role: 'user', content: [{ type: 'text', text: String(user || '') }] }]
     let text = ''
     let usageTokens = 0
     let finish = null
     const budget = Math.max(64, Number(maxTokens || (purpose === 'compose' ? c.composeMaxTokens : c.analysisMaxTokens) || 700))
+    const options = {
+      provider: route.provider,
+      model: route.model,
+      ...(system ? { system: String(system) } : {}),
+      ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}),
+      messages,
+      maxTokens: budget,
+      signal: controller.signal,
+    }
+    // 只有显式配置才向 DSH route 发送 temperature；默认沿用模型/路由自身设置。
+    if (Number.isFinite(Number(c.dshTemperature))) {
+      options.temperature = Math.min(1.5, Math.max(0, Number(c.dshTemperature)))
+    } else if (Number.isFinite(Number(temperature)) && c.dshTemperature === undefined && c.dshSendTemperature === true) {
+      options.temperature = Math.min(1.5, Math.max(0, Number(temperature)))
+    }
     try {
-      const stream = llm.stream({
-        provider: route.provider,
-        model: route.model,
-        ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}),
-        messages,
-        temperature: Math.min(1.5, Math.max(0, Number(temperature ?? c.temperature ?? 0.7))),
-        maxTokens: budget,
-        signal: controller.signal,
-      })
+      const stream = llm.stream(options)
       for await (const chunk of stream) {
         if (!chunk || typeof chunk !== 'object') continue
         if (chunk.type === 'text-delta' && chunk.text) text += chunk.text
@@ -165,16 +174,19 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
         if (estimateTokens(text) > budget * 2.5) { controller.abort(); break }
       }
     } catch (error) {
-      return { ok: false, error: 'LLM_CALL_FAILED', message: String(error?.message || error), route, degraded: true }
+      return { ok: false, error: error?.code || 'LLM_CALL_FAILED', message: String(error?.message || error), route, degraded: true }
     } finally {
       clearTimeout(timer)
     }
     const estimated = usageTokens || (estimateTokens(system) + estimateTokens(user) + estimateTokens(text))
     if (finish?.reason?.kind === 'error' || finish?.reason?.kind === 'aborted') {
+      const failure = finish.reason.failure || {}
+      const failureCode = String(failure.code || failure.type || '').trim()
       return {
         ok: false,
         error: finish.reason.kind === 'aborted' ? 'LLM_ABORTED' : 'LLM_PROVIDER_ERROR',
-        message: finish.reason.failure?.message || '模型调用失败',
+        message: String(failure.message || failureCode || '模型调用失败'),
+        code: failureCode,
         route,
         degraded: true,
       }
@@ -252,17 +264,48 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       const tokens = Number(result.tokens || result.usage?.total || 0)
         || estimateTokens(system) + estimateTokens(user) + estimateTokens(result.text || '')
       if (tokens) recordUsage(tokens)
-      if (result.ok && String(result.text || '').trim()) return result
-      failures.push({ provider: attempt.provider, model: attempt.model, source: attempt.source, kind: attempt.kind, error: result.error, message: truncate(result.message || '', 240) })
+      if (result.ok && String(result.text || '').trim()) {
+        lastFailure = null
+        return result
+      }
+      failures.push({
+        provider: attempt.provider,
+        model: attempt.model,
+        source: attempt.source,
+        kind: attempt.kind,
+        error: result.error,
+        message: truncate(result.message || '', 500),
+      })
       log?.debug?.('模型路由失败，尝试下一个：', `${attempt.provider}/${attempt.model}`, result.error || '')
     }
     const last = failures[failures.length - 1] || {}
+    lastFailure = {
+      at: clock.now(),
+      error: last.error || 'LLM_ALL_ROUTES_FAILED',
+      message: last.message || '所有模型路由均失败',
+      attempts: failures,
+    }
+    log?.warn?.('模型链路失败：' + lastFailure.error + ' · ' + lastFailure.message + ' · ' + failures.map((item) => item.provider + '/' + item.model + ':' + item.error).join(', '))
     return {
       ok: false,
       error: failures.some((item) => item.error === 'EMPTY_OUTPUT') ? 'EMPTY_OUTPUT' : (last.error || 'LLM_ALL_ROUTES_FAILED'),
       message: last.message || '所有模型路由均失败',
       degraded: true,
       attempts: failures,
+    }
+  }
+
+  async function test({ system = '你是模型链路测试。', user = '只回复 OK。', timeoutMs = 15000, maxTokens = 32 } = {}) {
+    const started = clock.now()
+    const result = await complete({ system, user, maxTokens, timeoutMs, purpose: 'analysis' })
+    return {
+      ok: Boolean(result.ok && String(result.text || '').trim()),
+      route: result.route || (result.attempts && result.attempts[0]) || null,
+      text: result.text || '',
+      error: result.error || '',
+      message: result.message || '',
+      attempts: result.attempts || [],
+      latencyMs: Math.max(0, clock.now() - started),
     }
   }
 
@@ -288,6 +331,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       usageToday: todayUsage(),
       budget: Number(cfg().llm?.dailyTokenBudget || 0),
       budgetLeft: budgetLeft(),
+      lastFailure,
     }
   }
 
@@ -295,5 +339,5 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return resolveDshRoute()
   }
 
-  return { complete, completeJson, resolveRoute, status, budgetLeft, todayUsage, buildAttempts }
+  return { complete, completeJson, test, resolveRoute, status, budgetLeft, todayUsage, buildAttempts }
 }

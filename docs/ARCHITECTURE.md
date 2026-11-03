@@ -212,6 +212,8 @@ export function normalizeEvent(raw, cfg) -> null | {
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
 - LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
   路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
+  DSH 一次性调用使用顶层 `system` + identity-free user `messages`，默认不发送 temperature；失败保留 provider
+  message 并通过 `/cognition/llm/test` 自检。
   persona 记录含 12 维特质 + 6 维风格 + 文本 `profile`；可保存多份，`setting.persona.activeId` 指向当前激活项。
   文本 profile 进入 analysis/compose prompt（约 2000 字符上限），
   空字段不注入。每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
@@ -219,8 +221,8 @@ export function normalizeEvent(raw, cfg) -> null | {
   `probability` 未点名按概率采样；`all` 全部进入策略但仍可沉默。发送前有同群冷却与每分钟上限；跳过写记忆、trace 与
   `lastTurn` 诊断字段，不调用 LLM。旧 `addressedOnlyGroups=false` / `policy.groupAmbient=true` 非破坏性映射为 `all`。
 - 人格编辑/人格库：`POST /cognition/persona/edit` 接受 `profile` 和可选 `personaId`，清洗/截断后写对应 persona 记录并追加
-  history/version；`create/switch/delete` 管理人格库，至少保留一份；旧 `self` 自动成为默认。UI 顶层「人格」工作台与
-  「认知 → 人格」共享同一数据源。
+  history/version；`create/switch/delete` 管理人格库，至少保留一份；`import` 接受 `persona-import@1` 一次性创建并激活。
+  旧 `self` 自动成为默认。UI 顶层「人格」工作台与「认知 → 人格」共享同一数据源。
 - 人格级认知数据：`createPersonaScopedStore` 在 store facade 层把非全局 kind 自动加 `persona_<id>:` 前缀，服务层无需
   知道人格；全局 kind（setting/persona/state/raw_event/turn/llm_usage/audit_log）不隔离。启动时把旧无前缀数据迁到
   默认人格（幂等标记）；删除人格会清理其数据。`copyPersonaData` 按数据组从一家格单向复制到另一人格，复制后继续独立。

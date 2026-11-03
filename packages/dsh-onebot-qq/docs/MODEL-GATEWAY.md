@@ -1,6 +1,6 @@
 # 模型协议与模型网关（MODEL-GATEWAY）
 
-> 版本：`dsh-onebot-qq@0.8.0`（模型层自 v0.5.0 起）。本文描述统一模型协议层、直连 provider、DSH 路由、密钥/安全边界、
+> 版本：`dsh-onebot-qq@0.9.0`（模型层自 v0.5.0 起）。本文描述统一模型协议层、直连 provider、DSH 路由、密钥/安全边界、
 > REST API、UI 与验证方式。实现代码：`packages/dsh-onebot-qq/src/model/`。
 
 ## 1. 为什么需要这一层
@@ -180,7 +180,10 @@ cognition pipeline
 
 - `auto` 保持向后兼容；想让 bot 用自己的模型，选 `direct` 或 `chain`。
 - 每次尝试记录 provider/model/protocol/latency/error；最终失败返回 degraded，不伪造回复。
-- `llm.status()` 暴露 `dsh`、`direct`、`selected`、`models` 和预算，认知概览页展示。
+- `llm.status()` 暴露 `dsh`、`direct`、`selected`、`models`、`lastFailure` 和预算，认知概览页展示。
+- DSH 一次性调用：`system` 放顶层字段，`messages` 只放 identity-free user input；默认不发送
+  `temperature`，只有显式 `cognition.llm.dshTemperature` 才发送。provider 失败原因会保留到
+  decisions/log/`lastFailure`，可用 `POST /cognition/llm/test` 单独验证。
 
 ## 8. REST API
 

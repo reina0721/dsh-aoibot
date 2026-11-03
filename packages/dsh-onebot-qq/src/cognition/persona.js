@@ -253,6 +253,7 @@ export function personaPublicItem(persona, activeId = '') {
     version: Number(persona?.version) || 1,
     active: persona?.id === activeId,
     hasProfile: Object.values(profile).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim())),
+    source: persona?.source ? { repo: persona.source.repo || '', commit: persona.source.commit || '', version: persona.source.version || '' } : null,
     createdAt: Number(persona?.createdAt) || 0,
     updatedAt: Number(persona?.updatedAt) || 0,
   }
@@ -338,26 +339,42 @@ export function createPersonaService({ store, getConfig, clock }) {
     return store.get('persona', id)
   }
 
-  function create({ name = '', copyFrom = '', activate = true } = {}) {
+  function create({ name = '', copyFrom = '', activate = true, profile = null, traits = null, style = null, values = null, locked = null, source = null, reason = '' } = {}) {
     const active = ensureActiveId()
-    const source = copyFrom ? getById(copyFrom === 'active' ? active : copyFrom) : null
+    const fromPersona = copyFrom ? getById(copyFrom === 'active' ? active : copyFrom) : null
     const now = clock.now()
     const id = uid('persona')
     const count = records().length
-    const displayName = cleanText(name, PROFILE_TEXT_LIMITS.displayName) || (source ? `${source.profile?.displayName || '人格'} 副本` : `人格 ${count + 1}`)
-    const base = source ? deepClone(source) : defaultPersona(cfg())
+    const base = fromPersona ? deepClone(fromPersona) : defaultPersona(cfg())
+    const patchProfile = profile && typeof profile === 'object' ? profile : {}
+    const displayName = cleanText(name, PROFILE_TEXT_LIMITS.displayName)
+      || cleanText(patchProfile.displayName, PROFILE_TEXT_LIMITS.displayName)
+      || (fromPersona ? `${fromPersona.profile?.displayName || '人格'} 副本` : `人格 ${count + 1}`)
+    const patchTraits = traits && typeof traits === 'object' ? traits : {}
+    const patchStyle = style && typeof style === 'object' ? style : {}
+    const mergedTraits = {}
+    for (const key of TRAIT_KEYS) mergedTraits[key] = Number(patchTraits[key] ?? base.traits?.[key] ?? 0.5)
+    const mergedStyle = {}
+    for (const key of STYLE_KEYS) mergedStyle[key] = Number(patchStyle[key] ?? base.style?.[key] ?? 0.5)
+    const imported = Boolean(source && (source.repo || source.repoUrl || source.format || source.file))
+    const historyReason = imported ? 'imported' : (fromPersona ? 'duplicated' : 'created')
     const persona = sanitizePersona({
       ...base,
       id,
-      profile: { ...(base.profile || {}), displayName },
+      profile: { ...(base.profile || {}), ...patchProfile, displayName },
+      traits: mergedTraits,
+      style: mergedStyle,
+      values: Array.isArray(values) ? values : base.values,
+      locked: Array.isArray(locked) ? locked : (fromPersona ? [...fromPersona.locked] : []),
+      ...(source ? { source: deepClone(source) } : {}),
       version: 1,
-      locked: source ? [...source.locked] : [],
-      history: [{ at: now, changes: [], reason: source ? 'duplicated' : 'created' }],
+      history: [{ at: now, changes: [], reason: historyReason }],
       createdAt: now,
       updatedAt: now,
     }, cfg())
+    const writeReason = reason || historyReason
     store.tx(() => {
-      store.put('persona', id, { ...persona, reason: source ? 'duplicated' : 'created', at: now })
+      store.put('persona', id, { ...persona, reason: writeReason, at: now })
       if (activate !== false) writeActiveId(id)
     })
     return {
@@ -366,6 +383,10 @@ export function createPersonaService({ store, getConfig, clock }) {
       activeId: activate === false ? active : id,
       personas: list(),
     }
+  }
+
+  function importPersona(patch = {}) {
+    return create({ ...patch, copyFrom: '', reason: 'imported' })
   }
 
   function duplicate(personaId = '') {
@@ -443,7 +464,7 @@ export function createPersonaService({ store, getConfig, clock }) {
 
   return {
     ensure, get, getById, list, summary, save, edit, maybeEvolve, reset,
-    create, duplicate, activate, remove,
+    create, duplicate, importPersona, activate, remove,
     activeId: () => ensureActiveId(),
   }
 }

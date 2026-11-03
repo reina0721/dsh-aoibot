@@ -262,6 +262,25 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   assert.equal(lastDelete.json.ok, false)
   assert.equal(lastDelete.json.code, 'LAST_PERSONA')
 
+  const imported = await postJson(fake, '/cognition/persona/import', {
+    name: 'E2E 导入人格',
+    profile: { displayName: 'E2E 导入人格', identity: '导入测试', personality: '温和', speakingStyle: '短句' },
+    traits: { extraversion: 0.55, warmth: 0.75 },
+    style: { formality: 0.2, warmth: 0.8 },
+    values: ['尊重边界'],
+    source: { repo: 'https://example.invalid/persona', commit: 'abc', version: 'test' },
+  })
+  assert.equal(imported.activeId, imported.persona.id)
+  assert.equal(imported.persona.profile.displayName, 'E2E 导入人格')
+  assert.equal(imported.persona.traits.extraversion, 0.55)
+  assert.equal(imported.persona.source.commit, 'abc')
+  assert.equal(imported.personas.length, 2)
+  const importedList = await getJson(fake, '/cognition/persona')
+  assert.equal(importedList.persona.profile.identity, '导入测试')
+  const importedDelete = await postJson(fake, '/cognition/persona/delete', { personaId: imported.persona.id })
+  assert.equal(importedDelete.activeId, firstId)
+  assert.equal(importedDelete.personas.length, 1)
+
   const saved = await patchConfig(fake, { cognition: { turn: { groupReplyMode: 'all', groupReplyProbability: 0.5 } } })
   assert.equal(saved.config.cognition.turn.groupReplyMode, 'all')
   assert.equal(saved.config.cognition.turn.groupReplyProbability, 0.5)

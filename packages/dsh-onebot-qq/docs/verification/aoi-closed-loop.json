@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "checks": {
+    "configSaved": true,
+    "gatewayConnected": true,
+    "personaName": true,
+    "personaActive": true,
+    "llmOk": true,
+    "privateReply": true,
+    "privateAoi": true,
+    "groupReply": true,
+    "noProviderError": true,
+    "sent": true
+  },
+  "calls": [
+    {
+      "action": "get_login_info",
+      "transport": "http"
+    },
+    {
+      "action": "send_private_msg",
+      "transport": "http"
+    },
+    {
+      "action": "send_group_msg",
+      "transport": "http"
+    }
+  ],
+  "logs": [
+    {
+      "seq": 3,
+      "t": 1793729653877,
+      "time": "13:14:13",
+      "level": "warn",
+      "area": "cognition",
+      "text": "模型链路失败：LLM_PROVIDER_ERROR · llm-deepseek: no API key for provider route \"deepseek-official\"; store DEEPSEEK_API_KEY through the credentials service (the web Models page writes it), or export DEEPSEEK_API_KEY in the launching environment · deepseek-official/deepseek-flash:LLM_PROVIDER_ERROR"
+    }
+  ],
+  "llm": {
+    "ok": true,
+    "route": {
+      "provider": "opencode-go",
+      "model": "deepseek-v4.1-flash",
+      "protocol": "openai-completions",
+      "label": "OpenCode Go（OpenAI 兼容）",
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "source": "direct"
+    },
+    "text": "OK",
+    "error": "",
+    "message": "",
+    "attempts": [],
+    "latencyMs": 2724
+  },
+  "privateReply": "我是深作葵，原型来自《COPPELION》的虚拟角色，现在由 DSH/QQ 负载运行，不是真人。你想从哪聊起？",
+  "groupReply": "今天的待办像山一样压过来啊……先别急着一次搬完。你是想先被听听，还是想和小葵一起把它拆成几块？",
+  "pipeline": {
+    "turns": 2,
+    "decisions": 2,
+    "sent": 2,
+    "dryRun": 0,
+    "degraded": 0,
+    "errors": 0,
+    "silenced": 0,
+    "groupSkipped": 0,
+    "groupSkippedByReason": {},
+    "lastTurn": {
+      "at": 1793730036102,
+      "chatType": "group",
+      "chatId": "90547",
+      "addressed": false,
+      "mode": "all",
+      "outcome": "sent",
+      "reason": "reply"
+    },
+    "pending": 2,
+    "groupMode": "all"
+  }
+}

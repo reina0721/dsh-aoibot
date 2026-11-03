@@ -12,7 +12,7 @@ import { createFakeScheduler, createClock, createRng } from '../src/cognition/ut
 function fakeLlm(capture = null) {
   return {
     async *stream(options) {
-      const system = options.messages?.find((message) => message.role === 'system')?.content?.[0]?.text || ''
+      const system = options.system || options.messages?.find((message) => message.role === 'system')?.content?.[0]?.text || ''
       if (Array.isArray(capture)) capture.push(system)
       const text = system.includes('认知分析器')
         ? JSON.stringify({ intent: 'chat', confidence: 0.8, novelty: 0.2, risk: 0, serious: false, appraisal: { desirability: 0.3, relevance: 0.7, intensity: 0.5, novelty: 0.2, control: 0.5, agency: 'other', norm: 0 }, unknownCandidates: [], replyGoal: '自然回应', rationale: 'test' })

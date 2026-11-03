@@ -6,7 +6,7 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
 并提供**完整的网页面板与持久化配置**。
 
 > 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
-> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**；v0.8 增加**人格级认知数据隔离与数据复制**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
+> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**；v0.8 增加**人格级认知数据隔离与数据复制**；v0.9 修复**DSH 一次性模型调用**并增加**人格 JSON 导入、模型链路自检与蒸馏人格实测**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
 > 连接、核验、事件规范化、消息收发保持稳定边界；人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在
 > `packages/dsh-onebot-qq/src/cognition/` 中实现，通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
 
@@ -83,14 +83,14 @@ dsh-bot/
     ├── src/http/routes.js              # /onebot-qq/api/* REST（含 /cognition/*、/models/*）
     ├── src/cognition/                  # 认知内核：turn/store/persona/emotion/person/relationships/memory/policy/learning/skills/meta/proactivity
     ├── src/model/                      # 模型协议网关：OpenAI/Responses/Anthropic/Gemini/Ollama/中转预设
-    ├── test/                           # 142 个 node:test（含多人格/认知/模型协议/live 环境门控/e2e/UI）
+    ├── test/                           # 146 个 node:test（含多人格/认知/模型协议/live 环境门控/e2e/UI）
     ├── scripts/                        # 真实 DSH 验证 / 模型连通验证 / 独立 mock 网关
     └── docs/                           # 用户手册、配置手册、模型协议、验证报告、截图
 ```
 
 ## 验证
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **142 个用例**（无 key 138 通过 + 4 live skip；有 OpenCode key 时 142/142）；
+- `node --test packages/dsh-onebot-qq/test/*.test.js` → **146 个用例**（无 key 142 通过 + 4 live skip；有 OpenCode key 时 146/146）；
 - `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图/认知 SQLite/模型 API
   **RESULT: PASS**（可重复运行，自动清理）；
 - `packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs` → 真实 OpenCode Go OpenAI/Anthropic/模型发现，
