@@ -317,7 +317,10 @@ export function createPipeline({
       turn, person: personRecord?.person, relationship: rel, emotion: emotionState, memories, persona: personaState,
       llm, config: c, logger: log,
     })
-    trace(turn.id, 'analysis', { text: `${analysis.intent} conf=${analysis.confidence}` }, { tokens: analysis.tokens || 0 })
+    trace(turn.id, 'analysis', {
+      text: `${analysis.intent} conf=${analysis.confidence}`,
+      data: { degraded: Boolean(analysis.degraded), source: analysis.source || '', llmError: analysis.llmError || '', route: analysis.llmRoute || null },
+    }, { tokens: analysis.tokens || 0 })
     if (analysis.degraded) stats.degraded += 1
     const appraisal = appraisalFor(analysis, turn, rel, emotionState)
     emotion.appraise(appraisal, { source: 'turn', text: turn.text })

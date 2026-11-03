@@ -1,9 +1,9 @@
-# 实现状态（IMPLEMENTATION-STATUS · v0.4.0）
+# 实现状态（IMPLEMENTATION-STATUS · v0.5.0）
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`packages/dsh-onebot-qq@0.4.0`，99 个测试；认知 26 项；真实 DSH 探针 + 认知 UI/数据流证据见
-> [`../VERIFICATION.md`](../VERIFICATION.md) §4.2。
+> 基线：`packages/dsh-onebot-qq@0.5.0`，123 个测试（4 项 live 需 key）；认知 + 模型协议；真实 DSH 探针 + 认知/模型 UI 证据见
+> [`../VERIFICATION.md`](../VERIFICATION.md) §4.2/§4.3。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
 |---|---|---|---|---|
@@ -23,6 +23,7 @@
 | 主动行为 | I/T/L | `proactivity.js` | 默认关闭；安静时段、日预算、关系门槛、退避、dryRun、决策记录 | 真实 LLM/发送路径未在带凭据的探针上验证；群主动默认关闭 |
 | 隐私/删除 | I/T/V | `memory.js`、`person.js`、`index.deletePerson` | 私聊/群聊作用域隔离；secret 不进 LLM（平台层）；导出；删除人物级联画像/关系/记忆；原始事件镜像可关 | 没有多用户权限模型；DSH 本地单用户认证 |
 | 存储 | I/T/V | `store.js` | `node:sqlite` WAL + FTS5 + 事务/回滚/备份；JSON fallback；schema version；原始 JSONL；WAL checkpoint | 迁移只有 v1；跨大版本升级需补迁移脚本 |
+| 模型协议 | I/T/V | `src/model/**` | OpenAI Chat/Responses、Anthropic、Gemini、Ollama 统一适配；OpenCode Go/Command Code/OpenRouter 预设；自定义 base/header/auth；流式/发现/重试/安全；真实 OpenCode OpenAI+Anthropic 通过；真实认知直连 analysis+compose 成功 | 工具调用/多模态未实现；Azure/Bedrock/Vertex/OAuth 未纳入；Command Code/OpenRouter 无 live chat key；Gemini/Ollama 仅 mock |
 | 可观测 | I/T/V | `pipeline` traces、`overview`、UI | 每阶段 trace、决策候选、计数、API/UI、暂停/演练 | 没有完整分布式追踪/指标导出 |
 | 多模态 | L | `turn.js`、`analysis.js` | 图片/引用/表情段进入轮次特征；UI 只显示文本摘要 | 视觉理解依赖 LLM 的图像能力，当前未接；语音/文件未实现 |
 | 群体网络 | N | — | 关系有 group scope | 成员角色/群体氛围/多人冲突/群体规范是 v0.5 |
@@ -31,7 +32,7 @@
 
 ## 与「完整认知架构」的差距
 
-v0.4 完成的是**可运行的认知核心 + 可验证的长期状态 + 管理 UI**，不是终点：
+v0.4 完成的是**可运行的认知核心 + 可验证的长期状态 + 管理 UI**，v0.5 补上**统一模型协议与直连**；不是终点：
 
 1. **独立注意力/显著性模块**、群体网络、显式目标规划、真实向量记忆、真实图像理解属于 v0.5；
 2. **真实长期模拟**（数周/数月）尚未跑；人格/情绪/关系/记忆的长期稳定性只有单元/短场景证据；

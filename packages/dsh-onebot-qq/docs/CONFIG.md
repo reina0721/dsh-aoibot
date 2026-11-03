@@ -180,7 +180,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | 组 | 代表字段 | 默认值 | 作用 |
 |---|---|---|---|
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
-| `cog-llm` | `llm.mode` / `provider` / `model` / `dailyTokenBudget` / `timeoutMs` | `auto` / `""` / `""` / `300000` / `45000` | LLM 只做分析与表达；默认继承 DSH 当前模型路由；超预算/失败降级，不伪造 |
+| `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；超预算/失败降级，不伪造 |
 | `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `shortMsgMs` / `incompleteFactorMs` / `addressedOnlyGroups` | `1800` / `10000` / `9000` / `1200` / `4500` / `true` | 碎片聚合的软/硬等待窗口；群聊默认只响应点名/回复/唤醒词/命令 |
 | `cog-persona` | `persona.evolveEnabled` / `maxDeltaPerDay` / `lockedTraits` / `initial` | `true` / `0.03` / `[]` / 见默认值 | 12 维稳定人格与表达风格；最长每日小步慢演化，锁定项不变 |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
@@ -201,6 +201,26 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 
 支持 Node.js 22.13+ 的 `node:sqlite`；不可用时自动回退为 `cognition.json`，接口保持同一套。
 升级不会重置认知状态。
+
+### 3.11 模型网关（`models.json`）
+
+模型 provider 与密钥**不放在 `config.json`**，避免 `/config` 回传；它们存在单独的文件，由「模型」页
+和 `/onebot-qq/api/models/*` 管理：
+
+```text
+<dataDir>/models.json       # provider/selected/fallback；原子写；密钥字段不通过 API 返回
+<dataDir>/models.json.bak   # 写入备份
+```
+
+支持的协议：`openai-completions`、`openai-responses`、`anthropic-messages`、
+`gemini-generate-content`、`ollama-chat`。预设：OpenAI、OpenAI Responses、Anthropic、DeepSeek、
+OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic）、Gemini、Ollama、Custom。
+完整字段、端点、认证、安全与实测见 [MODEL-GATEWAY.md](MODEL-GATEWAY.md)。
+
+- 密钥优先级：环境变量（`apiKeyEnv`/fallback）> 本地保存的 `apiKey`；API 只返回后四位/来源。
+- 修改 `models.json`/provider 不需要重连 QQ；即时影响下一次 LLM 调用。
+- 删除 provider 会清除 selected；不会自动删除已产生的认知状态。
+- 恢复默认 config 不会删除模型 provider；需要在模型页显式删除。
 
 ## 4. 默认 `config.json` 全文
 

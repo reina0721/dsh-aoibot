@@ -68,7 +68,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -124,6 +124,45 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  // ---- 模型协议：provider 注册表、测试、发现、选择 ----
+  if (models) {
+    route('GET', '/models', async () => ({ ok: true, ...models.list(), version }))
+    route('GET', '/models/status', async () => ({ ok: true, ...models.list(), version }))
+    route('POST', '/models/provider', async (req) => {
+      const body = await readBody(req)
+      if (!body?.provider || typeof body.provider !== 'object') throw new Error('缺少 provider')
+      return { ok: true, provider: models.saveProvider(body.provider) }
+    })
+    route('POST', '/models/provider/delete', async (req) => {
+      const body = await readBody(req)
+      if (!body?.providerId) throw new Error('缺少 providerId')
+      return { ok: true, ...models.removeProvider(String(body.providerId)) }
+    })
+    route('POST', '/models/provider/test', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, result: await models.test({ provider: body?.providerId || undefined, model: body?.model || undefined }) }
+    })
+    route('POST', '/models/provider/discover', async (req) => {
+      const body = await readBody(req)
+      if (!body?.providerId) throw new Error('缺少 providerId')
+      return { ok: true, result: await models.discover(String(body.providerId)) }
+    })
+    route('POST', '/models/provider/models', async (req) => {
+      const body = await readBody(req)
+      if (!body?.providerId) throw new Error('缺少 providerId')
+      return { ok: true, ...models.applyModels(String(body.providerId), body.models || []) }
+    })
+    route('POST', '/models/select', async (req) => {
+      const body = await readBody(req)
+      if (!body?.provider || !body?.model) throw new Error('缺少 provider/model')
+      return { ok: true, selected: models.select(String(body.provider), String(body.model)) }
+    })
+    route('POST', '/models/fallback', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, fallback: models.setFallback(body?.fallback || []) }
+    })
+  }
 
   // ---- 认知（M1：概览/暂停；后续里程碑扩展 persons/memories/policy/...）----
   if (cognition) {

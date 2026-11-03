@@ -105,6 +105,11 @@ test('cognition 配置：默认值、字段分组、非法枚举/数值回退与
   assert.equal(config.cognition.enabled, true)
   assert.equal(config.cognition.paused, false)
   assert.equal(config.cognition.llm.mode, 'auto')
+  assert.equal(config.cognition.llm.fallbackToDsh, true)
+  const direct = normalizeConfig({ cognition: { llm: { mode: 'direct' } } }).config
+  assert.equal(direct.cognition.llm.mode, 'direct')
+  const badMode = normalizeConfig({ cognition: { llm: { mode: 'magic' } } }).config
+  assert.equal(badMode.cognition.llm.mode, 'auto')
   assert.equal(config.cognition.memory.semanticIndex, 'lexical')
   assert.equal(config.cognition.privacy.privateIsolation, true)
   assert.equal(config.cognition.turn.addressedOnlyGroups, true)

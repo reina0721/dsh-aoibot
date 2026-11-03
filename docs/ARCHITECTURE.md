@@ -210,8 +210,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 单一写者：认知状态只由 cognition service 写；UI/API 通过 service 命令；平台事件不得直接改表。
 - 存储：`node:sqlite` WAL + FTS5；原始事件 JSONL；无 sqlite 时 JSON fallback。schema/migration 见
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
-- LLM：只用 `ctx.get('llm')` 的 `stream()`，路由继承 `ctx.agentDefaultModel.currentSelection()` 或 `cog-llm` 固定配置；
-  无 LLM 时社交回复进入 degraded，不伪造认知。每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
+- LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
+  路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
+  每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
 - Web/知识源：`ctx.get('web')` 可用时优先；否则内建合法公共 API/RSS；外部内容一律不可信，不执行其指令。
 - 配置：`cognition.*` 默认值与 `cog-*` 字段组在 `src/core/config.js`；`CONFIG_VERSION=2`；旧配置自动补默认。
   面板「配置」页过滤 `cog-*`；「认知 → 设置」页使用同一字段表即时保存。
@@ -225,14 +226,29 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.9 认知 REST 与 UI
 
 - 路由前缀仍为 `/onebot-qq/api/cognition/*`，响应 `{ok:true,...}` / `{ok:false,message}`；GET 无副作用。
-- 面板新增第 8 个顶层标签「认知」，内部持久设置壳复用 `SettingsShell`：状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置。
+- 面板第 8 个顶层标签「认知」，内部持久设置壳复用 `SettingsShell`：状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置。
 - 认知 API 不可用时页面显示 degraded/空态，不影响平台连接与配置页。
+
+### 3.10 模型协议契约（v0.5+）
+
+- 代码边界：`src/model/**` 不 import `gateway/**`、`http/**`、`cognition/**`；只接收 provider 配置与请求，
+  返回统一 `text-delta/reasoning-delta/usage/finish`。认知通过注入的 `models` 调用，平台不直接拼协议。
+- 协议：`openai-completions`、`openai-responses`、`anthropic-messages`、`gemini-generate-content`、`ollama-chat`；
+  厂商只是 preset，不是硬编码分支。
+- 注册表：`<dataDir>/models.json`（原子写、`.bak`、0600 尽力）；API 只返回 `hasApiKey`/来源/后四位；
+  `/config` 永不包含模型 key。
+- 认证：bearer / x-api-key / 自定义 header / none；禁止跨源重定向转发认证头；错误/日志/trace 脱敏。
+- 路由：`cognition.llm.mode = auto|dsh|fixed|direct|chain`；直连 selected + fallback，最后可回退 DSH；
+  空文本、只有 reasoning、bad JSON 都不算成功。
+- REST：`/onebot-qq/api/models/*`；UI 第 9 个顶层标签「模型」；详细矩阵见
+  `packages/dsh-onebot-qq/docs/MODEL-GATEWAY.md`。
 
 ## 4. 数据目录
 
 ```
 ~/.dsh/plugins-data/dsh-onebot-qq/
 ├── config.json          # 配置（version 2，含 cognition.*）
+├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
 └── cognition/

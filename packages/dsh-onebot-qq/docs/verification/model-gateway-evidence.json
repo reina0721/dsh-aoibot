@@ -1,0 +1,31 @@
+{
+  "version": "0.5.0",
+  "date": "2026-11-03",
+  "keyHandling": "OPENCODE_GO_API_KEY read from environment only; no key stored in repository, docs, screenshots, or this evidence file",
+  "script": "packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs",
+  "checks": [
+    { "name": "registry/presets", "ok": true, "detail": "presets=12" },
+    { "name": "registry/protocols", "ok": true, "detail": "protocols=5" },
+    { "name": "discovery/OpenRouter", "ok": true, "detail": "models=451" },
+    { "name": "discovery/CommandCode", "ok": true, "detail": "models=84 after supported_endpoints filtering" },
+    { "name": "OpenCode/OpenAI/stream", "ok": true, "protocol": "openai-completions", "latencyMs": 1610, "usage": { "input": 45, "output": 12, "total": 57 } },
+    { "name": "OpenCode/OpenAI/non-stream", "ok": true, "finish": "stop", "usage": { "input": 39, "output": 2, "total": 41 } },
+    { "name": "OpenCode/Anthropic/stream", "ok": true, "protocol": "anthropic-messages", "latencyMs": 2225, "usage": { "input": 68, "output": 25, "total": 93 } },
+    { "name": "OpenCode/discovery", "ok": true, "models": 28 }
+  ],
+  "realDshCognition": {
+    "mode": "direct",
+    "provider": "opencode-go",
+    "model": "deepseek-v4.1-flash",
+    "protocol": "openai-completions",
+    "analysis": { "intent": "greet_and_share_fatigue", "confidence": 0.88, "degraded": false, "source": "llm", "tokens": 1286 },
+    "pipeline": { "turns": 1, "decisions": 1, "sent": 1, "degraded": 0, "errors": 0, "pending": 1 },
+    "replyPreview": "你好呀，辛苦了。累的时候不用硬撑着聊天，想说说发生了什么我听着，想歇会儿就去歇会儿也行，我在这儿。",
+    "note": "mock QQ gateway; no real QQ account"
+  },
+  "notLive": [
+    "Command Code chat completion (no paid API key; Go plan has no API access)",
+    "OpenRouter chat completion (no key; public model discovery verified)",
+    "OpenAI official / Anthropic official / Gemini / Ollama (mock protocol tests only)"
+  ]
+}

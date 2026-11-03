@@ -32,6 +32,7 @@ export function createCognition({
   rng = createRng(1),
   dataRoot,
   dryRun = null,
+  models = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -76,7 +77,7 @@ export function createCognition({
       state.services.relationships = createRelationshipService({ store: state.store, getConfig, clock })
       state.services.memory = createMemoryService({ store: state.store, getConfig, clock, log })
       state.services.policy = createPolicyService({ store: state.store, getConfig, clock, rng })
-      state.services.llm = createLlmClient({ ctx, getConfig, store: state.store, clock, log })
+      state.services.llm = createLlmClient({ ctx, models, getConfig, store: state.store, clock, log })
       state.services.skills = createSkillService({ store: state.store, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: state.store, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })

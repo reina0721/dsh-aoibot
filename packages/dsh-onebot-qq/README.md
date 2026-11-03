@@ -5,8 +5,8 @@
 网关，提供连接管理、账号核验、事件缓冲、消息收发，以及一个完整的 DSH Web 面板（侧栏「QQ 连接」）。
 
 本插件是「QQ 感知与执行接入层」：只负责把 QQ 的事件带进 DSH、把动作发回 QQ。
-人格、记忆、认知、防抖、策略与学习能力由本包内置的认知内核（`src/cognition/`）提供，同时向 DSH 事件总线广播
-`onebot-qq/event` / `onebot-qq/state` / `onebot-qq/config` / `onebot-qq/raw` 供外部插件消费。
+人格、记忆、认知、防抖、策略与学习能力由本包内置的认知内核（`src/cognition/`）提供；统一模型协议网关在
+`src/model/`，同时向 DSH 事件总线广播 `onebot-qq/event` / `onebot-qq/state` / `onebot-qq/config` / `onebot-qq/raw`。
 
 - **不内置、不下载、不启动、不注入任何 QQ 网关**：只连接你填的地址。SnowLuma 模式也只读它自己的
   `config/onebot*.json`（其 EULA 限制自动化部署，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)）。
@@ -20,9 +20,13 @@
   密度、字号、内容宽度、动效模式、页面切换动画，分类切换只替换右侧内容、不整页滑动，每次修改即时保存。
   `配置` 与 `系统设置` 都是持久设置壳；`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级
   （详见 [用户手册的系统设置章节](docs/USER-MANUAL.md#系统设置)）。
-- **完整认知内核（v0.4）**：新增第 8 个「认知」标签，包含人格、人物、关系、记忆、情绪、策略、学习、技能、
+- **完整认知内核（v0.4）**：第 8 个「认知」标签，包含人格、人物、关系、记忆、情绪、策略、学习、技能、
   元认知与设置。它不是一个巨型 Prompt：长期状态全部在 SQLite（人物/关系/记忆/情绪/技能/策略/任务），
   LLM 只做语义投影与生成；轮次聚合、注意力、记忆检索、策略选择、结果归因、学习验证都有自己的算法与测试。
+- **统一模型协议网关（v0.5）**：第 9 个「模型」标签，统一 OpenAI Chat/Responses、Anthropic Messages、
+  Gemini generateContent、Ollama Chat；内置 OpenCode Go、Command Code、OpenRouter、DeepSeek 等预设，
+  自定义 base URL/认证/headers/session/模型，支持 SSE 流式、模型发现、连通测试以及 direct/DSH/chain 路由。
+  密钥独立保存在 `models.json`，不通过 `/config` 回传。详见 [MODEL-GATEWAY.md](docs/MODEL-GATEWAY.md)。
   设计与边界见 [认知架构文档](docs/cognitive/CAPABILITY-MAP.md)、[实际实现状态](docs/cognitive/IMPLEMENTATION-STATUS.md)
   与 [验证报告](docs/VERIFICATION.md)；未实现项在状态表中明确标 L/N。
 
@@ -37,7 +41,8 @@
 | 消息发送 | 发私聊 / 群聊（字符串自动转 `[{type:'text'}]` 消息段，也可直接传段数组） |
 | 查询 | 登录信息、好友列表、群列表、群成员信息、撤回/查询消息、网关状态/版本 |
 | 调试 | HTTP 探测（`get_login_info`）；可选的原始 action 透传（默认关闭） |
-| Web 面板 | 侧栏「QQ 连接」→ 整页面板：概览 / 连接 / 消息 / 配置 / 系统设置 / 认知 / 日志 / 关于；数据驱动配置表单、Ctrl+S 保存、dirty 提示 |
+| Web 面板 | 侧栏「QQ 连接」→ 整页面板：概览 / 连接 / 消息 / 配置 / 模型 / 系统设置 / 认知 / 日志 / 关于；数据驱动配置表单、Ctrl+S 保存、dirty 提示 |
+| 模型协议 | 统一 OpenAI Chat/Responses、Anthropic Messages、Gemini generateContent、Ollama Chat；OpenCode Go、Command Code、OpenRouter、DeepSeek 预设；自定义 base/认证/headers/session；流式、模型发现、连通测试、直连/DSH/链式路由 |
 | 系统设置 | 参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、密度、字号、内容宽度、动效、页面转场；持久设置壳 + 即时保存 + 预览 |
 | 认知内核 | 轮次聚合/防抖、注意力、人格慢演化、人物画像、多维关系、情绪、工作/情景/语义/关联记忆、检索/巩固/遗忘、信念/未知、策略-结果分离、撤回专项、主动行为、学习闭环、技能/退化、元认知 |
 | 学习 | 未知检测 → 学习任务 → 多来源证据 → 带引用 claim → 应用/复核；默认仅检测，自动外部检索需显式开启，支持预算/暂停/重试 |
@@ -48,7 +53,7 @@
 ## 环境要求
 
 - DeepSeek Harness `>= 0.2.0 < 0.3.0`（已在 `0.2.1-rc.3` 上验证）
-- Node.js `>= 22.13`（插件使用原生 `fetch` 与 `WebSocket`）
+- Node.js `>= 22.13`（插件使用原生 `fetch` 与 `WebSocket`；认知 SQLite 使用 `node:sqlite`，无则 JSON fallback）
 - 一个已登录 QQ 的 OneBot v11 网关（NapCat / SnowLuma / Lagrange.OneBot / LLOneBot），或者用仓库里的
   `scripts/mock-gateway.mjs` 做本地自测
 
@@ -172,16 +177,23 @@ packages/dsh-onebot-qq/
 
 ![系统设置：外观（DSH 主题 + 强调色 + 对比度）](docs/verification/settings-appearance.png)
 
-更多截图（浅色/暗色/窄屏/配置/系统设置/日志/关于）见 [docs/VERIFICATION.md](docs/VERIFICATION.md#0-结论速览)。
+![模型协议：provider、认证、测试与路由](docs/verification/models-overview.png)
+
+更多截图（浅色/暗色/窄屏/配置/模型/系统设置/日志/关于）见 [docs/VERIFICATION.md](docs/VERIFICATION.md#0-结论速览)。
 
 ## 测试与验证
 
 ```powershell
-# 单元 + 端到端测试（Node >= 22.13）
+# 单元 + 端到端测试（Node >= 22.13；无 key 时 live 测试自动 skip）
 node --test "packages/dsh-onebot-qq/test/*.test.js"
 
-# 真实 DSH 安装验证：建一次性 profile → 安装 → 无头启动 → 探活 REST 与网页 boot 图 → 清理
+# 真实 DSH 安装验证：建一次性 profile → 安装 → 无头启动 → 探活 REST/boot 图/认知/模型 → 清理
 powershell -NoProfile -ExecutionPolicy Bypass -File packages/dsh-onebot-qq/scripts/verify-plugin.ps1
+
+# 真实模型协议连通（key 只从环境变量读取，不写盘）
+$env:OPENCODE_GO_API_KEY = '...'
+node packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs
+node --test "packages/dsh-onebot-qq/test/model-live.test.js"
 
 # 没有 QQ 网关时的人工联调：起一个内存假网关（固定 6700）
 node packages/dsh-onebot-qq/scripts/mock-gateway.mjs

@@ -20,6 +20,7 @@ import { createGatewayManager } from './gateway/manager.js'
 import { normalizeEvent } from './gateway/normalize.js'
 import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
+import { createModelGateway } from './model/index.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PKG = (() => {
@@ -51,10 +52,14 @@ export function apply(ctx, rowConfig) {
 
   const events = createEventStore({ getConfig, log: eventLog })
 
+  // 模型网关独立于 QQ/认知：协议适配与 provider 注册表不感知平台。
+  const models = createModelGateway({ dataRoot: dataDir(), logger, env: process.env })
+
   let gatewayRef = null
   const cognition = createCognition({
     ctx,
     getConfig,
+    models,
     gateway: {
       get actions() {
         return {
@@ -112,6 +117,11 @@ export function apply(ctx, rowConfig) {
   } catch (error) {
     log.warn('注册 onebotCognition 服务失败：', error.message)
   }
+  try {
+    ctx.provide?.('onebotModels', models)
+  } catch (error) {
+    log.warn('注册 onebotModels 服务失败：', error.message)
+  }
 
   /** 保存配置并热应用（端点变化时 gateway 内部自动重连）。 */
   function setConfig(next) {
@@ -119,6 +129,7 @@ export function apply(ctx, rowConfig) {
     const result = saveConfig(next)
     configState.current = result.config
     refreshSecrets(result.config)
+    try { models.refreshSecrets() } catch (error) {}
     try {
       gateway.applyConfig(previous, result.config)
     } catch (error) {
@@ -145,6 +156,7 @@ export function apply(ctx, rowConfig) {
     events,
     logger,
     cognition,
+    models,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -171,6 +183,9 @@ export function apply(ctx, rowConfig) {
       cognition.dispose()
     } catch (error) {}
     try {
+      models.dispose()
+    } catch (error) {}
+    try {
       events.dispose()
     } catch (error) {}
     log.info('插件已卸载，连接已关闭')
@@ -195,6 +210,7 @@ export function apply(ctx, rowConfig) {
     gateway,
     events,
     cognition,
+    models,
     logger,
     routes,
     dispose,

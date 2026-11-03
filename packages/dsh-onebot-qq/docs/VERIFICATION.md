@@ -5,7 +5,7 @@
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
 - 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket` + `node:sqlite`）
-- 插件版本：`dsh-onebot-qq@0.4.0`（本版新增第 8 标签「认知」与完整认知内核；v0.2 接入层、v0.3 视觉/设置页）
+- 插件版本：`dsh-onebot-qq@0.5.0`（本版新增统一模型协议网关与第 9 标签「模型」；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,15 +15,18 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **99 / 99 通过**（11 个测试文件，含认知 26 项） |
-| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition overview/SQLite 检查） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **123 个用例**：无 key 时 118 通过 + 4 live skip；提供 OpenCode key 时 4/4 live 通过（15 个测试文件） |
+| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition overview/SQLite 与 models 预设检查） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
-| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **8 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
-| 认知 UI（真实 DSH 页面 + 真实 REST 数据） | ✅ **15 / 15 布尔断言**：8 标签、11 个子页、无横向溢出、空态/数据态、无页面异常 |
+| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **9 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
+| 认知 UI（真实 DSH 页面 + 真实 REST 数据） | ✅ **15 / 15 布尔断言**：11 个子页、无横向溢出、空态/数据态、无页面异常 |
 | 认知数据流（mock QQ → 真实宿主 → SQLite → UI） | ✅ 人物 1、关系 2、记忆 1、决策 1；演练模式不发送；人物/记忆/策略/关系页真实渲染 |
+| 模型页 UI（真实 DSH + 真实 provider） | ✅ provider 列表/编辑/测试/选择；密钥只显示后四位；9 标签；360px 无溢出；无页面异常 |
+| 模型协议 live（OpenCode Go key） | ✅ OpenAI 流式/非流式 + Anthropic 流式 + 模型发现；真实认知 analysis + compose 发送成功 |
+| 模型发现（公开端点） | ✅ OpenRouter 451 个模型；Command Code 84 个可用（按 supported_endpoints 过滤） |
 | UI/动效/设置断言（`document.getAnimations()`、主题、即时保存、持久壳、浅/暗色、窄屏） | ✅ **48 / 48 布尔断言全过**（见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
-| 安装进当前桌面 profile 并生效 | ✅ 见 §7（`plugin_manager` 安装结果） |
-| 已知缺陷 | 发现并修复 1 个会导致客户端插件无法激活的致命缺陷（§6.1）与认知存储目录缺陷（§6.2），均有回归锁定 |
+| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.5.0 需要重启一次 DSH |
+| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）与模型网关集成缺陷（§6.3） |
 
 截图（本目录 `docs/verification/`）：
 
@@ -36,6 +39,9 @@
 | `cognition-policy-data.png` | 认知 → 策略：真实决策、候选/效用/置信度 |
 | `cognition-relationships-data.png` | 认知 → 关系：全局+私聊作用域、多维条 |
 | `cognition-narrow-360px.png` | 360×800 认知设置：无横向溢出，子导航横向滚动 |
+| `models-overview.png` | 第 9 标签「模型」：路由模式、DSH/直连状态、provider 列表 |
+| `models-editor.png` | provider 编辑器：协议/端点/认证/模型 ID/测试；密钥只显示状态与后四位 |
+| `models-narrow-360px.png` | 360×800 模型页：单列、无横向溢出 |
 | `overview-connected.png` | 已连接状态：eyebrow + 大标题页头、状态 pill、登录账号 `冒烟机器人 (20000002)`、`核验通过`、统计 tile、分布条形图、最近事件 |
 | `overview-stopped.png` | 未配置状态：warning banner +「去连接」、可读空态、连接操作 |
 | `connect-unconfigured.png` | 连接页空态：三步 stepper 与地址表单 |
@@ -134,7 +140,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 浏览器端（Chrome 143 headless + puppeteer-core，对同一真实 DSH 页面）：
 
 - 侧栏出现「QQ 连接」，点击后整页面板渲染，页面无 `Failed to load plugins`；
-- 八个标签 `概览 / 连接 / 消息 / 配置 / 系统设置 / 认知 / 日志 / 关于` 全部存在且可切换；
+- 九个标签 `概览 / 连接 / 消息 / 配置 / 模型 / 系统设置 / 认知 / 日志 / 关于` 全部存在且可切换；
 - 配置页字段完全来自 `GET /config.groups`（开关/文本/密钥/数字/下拉/列表/多行文本均可见），
   左侧分组切换只替换右侧内容、不滚动整页；
 - 「系统设置」页的左侧分类固定，切换分类只替换右侧内容；主题切换会真实改变整个 DSH 的浅/深色；
@@ -202,6 +208,35 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 `ctx.get('llm').stream()` 走完整分析/生成；该路径由假 LLM 集成测试锁定消息形状与降级行为，
 未把「无凭据」误报成能力失败。
 
+### 4.3 模型协议与模型网关专项验证（v0.5.0）
+
+独立脚本 `scripts/verify-model-gateway.mjs`（不依赖 DSH；key 只从 env 读取；细节见
+[MODEL-GATEWAY.md](MODEL-GATEWAY.md)）：
+
+| 检查 | 结果 |
+|---|---|
+| 预设/协议注册表 | ✅ 12 个预设、5 种协议 |
+| OpenRouter 公开模型发现 | ✅ 451 个模型 |
+| Command Code 公开模型发现 + supported_endpoints 过滤 | ✅ 84 个可用模型 |
+| OpenCode Go OpenAI 流式/非流式 | ✅ 文本非空；usage 57 / 41 tokens |
+| OpenCode Go Anthropic 流式（x-api-key + session） | ✅ 文本非空；usage 93 tokens |
+| OpenCode Go 模型发现 | ✅ 28 个模型 |
+
+真实 DSH + 真实认知直连：mock QQ 收到「你好，今天有点累。」→ analysis
+`greet_and_share_fatigue conf=0.88`（degraded=false，route=opencode-go/deepseek-v4.1-flash，1286 tokens）
+→ compose 成功 → mock 收到真实回复：
+
+> 你好呀，辛苦了。累的时候不用硬撑着聊天，想说说发生了什么我听着，想歇会儿就去歇会儿也行，我在这儿。
+
+pipeline：`turns=1 decisions=1 sent=1 degraded=0 errors=0 pending=1`。
+
+模型页浏览器验证：9 个顶层标签；provider 列表/编辑/测试按钮/密钥状态均渲染；密钥只显示
+`…tIe8` 与来源；360×800 无横向溢出；0 个 `pageerror`（仅 DSH 自身 account 日志）。
+
+未做真实调用：Command Code（无付费 key；Go 套餐无 API）、OpenRouter 聊天（无 key）、
+OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证据：
+[`model-gateway-evidence.json`](verification/model-gateway-evidence.json)。
+
 ## 5. 复用与配置化核对
 
 - **复用现有轮子**：OneBot 客户端、store/redact/logger、SnowLuma 只读解析、mock 网关、fake DSH、面板
@@ -234,7 +269,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
   `Debugger.setPauseOnExceptions` 才抓到完整栈）。
 - **修复**：配置页组件导出名改为 `ConfigTab`，并在注释中记录原因；`test/panel.test.js` 增加回归用例
   「`module.exports` 不能有 `Config` 属性且 `ConfigTab` 是函数」，防止再次踩坑。
-- **验证**：修复后同一真实 DSH 页面侧栏出现「QQ 连接」、八个标签全部渲染（§4 截图）。
+- **验证**：修复后同一真实 DSH 页面侧栏出现「QQ 连接」、九个标签全部渲染（§4 截图）。
 
 ### 6.2 其他修复（来自集成自查与队友报告）
 
@@ -265,16 +300,30 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 | 群聊 ambient 消息会触发分析/回复（违反默认仅点名） | pipeline 在分析前执行群聊 gate：默认只存情景记忆，不决策；集成测试锁定 |
 | 人格只有初值、没有实际慢演化 | pipeline 增加 24h 门控的 `maybeEvolvePersona()`：至少 5 个结果样本、按近期平均奖励/未知量给证据，受 `maxDeltaPerDay` 与锁定项约束 |
 
+### 6.3 模型网关集成修复
+
+| 问题 | 修复 |
+|---|---|
+| provider 注册表若放在 config 会通过 `/config` 回传密钥 | 独立 `models.json`（原子写、0600 尽力）；API 只返回 hasApiKey/source/后四位 |
+| 模型页 `h(strong)` 引用未定义变量导致整页崩溃 | 改为 `h('strong', …)`；真实浏览器回归通过 |
+| 非流式适配器漏传 `sessionId`，OpenCode Go 缺 `x-opencode-session` 会 400 | 所有适配器非流式分支统一带 session header；真实非流式通过 |
+| SSE 聚合后 usage 被二次归一化为 0 | `usageOf()` 同时识别内部 `{input,output,total}` 与厂商字段；mock/live 断言 token |
+| Command Code `supported_endpoints` 可能把 Claude 发到 chat/completions | 发现结果保留 endpoints，网关按协议过滤并报 `PROTOCOL_MISMATCH` |
+| 公开模型发现被误要求 key | discovery 无 key 也先尝试公开端点；需要认证的端点返回归一化 AUTH |
+| `/models` API 包版本被注册表 version 覆盖 | 注册表字段改名 `registryVersion`；API 返回包版本 |
+| 直连 analysis 在 700 tokens 下被 reasoning 截断 | 分析默认上限提升到 1800；真实直连 analysis `degraded=false` |
+
 ## 7. 安装进当前 DSH profile
 
 - 当前 GUI（`http://127.0.0.1:60932`）属于 `desktop` profile。验证完成后通过 DSH 的插件管理
   （`plugin_manager` / `dsh plugin add`）把本包安装/链接进 `desktop` profile；
   安装结果与「是否需要刷新页面 / 重启 DSH」以安装工具返回的 `application` 字段为准。
-- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.3.0`（`link:` 指向本仓库的 source 目录，
-  `installed: true`）。**刷新 Web 页面**即可加载新版面板；新增的 `ui.*` 字段与 `inject: theme` 需要
-  **重启 DSH 进程**才会由宿主/客户端编排重新加载（旧配置会自动补默认值）。
-- 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；验证过程中产生的临时连接配置已在
-  每次联调结束时通过 `POST /config/reset` 恢复默认，不会把 mock 地址留在你的配置里。
+- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.5.0`（`link:` 指向本仓库的 source 目录，
+  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.5.0（新增 `models.json` 与第 9 标签）；
+  仅刷新页面只会加载客户端部分。
+- 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；模型 provider/密钥在 `models.json`，
+  不在 `config.json` 中，不会被 `/config` 回传。验证产生的临时 provider 已删除；mock 连接配置已
+  通过 `POST /config/reset` 恢复默认。
 
 ## 8. 局限与未覆盖项
 
@@ -290,7 +339,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
    未覆盖所有网络中断时刻的 UI 一致性（失败时保留草稿并给出重试）。
 5. **动效矩阵**：在 1440×900 与 360×800 两个断点验证；未覆盖全部窗口宽度矩阵与高刷新率屏幕的
    逐帧性能测量（实现只使用合成友好的 opacity/transform/width，无 JS RAF 动画循环）。
-6. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新页面取决于 DSH 的运行时热加载行为；以安装结果为准。
+6. **模型协议边界**：本版验证了 OpenCode Go 的真实 OpenAI/Anthropic 调用；Command Code/OpenRouter
+   只有公开模型发现，Gemini/Ollama 只有 mock 协议测试；工具调用、视觉/语音多模态、Azure/Bedrock/Vertex
+   等需要额外认证方式的协议不在本版。
+7. **模型密钥**：测试 key 只通过环境变量/临时 provider 使用；本地 `models.json` 的 key 属于本地明文存储，
+   生产环境建议用 `apiKeyEnv` 并定期轮换。
+8. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新/重启取决于 DSH 的运行时热加载行为；以重启后的加载结果为准。
 
 ## 9. 复现方式
 
@@ -306,7 +360,12 @@ Set-Location packages\dsh-onebot-qq
 Set-Location ..\..
 powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scripts\verify-plugin.ps1
 
-# 3) 本地人工联调：假网关 + 面板
+# 3) 模型协议真实连通（OpenCode key 只在 env；不依赖 DSH）
+$env:OPENCODE_GO_API_KEY = '...'
+& $node packages\dsh-onebot-qq\scripts\verify-model-gateway.mjs
+& $node --test packages\dsh-onebot-qq\test\model-live.test.js
+
+# 4) 本地人工联调：假网关 + 面板
 & $node packages\dsh-onebot-qq\scripts\mock-gateway.mjs   # 默认 6700，打印地址/token
 # 打开面板 → 连接页填 ws://127.0.0.1:6700 / http://127.0.0.1:6700 + token → 保存 → 连接
 

@@ -10,6 +10,11 @@ const PATTERNS = [
   [/(Bearer\s+)[A-Za-z0-9._~+/=-]{8,}/g, '$1***'],
   // 常见 sk- 密钥
   [/\bsk-[A-Za-z0-9_-]{16,}\b/g, 'sk-***'],
+  // OpenCode / Anthropic / Command Code 等中转厂商 key
+  [/\boc_sk_[A-Za-z0-9_-]{8,}\b/g, 'oc_sk_***'],
+  [/\bsk-ant-[A-Za-z0-9_-]{8,}\b/g, 'sk-ant-***'],
+  [/\bcmd_[A-Za-z0-9_-]{8,}\b/g, 'cmd_***'],
+  [/\boc_[A-Za-z0-9_-]{20,}\b/g, 'oc_***'],
   // URL 查询参数里的 token
   [/([?&](?:token|access_token|key)=)[^&\s]+/gi, '$1***'],
 ]

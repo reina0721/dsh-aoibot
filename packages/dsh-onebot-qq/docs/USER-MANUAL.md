@@ -11,7 +11,7 @@
 1. [安装到 DSH](#1-安装到-dsh)
 2. [准备 QQ 网关](#2-准备-qq-网关)
 3. [在面板里填地址与 token](#3-在面板里填地址与-token)
-4. [面板八个标签](#4-面板八个标签)
+4. [面板九个标签](#4-面板九个标签)
 5. [常见问题](#5-常见问题)
 6. [本地自测（没有 QQ 网关也能跑通）](#6-本地自测没有-qq-网关也能跑通)
 7. [安全与隐私](#7-安全与隐私)
@@ -172,7 +172,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 ---
 
-## 4. 面板八个标签
+## 4. 面板九个标签
 
 ### 概览
 
@@ -201,6 +201,24 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 - 保存（Ctrl+S）、撤销改动、恢复默认；有未保存改动时标签上有 dirty 标记，底部会出现吸底保存条；
 - 保存失败/非法值回退会在面板上给出可读提示（宿主返回的 `issues`）；
 - 界面外观与主题不在这里，统一放到「系统设置」。
+
+### 模型
+
+第 9 个顶层标签，管理认知/生成使用的模型协议与厂商，不只适配 GPT/Claude/DeepSeek：
+
+- **路由模式**：自动（DSH 优先） / 仅 DSH / DSH 固定 / 仅直连 / 直连→DSH 链式；"直连"指本页 provider；
+- **预设**：OpenAI Chat、OpenAI Responses、Anthropic、DeepSeek、OpenRouter、OpenCode Go（OpenAI 与
+  Anthropic 两种端点）、Command Code（两种）、Gemini、Ollama、Custom；
+- **Provider 编辑器**：协议、base URL、请求路径、模型列表路径、认证方式、环境变量、API key、额外 headers、
+  session header、模型 ID、超时、流式、重试；
+- **测试**：发一个最小真实请求，显示协议/延迟/tokens/文本预览/错误；不显示 key/请求 header；
+- **发现模型**：从 `/models`（或 Anthropic/Gemini/Ollama 对应端点）拉列表，确认后写入；
+- **设为直连 / 设为备用**：认知默认用直连时走这里；`chain` 按 selected + fallback 顺序尝试；
+- 密钥优先读环境变量（如 `OPENCODE_GO_API_KEY`）；UI 保存的 key 只在本地 `models.json`，API 只返回
+  后四位和来源；留空保存表示保持原 key；
+- **OpenCode Go** 必须带 `x-opencode-session`，预设已自动生成；**Command Code** 的 Go 套餐没有 API 权限
+  （403），需要更高套餐；OpenRouter 聊天需要 key；
+- 直连失败时按模式回退 DSH；所有路由都失败时不伪造回复，认知进入 degraded。
 
 ### 系统设置
 

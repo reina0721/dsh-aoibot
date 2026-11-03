@@ -1792,6 +1792,25 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-cog-slider input[type="range"]{width:100%;accent-color:var(--ob-brand);cursor:pointer}
 .ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
+.ob-models-grid{display:grid;gap:var(--ob-control-gap);grid-template-columns:minmax(240px,320px) minmax(0,1fr);align-items:start}
+.ob-model-provider{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-width:0;padding:10px 12px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised);color:inherit;text-align:left;cursor:pointer}
+.ob-model-provider:hover{border-color:var(--ob-border-strong);background:var(--ob-hover)}
+.ob-model-provider.on{border-color:color-mix(in srgb,var(--ob-brand) 32%,transparent);background:var(--ob-brand-soft)}
+.ob-model-provider-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ob-model-advanced{border:1px dashed var(--ob-border);border-radius:var(--ob-radius-control);padding:8px 10px}
+.ob-model-advanced summary{cursor:pointer;font-size:var(--ob-text-small);color:var(--ob-ink-muted)}
+.ob-model-test{padding:10px 12px;border-radius:var(--ob-radius-control);border:1px solid var(--ob-border);background:var(--ob-surface-muted)}
+.ob-model-test.ok{border-color:color-mix(in srgb,var(--ob-success) 30%,var(--ob-border))}
+.ob-model-test.err{border-color:color-mix(in srgb,var(--ob-danger) 30%,var(--ob-border))}
+.ob-model-test p{margin:4px 0 0;overflow-wrap:anywhere}
+.ob-model-discovery{margin-top:4px;padding-top:8px;border-top:1px dashed var(--ob-border)}
+.ob-model-candidates{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;max-height:180px;overflow:auto}
+.ob-model-candidate{font-size:var(--ob-text-micro);padding:2px 8px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-pill);background:var(--ob-surface-raised);overflow-wrap:anywhere}
+.ob-model-protocols{display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.ob-model-protocol{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised)}
+@media (max-width:960px){
+  .ob-models-grid{grid-template-columns:minmax(0,1fr)}
+}
 @media (max-width:960px){
   .ob-split{grid-template-columns:minmax(0,1fr)}
   .ob-settings{grid-template-columns:minmax(0,1fr)}
@@ -3011,6 +3030,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'config', label: '配置', icon: 'config' },
+      { id: 'models', label: '模型', icon: 'bolt' },
       { id: 'settings', label: '系统设置', icon: 'palette' },
       { id: 'cognition', label: '认知', icon: 'brain' },
       { id: 'logs', label: '日志', icon: 'logs' },
@@ -4698,6 +4718,410 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
     // =====================================================================
+    // 顶层标签：模型（协议、provider、端点、密钥、发现、测试与路由）
+    // 密钥从不下发到浏览器；空值保存 = 保持原 key。
+    // =====================================================================
+
+    const MODEL_PROTOCOL_LABELS = {
+      'openai-completions': 'OpenAI Chat Completions',
+      'openai-responses': 'OpenAI Responses',
+      'anthropic-messages': 'Anthropic Messages',
+      'gemini-generate-content': 'Gemini generateContent',
+      'ollama-chat': 'Ollama Chat',
+    }
+
+    function ModelTag(props) {
+      return h(Badge, { tone: props.tone || 'muted' }, props.children || props.label)
+    }
+
+    function ModelField(props) {
+      return h(
+        'div',
+        { className: 'ob-field' },
+        h('label', { className: 'ob-field-label' }, props.label, props.required ? h('span', { className: 'ob-muted' }, ' *') : null),
+        h('div', { className: 'ob-field-control' }, props.children),
+        props.hint ? h('p', { className: 'ob-field-help' }, props.hint) : null,
+      )
+    }
+
+    function modelKeySourceLabel(source) {
+      return source === 'env' ? '来自环境变量' : source === 'stored' ? '已保存到本地' : '未配置'
+    }
+
+    function ModelStatus(props) {
+      const item = safeObject(props.item)
+      const failed = Number(item.consecutiveFailures || 0) > 0
+      return h(
+        'div',
+        { className: 'ob-row' },
+        h(ModelTag, { tone: failed ? 'warn' : 'ok' }, failed ? '最近失败' : '最近成功'),
+        item.lastLatencyMs ? h('span', { className: 'ob-small ob-muted' }, Number(item.lastLatencyMs) + 'ms') : null,
+        item.lastUsage ? h('span', { className: 'ob-small ob-muted' }, 'tokens ' + String(item.lastUsage.total || 0)) : null,
+      )
+    }
+
+    function useModelData(props) {
+      const [data, setData] = useState(null)
+      const [error, setError] = useState('')
+      const [loading, setLoading] = useState(true)
+      const alive = useRef(true)
+      const load = useCallback(async () => {
+        setLoading(true)
+        try {
+          const parsed = parseApiResponse(await get('/models'))
+          if (!alive.current) return
+          if (!parsed.ok) setError(parsed.message)
+          else { setData(parsed.data); setError('') }
+        } catch (err) {
+          if (alive.current) setError(String(err && err.message ? err.message : err))
+        } finally {
+          if (alive.current) setLoading(false)
+        }
+      }, [])
+      useEffect(() => {
+        alive.current = true
+        load()
+        return () => { alive.current = false }
+      }, [load])
+      return { data, error, loading, reload: load }
+    }
+
+    async function modelPost(props, path, body) {
+      try {
+        const parsed = parseApiResponse(await post(path, body || {}))
+        if (!parsed.ok) { props.toast(parsed.message || '操作失败', 'err'); return null }
+        return parsed.data
+      } catch (err) {
+        props.toast('操作失败：' + String(err && err.message ? err.message : err), 'err')
+        return null
+      }
+    }
+
+    function ModelTab(props) {
+      const api = useModelData(props)
+      const data = api.data || {}
+      const providers = safeArray(data.providers)
+      const presets = safeArray(data.presets)
+      const [activeId, setActiveId] = useState('')
+      const [editing, setEditing] = useState(null)
+      const [creating, setCreating] = useState(false)
+      const [presetId, setPresetId] = useState('opencode-go')
+      const [saving, setSaving] = useState(false)
+      const [testing, setTesting] = useState(false)
+      const [testResult, setTestResult] = useState(null)
+      const [discovery, setDiscovery] = useState(null)
+      const [discovering, setDiscovering] = useState(false)
+      const draft = props.draft || (props.configInfo && props.configInfo.config) || {}
+      const mode = String(getByPath(draft, 'cognition.llm.mode') || 'auto')
+
+      useEffect(() => {
+        if (creating) return
+        if (!providers.length) { setActiveId(''); setEditing(null); return }
+        const next = providers.some((item) => item.id === activeId) ? activeId : providers[0].id
+        if (next !== activeId) { setActiveId(next); setEditing(providerDraft(providers.find((item) => item.id === next))); setTestResult(null); setDiscovery(null) }
+      }, [providers.length, activeId, creating])
+
+      const active = providers.find((item) => item.id === activeId) || null
+      const selected = safeObject(data.selected)
+      const health = safeObject(active && data.health && data.health[active.id])
+
+      function providerDraft(provider) {
+        if (!provider) return null
+        return {
+          id: provider.id,
+          name: provider.name,
+          preset: provider.preset || '',
+          protocol: provider.protocol,
+          baseUrl: provider.baseUrl,
+          requestPath: provider.requestPath,
+          modelsPath: provider.modelsPath,
+          authType: provider.authType || provider.auth?.type || 'bearer',
+          authHeader: provider.auth?.header || '',
+          authPrefix: provider.auth?.prefix || '',
+          apiKeyEnv: provider.apiKeyEnv || '',
+          apiKey: '',
+          clearApiKey: false,
+          headersText: JSON.stringify(provider.headers || {}, null, 2),
+          sessionHeader: provider.sessionHeader || '',
+          modelsText: (provider.models || []).map((model) => model.id).join('\n'),
+          timeoutMs: provider.timeoutMs || 45000,
+          stream: provider.stream !== false,
+          maxRetries: provider.maxRetries == null ? 1 : provider.maxRetries,
+          enabled: provider.enabled !== false,
+          notes: provider.notes || '',
+        }
+      }
+
+      function selectProvider(provider) {
+        setCreating(false)
+        setActiveId(provider.id)
+        setEditing(providerDraft(provider))
+        setTestResult(null)
+        setDiscovery(null)
+      }
+
+      function changeField(key, value) {
+        setEditing((previous) => Object.assign({}, previous, { [key]: value }))
+      }
+
+      function addProvider() {
+        const preset = presets.find((item) => item.id === presetId) || presets[0]
+        if (!preset) return
+        setCreating(true)
+        setEditing({
+          id: preset.id === 'custom' ? 'custom-' + Date.now().toString(36) : preset.id,
+          name: preset.label,
+          preset: preset.id,
+          protocol: preset.protocol,
+          baseUrl: preset.baseUrl || '',
+          requestPath: preset.requestPath || (preset.protocol === 'anthropic-messages' ? '/v1/messages' : '/chat/completions'),
+          modelsPath: preset.modelsPath || '/models',
+          authType: preset.auth?.type || 'bearer',
+          authHeader: preset.auth?.header || '',
+          authPrefix: preset.auth?.prefix || '',
+          apiKeyEnv: preset.apiKeyEnv || '',
+          apiKey: '',
+          clearApiKey: false,
+          headersText: JSON.stringify(preset.headers || {}, null, 2),
+          sessionHeader: preset.sessionHeader || '',
+          modelsText: '',
+          timeoutMs: 45000,
+          stream: true,
+          maxRetries: 1,
+          enabled: true,
+          notes: preset.notes || '',
+        })
+        setActiveId('')
+        setTestResult(null)
+        setDiscovery(null)
+      }
+
+      function parseModelsText(text) {
+        return String(text || '').split('\n').map((line) => line.trim()).filter(Boolean).map((id) => ({ id, label: id }))
+      }
+
+      async function save() {
+        if (!editing) return
+        let headers = {}
+        try {
+          headers = editing.headersText.trim() ? JSON.parse(editing.headersText) : {}
+          if (!isPlainObject(headers)) throw new Error('headers 必须是 JSON 对象')
+        } catch (err) {
+          props.toast('额外 header JSON 不合法：' + String(err.message || err), 'err')
+          return
+        }
+        const provider = {
+          id: editing.id,
+          name: editing.name,
+          preset: editing.preset,
+          protocol: editing.protocol,
+          baseUrl: editing.baseUrl,
+          requestPath: editing.requestPath,
+          modelsPath: editing.modelsPath,
+          auth: { type: editing.authType, header: editing.authType === 'none' ? '' : (editing.authHeader || (editing.authType === 'bearer' ? 'Authorization' : 'x-api-key')), prefix: editing.authType === 'bearer' ? 'Bearer ' : editing.authPrefix },
+          apiKeyEnv: editing.apiKeyEnv,
+          apiKey: editing.apiKey,
+          clearApiKey: editing.clearApiKey,
+          headers,
+          sessionHeader: editing.sessionHeader,
+          models: parseModelsText(editing.modelsText),
+          timeoutMs: Number(editing.timeoutMs) || 45000,
+          stream: Boolean(editing.stream),
+          maxRetries: Number(editing.maxRetries) || 0,
+          enabled: Boolean(editing.enabled),
+          notes: editing.notes,
+        }
+        if (provider.auth.header === undefined) delete provider.auth.header
+        setSaving(true)
+        const result = await modelPost(props, '/models/provider', { provider })
+        setSaving(false)
+        if (!result) return
+        setCreating(false)
+        props.toast('模型 provider 已保存', 'ok')
+        setEditing(providerDraft(result.provider))
+        setActiveId(result.provider.id)
+        await api.reload()
+      }
+
+      async function remove() {
+        if (!editing || !window.confirm('删除这个模型 provider？已保存的 key 也会被移除。')) return
+        const result = await modelPost(props, '/models/provider/delete', { providerId: editing.id })
+        if (!result) return
+        props.toast('模型 provider 已删除', 'ok')
+        setCreating(false)
+        setEditing(null)
+        setActiveId('')
+        await api.reload()
+      }
+
+      async function test() {
+        if (!editing) return
+        const model = parseModelsText(editing.modelsText)[0]?.id || (selected.model || '')
+        if (!model) { props.toast('请先填写至少一个模型 ID', 'err'); return }
+        setTesting(true)
+        setTestResult(null)
+        const result = await modelPost(props, '/models/provider/test', { providerId: editing.id, model })
+        setTesting(false)
+        if (!result) return
+        setTestResult(result.result)
+        await api.reload()
+      }
+
+      async function discover() {
+        if (!editing) return
+        setDiscovering(true)
+        const result = await modelPost(props, '/models/provider/discover', { providerId: editing.id })
+        setDiscovering(false)
+        if (!result) return
+        setDiscovery(result.result)
+        props.toast('发现 ' + safeArray(result.result.models).length + ' 个模型', 'ok')
+      }
+
+      async function selectActive() {
+        if (!editing) return
+        const model = parseModelsText(editing.modelsText)[0]?.id
+        if (!model) { props.toast('请先填写模型 ID', 'err'); return }
+        const result = await modelPost(props, '/models/select', { provider: editing.id, model })
+        if (!result) return
+        props.toast('已设为直连模型', 'ok')
+        await api.reload()
+      }
+
+      async function setFallback(providerId, model) {
+        const current = safeArray(data.fallback).map((item) => ({ provider: item.provider, model: item.model }))
+        if (current.some((item) => item.provider === providerId && item.model === model)) return
+        const result = await modelPost(props, '/models/fallback', { fallback: [...current, { provider: providerId, model }] })
+        if (result) { props.toast('已加入备用路由', 'ok'); await api.reload() }
+      }
+
+      async function clearFallback(providerId, model) {
+        const next = safeArray(data.fallback).filter((item) => !(item.provider === providerId && item.model === model)).map((item) => ({ provider: item.provider, model: item.model }))
+        const result = await modelPost(props, '/models/fallback', { fallback: next })
+        if (result) { await api.reload() }
+      }
+
+      const modeOptions = [
+        { value: 'auto', label: '自动（DSH 优先）' },
+        { value: 'dsh', label: '仅 DSH' },
+        { value: 'fixed', label: 'DSH 固定' },
+        { value: 'direct', label: '仅直连' },
+        { value: 'chain', label: '直连 → DSH' },
+      ]
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '16px' } },
+        api.error ? h(Banner, { tone: 'err', message: '模型 API 不可用：' + api.error, actions: h(Btn, { small: true, kind: 'ghost', onClick: api.reload }, '重试') }) : null,
+        h(
+          Panel,
+          { title: '模型路由', description: '统一模型协议：OpenAI / Responses / Anthropic / Gemini / Ollama，以及 OpenCode Go、Command Code、OpenRouter 等中转。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: api.reload }, '刷新') },
+          h(
+            'div',
+            { className: 'ob-grid two' },
+            h(ModelField, { label: '路由模式', hint: 'auto 保持 DSH 优先；direct 只走本页直连；chain 先直连链再回退 DSH。' },
+              h('select', { className: 'ob-select', value: mode, onChange: (event) => props.saveUiPatch({ 'cognition.llm.mode': event.target.value }), 'aria-label': '模型路由模式' }, modeOptions.map((option) => h('option', { key: option.value, value: option.value }, option.label))),
+            ),
+            h(ModelField, { label: '直连状态', hint: selected.resolved ? '当前直连路由' : '尚未选择直连模型' },
+              h('div', { className: 'ob-stack', style: { gap: '6px' } },
+                selected.resolved ? h('div', { className: 'ob-row' }, h(ModelTag, { tone: 'ok' }, selected.provider + ' / ' + selected.model), h(ModelTag, { tone: 'muted' }, selected.protocolLabel || selected.protocol || '') ) : h('span', { className: 'ob-small ob-muted' }, '在右侧选择 provider 后点「设为直连」'),
+                h('label', { className: 'ob-row ob-small' }, h('input', { type: 'checkbox', checked: getByPath(draft, 'cognition.llm.fallbackToDsh') !== false, onChange: (event) => props.saveUiPatch({ 'cognition.llm.fallbackToDsh': event.target.checked }) }), '直连失败回退 DSH'),
+              ),
+            ),
+          ),
+          selected.resolved ? h('div', { className: 'ob-row' }, h('span', { className: 'ob-small ob-muted' }, '备用路由：'), safeArray(data.fallback).length ? safeArray(data.fallback).map((item) => h('span', { key: item.provider + '/' + item.model, className: 'ob-row' }, h(ModelTag, { tone: 'muted' }, (item.provider || '') + ' / ' + (item.model || '')), h(Btn, { small: true, kind: 'ghost', onClick: () => clearFallback(item.provider, item.model) }, '移除'))) : h('span', { className: 'ob-small ob-muted' }, '无')) : null,
+        ),
+        h(
+          'div',
+          { className: 'ob-models-grid' },
+          h(
+            Panel,
+            { title: 'Provider', description: '密钥只保存在本地；环境变量优先。', actions: h(Btn, { small: true, kind: 'primary', icon: 'plus', onClick: addProvider }, '新增') },
+            h(
+              'div',
+              { className: 'ob-stack', style: { gap: '8px' } },
+              h('div', { className: 'ob-row' },
+                h('select', { className: 'ob-select', value: presetId, onChange: (event) => setPresetId(event.target.value), 'aria-label': 'provider 预设' }, presets.map((preset) => h('option', { key: preset.id, value: preset.id }, preset.label))),
+              ),
+              api.loading ? h(CogLoading) : providers.length ? h('div', { className: 'ob-stack', style: { gap: '6px' } }, providers.map((provider) =>
+                h('button', { key: provider.id, type: 'button', className: cx('ob-model-provider', activeId === provider.id && 'on'), onClick: () => selectProvider(provider) },
+                  h('span', { className: 'ob-model-provider-main' },
+                    h('span', { className: 'ob-row' }, h(ModelTag, { tone: selected.provider === provider.id ? 'brand' : 'muted' }, provider.name), provider.enabled === false ? h(ModelTag, { tone: 'warn' }, '禁用') : null),
+                    h('span', { className: 'ob-small ob-muted ob-truncate' }, provider.protocol + ' · ' + (provider.baseUrl || '')),
+                    h('span', { className: 'ob-row ob-small ob-muted' }, h('span', null, safeArray(provider.models).length + ' 个模型'), h('span', null, provider.hasApiKey ? '已配置 key' : '未配置 key'), h('span', null, provider.apiKeySource === 'env' ? 'env' : 'local')),
+                  ),
+                  h(Icon, { name: 'chevron', size: 14 }),
+                ),
+              )) : h(EmptyState, { compact: true, title: '还没有 provider', description: '从上方选一个预设，然后新增并填写模型 ID。' }),
+            ),
+          ),
+          h(
+            Panel,
+            { title: editing ? editing.name || editing.id : 'Provider 编辑器', description: editing ? '空 API key = 保持不变；敏感 header 值显示为 ***。' : '选择左侧 provider 或新增。' },
+            editing ? h(
+              'div',
+              { className: 'ob-stack', style: { gap: '10px' } },
+              h('div', { className: 'ob-grid two' },
+                h(ModelField, { label: 'ID', hint: '创建后不可改；小写字母/数字/._-' }, h('input', { className: 'ob-input', value: editing.id, disabled: providers.some((item) => item.id === editing.id), onChange: (event) => changeField('id', event.target.value.trim()) })),
+                h(ModelField, { label: '显示名' }, h('input', { className: 'ob-input', value: editing.name, onChange: (event) => changeField('name', event.target.value) })),
+                h(ModelField, { label: '协议' }, h('select', { className: 'ob-select', value: editing.protocol, onChange: (event) => changeField('protocol', event.target.value) }, (safeArray(data.protocols).length ? safeArray(data.protocols) : Object.keys(MODEL_PROTOCOL_LABELS).map((id) => ({ id, label: MODEL_PROTOCOL_LABELS[id] }))).map((protocol) => h('option', { key: protocol.id, value: protocol.id }, protocol.label || MODEL_PROTOCOL_LABELS[protocol.id] || protocol.id)))),
+                h(ModelField, { label: 'Base URL', hint: '不要带 /chat/completions；可以带 /v1 或 /provider/v1。' }, h('input', { className: 'ob-input', value: editing.baseUrl, onChange: (event) => changeField('baseUrl', event.target.value) })),
+                h(ModelField, { label: '请求路径', hint: '留空使用协议默认；Command Code 用 /chat/completions 或 /messages。' }, h('input', { className: 'ob-input', value: editing.requestPath, onChange: (event) => changeField('requestPath', event.target.value) })),
+                h(ModelField, { label: '模型列表路径' }, h('input', { className: 'ob-input', value: editing.modelsPath, onChange: (event) => changeField('modelsPath', event.target.value) })),
+                h(ModelField, { label: '认证方式' }, h('select', { className: 'ob-select', value: editing.authType, onChange: (event) => changeField('authType', event.target.value) }, [['bearer', 'Authorization: Bearer'], ['x-api-key', 'x-api-key'], ['header', '自定义 header'], ['none', '无认证']].map(([value, label]) => h('option', { key: value, value }, label)))),
+                h(ModelField, { label: '认证 header（可选）', hint: 'header 认证时使用，例如 X-API-Key' }, h('input', { className: 'ob-input', value: editing.authHeader, disabled: editing.authType !== 'header', onChange: (event) => changeField('authHeader', event.target.value) })),
+                h(ModelField, { label: '认证前缀（可选）', hint: '例如 Bearer 或 Token' }, h('input', { className: 'ob-input', value: editing.authPrefix, onChange: (event) => changeField('authPrefix', event.target.value) })),
+                h(ModelField, { label: 'API key 环境变量', hint: '优先读环境变量，例如 OPENCODE_GO_API_KEY' }, h('input', { className: 'ob-input', value: editing.apiKeyEnv, onChange: (event) => changeField('apiKeyEnv', event.target.value) })),
+              ),
+              h(ModelField, { label: 'API key', hint: active ? (active.hasApiKey ? '已配置（' + modelKeySourceLabel(active.apiKeySource) + '；后四位 ' + String(active.apiKeyHint || '') + '）' : '未配置') : '仅本地保存，不会回传浏览器' },
+                h('div', { className: 'ob-row', style: { width: '100%' } },
+                  h('input', { className: 'ob-input', type: 'password', autoComplete: 'new-password', placeholder: active && active.hasApiKey ? '留空保持不变' : '输入 key', value: editing.apiKey, onChange: (event) => changeField('apiKey', event.target.value) }),
+                  h('label', { className: 'ob-row ob-small' }, h('input', { type: 'checkbox', checked: editing.clearApiKey, onChange: (event) => changeField('clearApiKey', event.target.checked) }), '清除已保存 key'),
+                ),
+              ),
+              h(ModelField, { label: '模型 ID', hint: '每行一个；可在下方发现后应用。' }, h('textarea', { className: 'ob-textarea', rows: 4, value: editing.modelsText, onChange: (event) => changeField('modelsText', event.target.value) })),
+              h('details', { className: 'ob-model-advanced' },
+                h('summary', null, '高级：headers / session / 超时 / 重试'),
+                h('div', { className: 'ob-stack', style: { gap: '10px', marginTop: '8px' } },
+                  h(ModelField, { label: '额外 headers（JSON）', hint: '例如 HTTP-Referer / X-Title；认证 header 用上方配置。' }, h('textarea', { className: 'ob-textarea', rows: 4, value: editing.headersText, onChange: (event) => changeField('headersText', event.target.value) })),
+                  h('div', { className: 'ob-grid two' },
+                    h(ModelField, { label: 'Session header', hint: 'OpenCode Go 必须为 x-opencode-session' }, h('input', { className: 'ob-input', value: editing.sessionHeader, onChange: (event) => changeField('sessionHeader', event.target.value) })),
+                    h(ModelField, { label: '超时（ms）' }, h('input', { className: 'ob-input', type: 'number', value: editing.timeoutMs, onChange: (event) => changeField('timeoutMs', event.target.value) })),
+                    h(ModelField, { label: '重试次数' }, h('input', { className: 'ob-input', type: 'number', min: 0, max: 5, value: editing.maxRetries, onChange: (event) => changeField('maxRetries', event.target.value) })),
+                    h(ModelField, { label: '流式' }, h('label', { className: 'ob-row' }, h('input', { type: 'checkbox', checked: editing.stream, onChange: (event) => changeField('stream', event.target.checked) }), '启用 SSE/NDJSON 流')),
+                  ),
+                ),
+              ),
+              h('div', { className: 'ob-row' },
+                h(Btn, { kind: 'primary', icon: 'check', busy: saving, onClick: save }, '保存'),
+                h(Btn, { kind: 'ghost', icon: 'play', busy: testing, onClick: test }, '测试'),
+                h(Btn, { kind: 'ghost', icon: 'search', busy: discovering, onClick: discover }, '发现模型'),
+                h(Btn, { kind: 'ghost', icon: 'target', onClick: selectActive }, '设为直连'),
+                h(Btn, { kind: 'ghost', icon: 'link', onClick: () => { const model = parseModelsText(editing.modelsText)[0]?.id; if (!model) { props.toast('请先填写模型 ID', 'err'); return } setFallback(editing.id, model) } }, '设为备用'),
+                active ? h(Btn, { kind: 'danger', icon: 'trash', onClick: remove }, '删除') : null,
+              ),
+              active ? h('div', { className: 'ob-row' }, h(ModelStatus, { item: health }), h('span', { className: 'ob-small ob-muted' }, active.hasApiKey ? '密钥：' + modelKeySourceLabel(active.apiKeySource) + ' ' + active.apiKeyHint : '密钥：未配置')) : null,
+              testResult ? h(
+                'div',
+                { className: cx('ob-model-test', testResult.ok ? 'ok' : 'err') },
+                h('div', { className: 'ob-spread' }, h('strong', null, testResult.ok ? '测试通过' : '测试失败'), h(ModelTag, { tone: testResult.ok ? 'ok' : 'err' }, testResult.code || testResult.protocol || '')),
+                h('p', { className: 'ob-small' }, testResult.ok ? `${testResult.provider} / ${testResult.model} · ${testResult.latencyMs}ms · tokens ${testResult.usage?.total || 0} · ${testResult.textPreview || ''}` : String(testResult.message || '')),
+              ) : null,
+              discovery ? h(
+                'div',
+                { className: 'ob-model-discovery' },
+                h('div', { className: 'ob-spread' }, h('strong', null, '发现模型 ' + safeArray(discovery.models).length), h(Btn, { small: true, kind: 'ghost', onClick: () => { changeField('modelsText', safeArray(discovery.models).map((item) => item.id).join('\n')); setDiscovery(null) } }, '应用全部')),
+                h('div', { className: 'ob-model-candidates' }, safeArray(discovery.models).slice(0, 30).map((item) => h('span', { key: item.id, className: 'ob-model-candidate' }, item.id))),
+              ) : null,
+            ) : h(EmptyState, { compact: true, title: '编辑一个 provider', description: '密钥不会从服务端返回；留空保存表示保持原 key。' }),
+          ),
+        ),
+        h(Panel, { title: '协议与预设', description: '预设只填端点/协议/认证；模型 ID 可发现或手填。' },
+          h('div', { className: 'ob-model-protocols' }, safeArray(data.protocols).map((protocol) => h('div', { key: protocol.id, className: 'ob-model-protocol' }, h('strong', null, protocol.label || protocol.id), h('span', { className: 'ob-small ob-muted' }, protocol.id)))),
+          h('div', { className: 'ob-row', style: { marginTop: '10px' } }, presets.map((preset) => h(ModelTag, { key: preset.id, tone: 'muted' }, preset.label))),
+          h('p', { className: 'ob-field-help' }, '外部模型输出只作为生成/分析结果，不执行其中的指令；密钥不进入日志、trace 或 API 返回值。'),
+        ),
+      )
+    }
+    // =====================================================================
     // 标签页：认知（人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置）
     // 复用持久设置壳；页面只读 API，写操作走 cognition 服务，不直接改配置。
     // =====================================================================
@@ -4876,6 +5300,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const emotion = safeObject(data.emotion)
       const metrics = safeObject(data.metrics)
       const llm = safeObject(data.llm)
+      const direct = safeObject(llm.direct)
       const decisions = safeArray(data.recentDecisions)
       const unknowns = safeArray(data.recentUnknowns)
       return h(
@@ -4913,13 +5338,15 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ),
           h(
             Panel,
-            { title: '模型与预算', description: 'LLM 只做语义分析与生成，不保存长期状态。' },
+            { title: '模型与预算', description: 'LLM 只做语义分析与生成，不保存长期状态；直连协议在「模型」页管理。', actions: props.go ? h(Btn, { small: true, kind: 'ghost', onClick: () => props.go('models') }, '管理模型') : null },
             h(
               'div',
               { className: 'ob-stack', style: { gap: '8px' } },
               h(KV, { rows: [
-                ['服务', llm.available ? '可用' : '不可用'],
-                ['路由', llm.route ? String(llm.route.provider) + ' / ' + String(llm.route.model) : '—'],
+                ['DSH', llm.dsh?.available ? '可用' : '不可用'],
+                ['DSH 路由', llm.route ? String(llm.route.provider) + ' / ' + String(llm.route.model) : '—'],
+                ['直连', direct.resolved ? String(direct.provider) + ' / ' + String(direct.model) : '未选择'],
+                ['直连协议', direct.protocol || '—'],
                 ['今日 token', String(Number(llm.usageToday || 0)) + ' / ' + String(Number(llm.budget || 0))],
                 ['预算剩余', String(Number(llm.budgetLeft || 0))],
                 ['检索模式', 'lexical + association'],
@@ -5350,6 +5777,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             title: '日志',
             description: '增量拉取宿主日志环形缓冲；token 与密钥已在服务端脱敏。',
           }
+        case 'models':
+          return {
+            eyebrow: 'MODEL GATEWAY',
+            title: '模型',
+            description: '统一接入 OpenAI Chat/Responses、Anthropic、Gemini、Ollama 与 OpenCode Go、Command Code、OpenRouter 等中转；直连与 DSH 路由可切换。',
+          }
         case 'settings':
           return {
             eyebrow: 'SYSTEM SETTINGS',
@@ -5752,6 +6185,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
+      else if (tab === 'models') body = h(ModelTab, tabProps)
       else if (tab === 'settings') body = h(SettingsTab, tabProps)
       else if (tab === 'cognition') body = h(CognitionTab, tabProps)
       else if (tab === 'logs') body = h(Logs, tabProps)
@@ -5891,6 +6325,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.ConfigTab = ConfigTab
     exports.SettingsTab = SettingsTab
     exports.SettingsShell = SettingsShell
+    exports.ModelTab = ModelTab
     exports.CognitionTab = CognitionTab
     exports.COG_SECTIONS = COG_SECTIONS
     exports.Logs = Logs

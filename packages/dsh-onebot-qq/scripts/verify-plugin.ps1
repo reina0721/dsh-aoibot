@@ -400,6 +400,15 @@ function Invoke-Verify {
         $cognitionDetail = 'ready=' + [string]$cognitionPayload.ready + '; mode=' + [string]$cognitionPayload.mode + '; skills=' + [string]$cognitionPayload.counts.skill
       } catch { $cognitionDetail = $_.Exception.Message }
       Add-Step 'cognition: overview API ready and SQLite database created' $cognitionOk $cognitionDetail
+
+      $modelsOk = $false
+      $modelsDetail = ''
+      try {
+        $modelsPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/models') -TimeoutSec 8
+        $modelsOk = ($modelsPayload.ok -eq $true) -and ($null -ne $modelsPayload.presets) -and (@($modelsPayload.presets).Count -gt 5) -and ($null -ne $modelsPayload.protocols) -and (@($modelsPayload.protocols).Count -ge 5)
+        $modelsDetail = 'presets=' + [string]@($modelsPayload.presets).Count + '; protocols=' + [string]@($modelsPayload.protocols).Count + '; providers=' + [string]@($modelsPayload.providers).Count
+      } catch { $modelsDetail = $_.Exception.Message }
+      Add-Step 'models: protocol presets and provider API available' $modelsOk $modelsDetail
     } catch {
       Add-Step 'api: GET /onebot-qq/api/status returns a gateway snapshot' $false $_.Exception.Message
     }

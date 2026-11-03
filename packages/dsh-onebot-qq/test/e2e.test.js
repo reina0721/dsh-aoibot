@@ -166,6 +166,42 @@ const configFileOf = (dir) => join(dir, 'config.json')
 // 1. 启动即注册的接口形状
 // ---------------------------------------------------------------------------
 
+test('模型 API：provider CRUD/选中/公开返回不包含密钥', { timeout: 20000 }, async (t) => {
+  const { fake } = await boot(t, { rowConfig: {} })
+  await t.test('初始预置与协议表', async () => {
+    const data = await getJson(fake, '/models')
+    assert.ok(Array.isArray(data.presets) && data.presets.length >= 10)
+    assert.ok(Array.isArray(data.protocols) && data.protocols.some((item) => item.id === 'openai-completions'))
+    assert.ok(data.protocols.some((item) => item.id === 'anthropic-messages'))
+    assert.ok(data.protocols.some((item) => item.id === 'gemini-generate-content'))
+  })
+  const saved = await postJson(fake, '/models/provider', {
+    provider: {
+      id: 'e2e-openai', name: 'E2E OpenAI', protocol: 'openai-completions',
+      baseUrl: 'https://example.test/v1', requestPath: '/chat/completions', modelsPath: '/models',
+      auth: { type: 'bearer', header: 'Authorization', prefix: 'Bearer ' },
+      apiKey: 'e2e-secret-key-12345678', apiKeyEnv: 'E2E_OPENAI_API_KEY',
+      models: [{ id: 'e2e-model' }],
+    },
+  })
+  assert.equal(saved.provider.id, 'e2e-openai')
+  assert.equal(saved.provider.hasApiKey, true)
+  assert.equal(saved.provider.apiKeyHint, '…5678')
+  assert.equal(Object.prototype.hasOwnProperty.call(saved.provider, 'apiKey'), false)
+  assert.ok(!JSON.stringify(saved).includes('e2e-secret-key-12345678'))
+
+  const selected = await postJson(fake, '/models/select', { provider: 'e2e-openai', model: 'e2e-model' })
+  assert.equal(selected.selected.model, 'e2e-model')
+  const listed = await getJson(fake, '/models')
+  assert.equal(listed.selected.provider, 'e2e-openai')
+  assert.ok(!JSON.stringify(listed).includes('e2e-secret-key-12345678'))
+
+  await postJson(fake, '/models/provider/delete', { providerId: 'e2e-openai' })
+  const after = await getJson(fake, '/models')
+  assert.equal(after.selected, null)
+  assert.ok(!Array.isArray(after.providers) || !after.providers.some((item) => item.id === 'e2e-openai'))
+})
+
 test('启动即提供 health / status / config，配置默认值与字段表完整', { timeout: 20000 }, async (t) => {
   const { dir, fake } = await boot(t, { rowConfig: {} })
 
