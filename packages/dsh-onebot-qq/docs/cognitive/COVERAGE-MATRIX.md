@@ -2,7 +2,10 @@
 
 > 原始需求：`goal-context.md`（2621 行，六十四节）。  
 > 映射链：需求 → 能力 → 理论 → 算法 → 状态 → 数据 → 模块 → 测试 → 状态。  
-> 状态：D 设计、I 实现、T 测试、V 真实验证、L 受限、R 待研究。**本文件在 M1–M8 每个阶段更新**。
+> 状态：D 设计、I 实现、T 测试、V 真实验证、L 受限、R 待研究。**本文件在 M1–M8 每个阶段更新**。  
+> **v0.4.0 实际实现边界以 [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md) 为准**：本矩阵中部分模块名
+> （如 `turn-features.js`、`identity.js`、`groups.js`、`attention`）是目标态命名，当前代码合并/落在
+> `turn.js`、`person.js`、`relationships.js`、`pipeline.js`；未实现项在状态表中标 L/N，不当作完成。
 
 ## 第一部分 项目定位与原则（一–三）
 

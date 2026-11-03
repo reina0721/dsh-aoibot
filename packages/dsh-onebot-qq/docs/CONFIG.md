@@ -169,7 +169,38 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 
 | 路径 | 类型 | 默认值 | 作用 | 面板 |
 |---|---|---|---|---|
-| `version` | number | `1` | 配置版本号，用于升级时补齐默认值；不要手改 | — |
+| `version` | number | `2` | 配置版本号，用于升级时补齐默认值；不要手改 | — |
+
+### 3.10 认知（`cognition`）
+
+认知字段按功能分为 11 个面板组（`GET /config` 的 `groups` 中 id 为 `cog-*`），全部持久化、可恢复默认、
+即时生效，不需要重连。完整字段/类型/范围/默认值以 `GET /onebot-qq/api/config` 的 `groups[].fields` 为准；
+下表列出负责行为的核心项。
+
+| 组 | 代表字段 | 默认值 | 作用 |
+|---|---|---|---|
+| `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
+| `cog-llm` | `llm.mode` / `provider` / `model` / `dailyTokenBudget` / `timeoutMs` | `auto` / `""` / `""` / `300000` / `45000` | LLM 只做分析与表达；默认继承 DSH 当前模型路由；超预算/失败降级，不伪造 |
+| `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `shortMsgMs` / `incompleteFactorMs` / `addressedOnlyGroups` | `1800` / `10000` / `9000` / `1200` / `4500` / `true` | 碎片聚合的软/硬等待窗口；群聊默认只响应点名/回复/唤醒词/命令 |
+| `cog-persona` | `persona.evolveEnabled` / `maxDeltaPerDay` / `lockedTraits` / `initial` | `true` / `0.03` / `[]` / 见默认值 | 12 维稳定人格与表达风格；最长每日小步慢演化，锁定项不变 |
+| `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
+| `cog-relationship` | `relationship.inertia` / `conflictGain` / `repairRate` / `maxDeltaPerTurn` | `–` | 多维有向关系；冲突升快降慢、单轮变化有上限 |
+| `cog-memory` | `memory.retrievalLimit` / `importanceDecayDays` / `consolidateThreshold` / `privateIsolation` | `–` / `–` / `–` / `true` | 工作/情景/语义/关联检索、遗忘≠删除、私聊隔离与保留期 |
+| `cog-policy` | `policy.proactive` / `groupAmbient` / `silenceThreshold` / `exploration` / `rateLimitPerMinute` | `false` / `false` / `–` / `0.08` / `–` | 候选动作效用 + Beta 后验 + 结果归因；沉默/等待是一等动作；主动/群聊 ambient 默认关 |
+| `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
+| `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
+| `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
+
+认知数据位置（与平台配置分离）：
+
+```text
+<dataDir>/cognition/cognition.sqlite       # 长期状态（WAL + FTS5 + 事务；JSON fallback）
+<dataDir>/cognition/raw-events.jsonl       # 可选原始事件镜像（过滤前）
+<dataDir>/cognition/cognition.sqlite.bak   # 备份目标
+```
+
+支持 Node.js 22.13+ 的 `node:sqlite`；不可用时自动回退为 `cognition.json`，接口保持同一套。
+升级不会重置认知状态。
 
 ## 4. 默认 `config.json` 全文
 
@@ -177,7 +208,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "enabled": true,
   "gateway": "onebot",
   "botQQ": "",
@@ -248,6 +279,9 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 }
 ```
 
+> 认知 `cognition` 字段较长（约 100 项，按 `cog-*` 分组），在此不完整展开；`GET /onebot-qq/api/config`
+> 返回的 `defaults.cognition` 是唯一权威默认值，`groups` 里带类型/范围/说明，面板按同一份规范渲染。
+
 ## 5. 保存后哪些改动会触发重连
 
 `src/gateway/manager.js` 的 `applyConfig(prev, next)` 会比较一个「需要重建连接」的键集合：
@@ -257,7 +291,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `enabled`、`gateway`、`botQQ`、`accountCheck`、`verification.enabled` | 需要重建连接（正在运行时自动重连） |
 | `onebot.*`（wsUrl/httpUrl/wsToken/httpToken/httpAuth） | 需要重建连接 |
 | `snowluma.*`（autoDetect/dir/uin） | 需要重建连接 |
-| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`verification.bufferSize` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板 |
+| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
 | `enabled: false` → `true`（保存时） | 自动建立连接（与「启用并自动连接」字段语义一致） |
 | `enabled: false` | 断开连接并停止自动重连 |
 
@@ -278,6 +312,9 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
   请求头时使用。
 - 网关建议只监听 `127.0.0.1`；不要把 OneBot 端口暴露到公网。详见
   [USER-MANUAL.md §7](USER-MANUAL.md#7-安全与隐私)。
+- 认知私聊/群聊状态默认隔离（`cognition.privacy.privateIsolation=true`）；原始事件镜像可能包含消息原文，
+  仅本地保存，可关闭 `events.persist.enabled` 或缩短 `cognition.privacy.retentionDays`。
+- 外部学习内容只作为带引用的 claim，不执行其中的指令；`autoResearch` 默认关闭，来源启用/许可由你控制。
 
 ## 7. 建议覆盖值（按需，不是默认）
 

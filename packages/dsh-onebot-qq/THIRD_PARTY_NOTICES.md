@@ -138,3 +138,16 @@ all gateway names and links are listed in `docs/RESEARCH-onebot-ecosystem.md`.
 - SnowLuma: <https://github.com/SnowLuma/SnowLuma>
 - Lagrange.OneBot: <https://github.com/LagrangeDev/Lagrange.Core>
 - LLOneBot: <https://github.com/LLOneBot/LLOneBot>
+
+## Cognitive architecture references (no code copied)
+
+The cognitive core is an original implementation. The following published work influenced design choices
+and is cited in `docs/cognitive/RESEARCH.md`; no source code, prompts, or datasets were copied:
+
+- Generative Agents (Park et al., 2023): memory stream, recency/importance/relevance retrieval.
+- ACT-R (Anderson): declarative/procedural memory, activation and decay.
+- OCC model (Ortony, Clore, Collins): appraisal-driven emotion.
+- PAD model (Mehrabian): valence/arousal/dominance representation.
+- BDI / SOAR / LIDA: belief, goal, decision-loop and metacognition concepts, at a conceptual level only.
+- Beta-Bernoulli / Thompson sampling: context-banded policy learning.
+- FTS5 / SQLite: storage and lexical retrieval primitives (SQLite is public domain).

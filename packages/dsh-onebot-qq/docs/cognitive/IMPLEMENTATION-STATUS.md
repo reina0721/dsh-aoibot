@@ -1,0 +1,43 @@
+# 实现状态（IMPLEMENTATION-STATUS · v0.4.0）
+
+> 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
+> 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
+> 基线：`packages/dsh-onebot-qq@0.4.0`，99 个测试；认知 26 项；真实 DSH 探针 + 认知 UI/数据流证据见
+> [`../VERIFICATION.md`](../VERIFICATION.md) §4.2。
+
+| 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
+|---|---|---|---|---|
+| 感知与轮次 | I/T/V | `src/cognition/turn.js` | 每 `(chatType,chatId,senderId)` 聚合；完整度评分；软/硬截止；命令/超时快路径；撤回通知；跨重启恢复；消息去重；`selfId` 防循环 | 多用户同时插话的「注意力分配」只做了点名/回复门控，没有独立打分模块；编辑事件未完整接入 |
+| 注意力 | L/T | `turn.js` + `pipeline` | 群聊仅点名/回复/唤醒词/命令；群 ambient 默认不决策；回复/情绪/关系/记忆参与候选效用 | 没有独立 `attention.js` 的 salience 评分、话题切换/多人优先级队列；属于 v0.5 目标 |
+| 工作记忆 | I/T | `memory.workingSet` | 每个 chat 的当前 turn/人物/意图/决策 | 容量与时间淘汰是简单裁剪，不是完整 Baddeley 模型 |
+| 人格 | I/T/V | `persona.js`、`pipeline.maybeEvolvePersona` | 12 维特质 + 表达风格 + 价值边界；锁定项；单次/短期证据不剧变；24h 门控慢演化（≥5 结果样本、受每日上限） | 演化证据仍较粗（平均结果/未知量），未做完整长期模拟 |
+| 情绪 | I/T/V | `emotion.js` | OCC 评价→PAD/离散；惯性、衰减、调节、外显阈值；疲劳/压力影响有效技能 | 评价主要来自 LLM 分析或本地启发式，无真实生理信号；不声称主观体验 |
+| 人物画像 | I/T/V | `person.js` | Person/identity/facet；fact/self_report/observation/inference/hypothesis；scope/confidence/status/outdated/disputed；修正/删除/导出 | 身份合并/拆分是规则+scope，没有强实体消歧；群成员网络未单独建模 |
+| 关系 | I/T/V | `relationships.js` | 10 维有向关系；全局/群/私聊作用域；惯性、冲突升快降慢、修复、单轮上限；历史事件 | 长期衰减未在每次读取时强制应用；群体氛围/多人关系网络为 v0.5 |
+| 记忆 | I/T/V | `memory.js` | 工作/情景/语义/情绪/社会/程序；重要性/显著性；FTS 中文+英文检索；关联 2 跳；检索公式；巩固；遗忘（降权）≠删除；隐私隔离；时间/访问衰减 | 默认词法+图关联，embedding 只是可选接缝未接入真实向量库；长期巩固策略是阈值启发式 |
+| 信念/未知 | I/T | `beliefs.js`、`knowledge.js` | 概率化信念、证据 logit 更新、冲突 `disputed`、用户纠正；未知检测/学习任务/claims | 信念候选依赖 LLM 返回；本地无法可靠抽命题；未知到信念的自动桥接有限 |
+| 策略/行为 | I/T/V | `policy.js`、`pipeline.js` | 候选动作效用；关系/情绪/人格/技能约束；沉默/等待是一等动作；上下文 Beta 后验 + 探索；限频；结果归因（用户继续/纠正/情绪）；撤回专项（未看见内容不假装看见）；主动行为默认关且有安静时段/日预算/退避 | 没有显式目标树/规划器；复杂多步任务规划仍交给 DSH agent 层；proactive 的实际模型调用未在真实探针验证（无凭据） |
+| 学习 | I/T/L | `knowledge.js`、`sources` | 未知→任务→多来源→带引用 claim；来源可注册；预算/暂停/重试/取消；默认只检测，自动外部检索显式开启 | 未做 real-world 多源冲突自动裁决的完整回归；Wikipedia/OpenAlex/GitHub 网络调用在测试中用 fake source；真实网络未逐源验证 |
+| 技能 | I/T/V | `skills.js` | 13 项初始技能；成功/失败/不用/压力/迁移；有效熟练度独立于人格/情绪/关系 | 技能参数是手工先验，未从长期真实成功数据拟合 |
+| 元认知 | I/T | `meta.js` | 决策/结果/校准 Brier/沉默率/能力缺口/有限 insight | 反思只记录 bounded insight，不自动改代码/权限；无完整自我模型 |
+| 主动行为 | I/T/L | `proactivity.js` | 默认关闭；安静时段、日预算、关系门槛、退避、dryRun、决策记录 | 真实 LLM/发送路径未在带凭据的探针上验证；群主动默认关闭 |
+| 隐私/删除 | I/T/V | `memory.js`、`person.js`、`index.deletePerson` | 私聊/群聊作用域隔离；secret 不进 LLM（平台层）；导出；删除人物级联画像/关系/记忆；原始事件镜像可关 | 没有多用户权限模型；DSH 本地单用户认证 |
+| 存储 | I/T/V | `store.js` | `node:sqlite` WAL + FTS5 + 事务/回滚/备份；JSON fallback；schema version；原始 JSONL；WAL checkpoint | 迁移只有 v1；跨大版本升级需补迁移脚本 |
+| 可观测 | I/T/V | `pipeline` traces、`overview`、UI | 每阶段 trace、决策候选、计数、API/UI、暂停/演练 | 没有完整分布式追踪/指标导出 |
+| 多模态 | L | `turn.js`、`analysis.js` | 图片/引用/表情段进入轮次特征；UI 只显示文本摘要 | 视觉理解依赖 LLM 的图像能力，当前未接；语音/文件未实现 |
+| 群体网络 | N | — | 关系有 group scope | 成员角色/群体氛围/多人冲突/群体规范是 v0.5 |
+| 显式目标与规划 | N | — | 策略按候选效用选择动作 | 没有长期目标树、计划执行、失败重规划；当前由 DSH agent 层提供规划，认知内核不假装拥有 |
+| 生产 Web 学习 | L | `knowledge.js` | DSH web 搜索/抓取优先，公共 API 兜底 | 真实网络与来源条款/限速只做了接口与假源测试 |
+
+## 与「完整认知架构」的差距
+
+v0.4 完成的是**可运行的认知核心 + 可验证的长期状态 + 管理 UI**，不是终点：
+
+1. **独立注意力/显著性模块**、群体网络、显式目标规划、真实向量记忆、真实图像理解属于 v0.5；
+2. **真实长期模拟**（数周/数月）尚未跑；人格/情绪/关系/记忆的长期稳定性只有单元/短场景证据；
+3. **真实有凭据的 LLM 端到端**：探针 profile 无模型凭据，验证了降级不伪造；桌面 profile 的
+   `agentDefaultModel` 路由在有凭据时可用，但未在自动化里消耗真实 token 做回归；
+4. **真实 QQ 网关**未接入（本机无账号）；协议用 mock 覆盖；
+5. 文档中的设计矩阵（`COVERAGE-MATRIX.md`）部分模块名是目标态，实际合并/命名以本表与代码为准。
+
+这些边界不会用「已实现」掩盖；下一阶段按 `CAPABILITY-MAP.md` 的 v0.5 清单推进。

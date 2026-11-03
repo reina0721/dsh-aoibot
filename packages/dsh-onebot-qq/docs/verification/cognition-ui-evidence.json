@@ -1,0 +1,41 @@
+{
+  "errors": [],
+  "consoleErrors": [
+    "[deepseek-account] account read failed [object Object]"
+  ],
+  "checks": {
+    "hasEightTabs": true,
+    "cognitionTab": true,
+    "overviewText": true,
+    "section_人格": true,
+    "section_人物": true,
+    "section_关系": true,
+    "section_记忆": true,
+    "section_情绪": true,
+    "section_策略": true,
+    "section_学习": true,
+    "section_技能": true,
+    "section_元认知": true,
+    "section_设置": true,
+    "noHorizontalOverflow": true,
+    "narrowNoOverflow": true,
+    "consoleErrors": [
+      "[deepseek-account] account read failed [object Object]"
+    ],
+    "pageErrors": []
+  },
+  "screens": [
+    "cog-overview.png",
+    "cog-%E4%BA%BA%E6%A0%BC.png",
+    "cog-%E4%BA%BA%E7%89%A9.png",
+    "cog-%E5%85%B3%E7%B3%BB.png",
+    "cog-%E8%AE%B0%E5%BF%86.png",
+    "cog-%E6%83%85%E7%BB%AA.png",
+    "cog-%E7%AD%96%E7%95%A5.png",
+    "cog-%E5%AD%A6%E4%B9%A0.png",
+    "cog-%E6%8A%80%E8%83%BD.png",
+    "cog-%E5%85%83%E8%AE%A4%E7%9F%A5.png",
+    "cog-%E8%AE%BE%E7%BD%AE.png",
+    "cog-narrow.png"
+  ]
+}

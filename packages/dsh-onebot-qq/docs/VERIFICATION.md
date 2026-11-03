@@ -1,11 +1,11 @@
 # dsh-onebot-qq · 验证报告（VERIFICATION）
 
-本文件记录 2026-11-02 在**真实 DeepSeek Harness** 环境里对本插件的完整验证，包括静态检查、
+本文件记录 2026-11-03 在**真实 DeepSeek Harness** 环境里对本插件的完整验证，包括静态检查、
 单元/集成测试、真实 DSH 安装与启动验证、浏览器端面板实际渲染，以及发现并修复的问题。
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
-- 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket`）
-- 插件版本：`dsh-onebot-qq@0.3.0`（本版新增「系统设置」第 7 标签与持久化设置壳；前两版分别完成接入层与视觉/动效系统）
+- 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket` + `node:sqlite`）
+- 插件版本：`dsh-onebot-qq@0.4.0`（本版新增第 8 标签「认知」与完整认知内核；v0.2 接入层、v0.3 视觉/设置页）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,18 +15,27 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **79 / 79 通过**（7 个测试文件） |
-| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **99 / 99 通过**（11 个测试文件，含认知 26 项） |
+| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition overview/SQLite 检查） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
-| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×900 与 360×800） | ✅ 侧栏入口 + **7 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
+| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **8 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
+| 认知 UI（真实 DSH 页面 + 真实 REST 数据） | ✅ **15 / 15 布尔断言**：8 标签、11 个子页、无横向溢出、空态/数据态、无页面异常 |
+| 认知数据流（mock QQ → 真实宿主 → SQLite → UI） | ✅ 人物 1、关系 2、记忆 1、决策 1；演练模式不发送；人物/记忆/策略/关系页真实渲染 |
 | UI/动效/设置断言（`document.getAnimations()`、主题、即时保存、持久壳、浅/暗色、窄屏） | ✅ **48 / 48 布尔断言全过**（见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
 | 安装进当前桌面 profile 并生效 | ✅ 见 §7（`plugin_manager` 安装结果） |
-| 已知缺陷 | 发现并修复 1 个会导致客户端插件无法激活的致命缺陷（§6.1），并有回归测试锁定 |
+| 已知缺陷 | 发现并修复 1 个会导致客户端插件无法激活的致命缺陷（§6.1）与认知存储目录缺陷（§6.2），均有回归锁定 |
 
 截图（本目录 `docs/verification/`）：
 
 | 文件 | 内容 |
 |---|---|
+| `cognition-overview.png` | 认知 → 状态：计数、人格/情绪摘要、LLM 路由与预算、最近决策/未知 |
+| `cognition-persona.png` | 认知 → 人格：12 维滑杆、表达风格、价值边界 |
+| `cognition-persons-data.png` | 认知 → 人物：mock 消息产生的真实人物实体（非空态） |
+| `cognition-memory-data.png` | 认知 → 记忆：真实情景记忆、作用域 `private:10001`、重要性 |
+| `cognition-policy-data.png` | 认知 → 策略：真实决策、候选/效用/置信度 |
+| `cognition-relationships-data.png` | 认知 → 关系：全局+私聊作用域、多维条 |
+| `cognition-narrow-360px.png` | 360×800 认知设置：无横向溢出，子导航横向滚动 |
 | `overview-connected.png` | 已连接状态：eyebrow + 大标题页头、状态 pill、登录账号 `冒烟机器人 (20000002)`、`核验通过`、统计 tile、分布条形图、最近事件 |
 | `overview-stopped.png` | 未配置状态：warning banner +「去连接」、可读空态、连接操作 |
 | `connect-unconfigured.png` | 连接页空态：三步 stepper 与地址表单 |
@@ -125,7 +134,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 浏览器端（Chrome 143 headless + puppeteer-core，对同一真实 DSH 页面）：
 
 - 侧栏出现「QQ 连接」，点击后整页面板渲染，页面无 `Failed to load plugins`；
-- 七个标签 `概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于` 全部存在且可切换；
+- 八个标签 `概览 / 连接 / 消息 / 配置 / 系统设置 / 认知 / 日志 / 关于` 全部存在且可切换；
 - 配置页字段完全来自 `GET /config.groups`（开关/文本/密钥/数字/下拉/列表/多行文本均可见），
   左侧分组切换只替换右侧内容、不滚动整页；
 - 「系统设置」页的左侧分类固定，切换分类只替换右侧内容；主题切换会真实改变整个 DSH 的浅/深色；
@@ -162,6 +171,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 `MOTION_CSS` 是唯一允许 `@keyframes` / `animation:` 的区块；`PANEL_CSS` 只消费 `--ob-*` 变量，
 不出现裸色值/裸字重。动效只使用 opacity/transform/width，不改高度与滚动容器。
 
+### 4.2 认知内核与认知 UI 专项验证（v0.4.0）
+
+**自动化测试**：11 个测试文件 / 99 个用例全部通过；其中认知 26 项覆盖：
+存储事务/回滚/备份/FTS 中文检索、轮次软硬截止与快路径、人格单次不剧变、情绪衰减/调节、
+关系冲突非对称、记忆重要性/相关性/隐私隔离/遗忘≠删除、策略候选/沉默/撤回分支/奖励归因、
+信念证据更新与纠正、技能成功/失败/压力/迁移、学习任务与多来源 claim、群聊未点名不回复、
+机器人自发消息防循环、主动行为安静时段。
+
+**真实 DSH + 真实 REST 数据 + 浏览器**（`cognition-shots.mjs` / `cognition-data-shots.mjs`）：
+
+| 检查项 | 结果 |
+|---|---|
+| 顶层标签数 = 8，新增「认知」可进入 | ✅ |
+| 认知 11 个子页全部可切换、正文非空 | ✅ 状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 |
+| 空态渲染（无人物/无记忆时） | ✅ 空态文案与图标，不报错 |
+| 数据态渲染（mock 私聊两段消息，演练模式） | ✅ 人物 1、关系 2（全局+私聊）、记忆 1、决策 1（`reply`，置信度 0.806，状态 `dry_run`） |
+| 演练模式不发送 | ✅ mock `sentMessages=[]`，决策状态 `dry_run` |
+| 1440×1000 / 360×800 无横向溢出 | ✅ `scrollWidth <= clientWidth` |
+| 页面异常 | ✅ 0 个 `pageerror`；仅 DSH 自带 `[deepseek-account] account read failed` 控制台日志 |
+| LLM 不可用 | ✅ 不伪造回复：`compose_failed` 记录 `LLM_PROVIDER_ERROR`，状态 `degraded`；页面显示 LLM 路由/降级 |
+
+证据：`docs/verification/cognition-ui-evidence.json`、`cognition-data-*.png`、
+`cognition-overview.png`、`cognition-narrow-360px.png`。
+真实 DSH 探针中 `cognition/overview` 返回 `ready=true, mode=sqlite, skills=13`，
+数据目录生成 `cognition/cognition.sqlite`（`verify-out/SUMMARY.txt` 第 32 项）。
+
+**真实 LLM 说明**：本机探针 profile 从 `web` 模板创建，未携带桌面账号的模型凭据；因此真实探针验证的是
+「无凭据时降级不伪造」。桌面 profile 使用当前 DSH 模型路由（`agentDefaultModel`），在有凭据时
+`ctx.get('llm').stream()` 走完整分析/生成；该路径由假 LLM 集成测试锁定消息形状与降级行为，
+未把「无凭据」误报成能力失败。
+
 ## 5. 复用与配置化核对
 
 - **复用现有轮子**：OneBot 客户端、store/redact/logger、SnowLuma 只读解析、mock 网关、fake DSH、面板
@@ -194,7 +234,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
   `Debugger.setPauseOnExceptions` 才抓到完整栈）。
 - **修复**：配置页组件导出名改为 `ConfigTab`，并在注释中记录原因；`test/panel.test.js` 增加回归用例
   「`module.exports` 不能有 `Config` 属性且 `ConfigTab` 是函数」，防止再次踩坑。
-- **验证**：修复后同一真实 DSH 页面侧栏出现「QQ 连接」、七个标签全部渲染（§4 截图）。
+- **验证**：修复后同一真实 DSH 页面侧栏出现「QQ 连接」、八个标签全部渲染（§4 截图）。
 
 ### 6.2 其他修复（来自集成自查与队友报告）
 
@@ -216,6 +256,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 | 系统设置右栏分类标题与卡片标题重复 | 提升为「主题与强调色 / 空间与阅读 / 动效与转场」子标题，避免重复 |
 | 设置分类滚动后标题被 sticky 标签栏遮挡 | 已经不存在整页滚动；分类切换不改变页面滚动位置 |
 | 旧面板样式契约测试过严（禁止任何十六进制/600 字重），阻塞主题化 | 改为「令牌块唯一允许色值、动效块唯一允许 keyframes、组件块只消费变量」；字重/配色全部走 `--ob-*` 令牌 |
+| 认知 SQLite 目录不存在时打开失败 → JSON fallback 写临时文件 ENOENT，`/cognition/overview` 500 | `store.js` 在打开数据库/写 JSON 前 `mkdirSync(dirname, {recursive:true})`；真实探针新增指标：`ready=true, mode=sqlite` |
+| 轮次聚合把合法值 `shortMsgMs: 0` 当成缺省（`|| 1200`），软窗口被莫名拉长 | 所有等待参数改用 `??`/`Number.isFinite`；集成测试锁定 `shortMsgMs=0` 时 1.5s 内聚合 |
+| 机器人自己的消息可能再次进入认知形成回复循环 | aggregator 保存 `selfId`，pipeline 在入口跳过 `senderId === selfId || botQQ`；新增集成测试 |
+| 权重计算在情绪为 `{}` 时 `Number(...)/stress` 得到 NaN，记忆重要性恒为 0.05 | 数值读取改为 `Number(...) || 0`；单元测试覆盖 |
+| `updatedAt=0` 被误判为「无历史情绪」而跳过衰减 | 仅 `updatedAt > 0` 时执行衰减；单元测试覆盖 |
+| 结果反馈总是更新「最近一条决策」的技能，而不是实际产生结果的决策 | outcome 按 `decisionId` 取决策再 `skills.applyOutcome` |
+| 群聊 ambient 消息会触发分析/回复（违反默认仅点名） | pipeline 在分析前执行群聊 gate：默认只存情景记忆，不决策；集成测试锁定 |
+| 人格只有初值、没有实际慢演化 | pipeline 增加 24h 门控的 `maybeEvolvePersona()`：至少 5 个结果样本、按近期平均奖励/未知量给证据，受 `maxDeltaPerDay` 与锁定项约束 |
 
 ## 7. 安装进当前 DSH profile
 

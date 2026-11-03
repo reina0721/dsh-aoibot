@@ -14,7 +14,8 @@ LLOneBot** 等 QQ 网关地址，提供：
 - **完整的网页 UI 面板**（DSH Web 客户端插件）与**持久化配置**；
 - 不写死任何算法参数：所有可调参数进入 `config.json`，带默认值，可在面板修改/重置。
 
-本插件只做「QQ 感知与执行接入层」。人格、记忆、认知、防抖等由后续插件在本层之上构建。
+本插件同时提供「QQ 感知与执行接入层」与内置认知内核（v0.4+）：接入层保持无状态边界，长期人格/人物/关系/记忆/
+策略/学习状态由 `src/cognition/**` 管理，UI 通过认知服务查询/命令。
 
 ## 2. 代码位置
 
@@ -203,8 +204,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 代码边界：`src/cognition/**` 不 import `src/gateway/**` 或 `src/http/**`；只接收规范化事件、raw 事件和发送回调。
   平台层不 import 认知内部模块，只通过 `createCognition()` 返回的服务接口交互。
 - 宿主服务：`ctx.provide('onebotCognition', service)`；接口：
-  `ready`、`ingestRaw(raw,meta)`、`observe(normalized,accepted)`、`snapshot()`、
-  `registerKnowledgeSource(src)`、`registerCapability(name,impl)`、`pause(reason)`、`resume()`、`dispose()`。
+  `ready`、`ingestRaw(raw,meta)`、`observe(normalized,accepted)`、`snapshot()`、`overview()`、
+  `persons/personDetail/memories/decisions/...`、`registerKnowledgeSource(src)`、`registerCapability(name,impl)`、
+  `pause(reason)`、`resume()`、`dispose()`。
 - 单一写者：认知状态只由 cognition service 写；UI/API 通过 service 命令；平台事件不得直接改表。
 - 存储：`node:sqlite` WAL + FTS5；原始事件 JSONL；无 sqlite 时 JSON fallback。schema/migration 见
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
@@ -230,9 +232,12 @@ export function normalizeEvent(raw, cfg) -> null | {
 
 ```
 ~/.dsh/plugins-data/dsh-onebot-qq/
-├── config.json     # 配置
-├── events.jsonl    # 可选：事件持久化（events.persist=true 时）
-└── logs/           # 可选：日志文件（logging.persist=true 时）
+├── config.json          # 配置（version 2，含 cognition.*）
+├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
+├── logs/                # 可选：日志文件（logging.persist=true 时）
+└── cognition/
+    ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
+    └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）
 ```
 
 ## 5. 复用与许可

@@ -1,5 +1,21 @@
 # 认知数据模型（DATA-MODEL）
 
+> **实现说明（v0.4.0）**：下面的「逻辑表」是领域模型与目标 schema；当前 `src/cognition/store.js`
+> 用一个通用物理表承载全部实体，而不是为每个逻辑表建独立 SQL 表：
+>
+> ```sql
+> records(kind TEXT, id TEXT, created_at INTEGER, updated_at INTEGER,
+>         person_id TEXT, scope_type TEXT, scope_id TEXT, status TEXT, data TEXT,
+>         PRIMARY KEY(kind,id))
+> fts(rowid, kind, record_id, text)
+> raw(kind, dedupe_key, ...)
+> meta(key, value)
+> ```
+>
+> `kind` 对应下文逻辑表名（`person`/`relationship`/`memory`/`decision`/...），`data` 是 JSON；
+> 常用字段同时提升为列以便过滤。这样 schema 演进不需要为每种实体写迁移；代价是跨实体 JOIN 交给
+> service 层，而不是 SQL。FTS 检索用 `kind` 限制实体类型。迁移时若要拆分物理表，按本文件逻辑模型映射。
+
 > 存储：SQLite（WAL、foreign_keys、FTS5）+ 原始事件 JSONL；旧环境 JSON fallback。  
 > 所有表包含 `created_at`/`updated_at`（epoch ms）与 `version`（乐观并发，必要时）；内容字段统一 UTF-8 文本/JSON。
 

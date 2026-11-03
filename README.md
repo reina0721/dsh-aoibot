@@ -5,9 +5,10 @@
 LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH 可感知、可操作的外部通道，
 并提供**完整的网页面板与持久化配置**。
 
-> 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）的
-> **第一层：平台感知与执行接入**。人格、记忆、防抖、认知内核等由后续插件在这一层之上构建；
-> 本插件只负责「QQ 连接、账号核验、事件规范化、消息收发」这些稳定的接入能力。
+> 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
+> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**：连接、核验、事件规范化、消息收发保持稳定边界；
+> 人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在 `packages/dsh-onebot-qq/src/cognition/` 中实现，
+> 通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
 
 ## 能力
 
@@ -21,11 +22,13 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
   原始 action 透传（默认关闭，需显式开启）。
 - **SnowLuma 只读适配**：自动探测安装目录、读取它自己的 `config/onebot*.json`（含 `onebot_<uin>.json`、
   `mode: snapshot`）得到地址与 token；**不下载、不启动、不注入**（尊重其 EULA）。读不到时回退手填地址并说明原因。
-- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，七个标签：概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于。
+- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，八个标签：概览 / 连接 / 消息 / 配置 / 系统设置 / 认知 / 日志 / 关于。
   视觉与动效按 `console-web` 的设计体系（令牌 + 语义动效配方）重做：eyebrow 页头、软底 + surface 卡片、
   软阴影/大圆角、soft Tabs + 滑块、StatTile/MiniBars、骨架屏、presence 反馈、trickle 进度、状态脉冲与数字滚动。
   新增的「系统设置」参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、
   密度、字号、内容宽度、动效模式与页面切换动画；分类切换只替换右侧内容、不整页滑动，修改即时保存。
+  「认知」第 8 标签提供状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 11 个子页，
+  可暂停/演练、查看决策与未知、删除/导出人物数据，全部走服务层命令。
   配置页 100% 由服务端字段表驱动（新增配置项不需要改 UI），支持保存/撤销/恢复默认/Ctrl+S、
   dirty 提示、toast、加载/空态/错误重试；`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级，
   浅/深色（`body[data-ds-dark-theme]`）与 190–390px 窄宽均已验证。
@@ -66,26 +69,30 @@ dsh-bot/
 └── packages/dsh-onebot-qq/             # 插件包（DSH bundle + client plugin）
     ├── package.json                    # dsh.bundle.patch / dsh.client 清单
     ├── cordis.patch.yml                # bundle 插入行
-    ├── client.js                       # 网页半边：侧栏入口 + 七标签整页面板（配置/系统设置持久壳）
+    ├── client.js                       # 网页半边：侧栏入口 + 八标签整页面板（配置/系统设置/认知持久壳）
     ├── src/host.js                     # 宿主半边入口（组装 gateway/events/routes）
     ├── src/core/                       # 配置、持久化、日志、脱敏、事件缓冲
     ├── src/gateway/                    # 连接生命周期、事件规范化、action、SnowLuma 只读适配
     ├── src/onebot/client.js            # OneBot v11 WS/HTTP 客户端（重连/echo/握手超时）
-    ├── src/http/routes.js              # /onebot-qq/api/* REST
-    ├── test/                           # 79 个 node:test 用例（含 e2e + mock 网关 + fake DSH + 设置/动效/样式契约）
+    ├── src/http/routes.js              # /onebot-qq/api/* REST（含 /cognition/*）
+    ├── src/cognition/                  # 认知内核：turn/store/persona/emotion/person/relationships/memory/policy/learning/skills/meta/proactivity
+    ├── test/                           # 99 个 node:test 用例（含认知 26、e2e、mock 网关、fake DSH、设置/动效/样式契约）
     ├── scripts/                        # 真实 DSH 验证脚本 / 独立 mock 网关
     └── docs/                           # 用户手册、配置手册、生态调研、验证报告、截图
 ```
 
 ## 验证
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **79/79 通过**；
-- `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图校验
+- `node --test packages/dsh-onebot-qq/test/*.test.js` → **99/99 通过**；
+- `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图/认知 SQLite
   **RESULT: PASS**（可重复运行，自动清理）；
 - 真实 DSH + mock 网关 + Chrome headless：面板实际渲染、连接态核验、事件/发送/断开全链路 **16/16**；
+  认知真实数据流：人物/关系/记忆/决策产生、演练不发送、8 标签与 11 子页、360px 无横向溢出；
   另有 UI/动效/系统设置专项断言（`getAnimations()`：标签切换 180ms、reveal stagger、持久壳只换右内容、
   DSH 主题切换、即时保存、对比度、reduced/off、暗色根背景、360px 无横向溢出）**48/48** 全部通过，
   截图与证据见 [`packages/dsh-onebot-qq/docs/verification/`](packages/dsh-onebot-qq/docs/verification/)。
+  实际能力边界与未实现项见
+  [`IMPLEMENTATION-STATUS.md`](packages/dsh-onebot-qq/docs/cognitive/IMPLEMENTATION-STATUS.md)。
 - 完整证据、根因复盘（含一个 Cordis `Config` 槽位冲突导致的激活失败修复）与限制见
   [`docs/VERIFICATION.md`](packages/dsh-onebot-qq/docs/VERIFICATION.md)。
 
