@@ -5053,7 +5053,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('li', { key: person.id, className: cx('ob-list-item', selected === person.id && 'on') },
               h('button', { type: 'button', className: 'ob-cog-person-select', onClick: () => setSelected(person.id) },
                 h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'users', size: 15 })),
-                h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, String(person.displayName || '未命名')), h('span', { className: 'ob-list-sub' }, 'facet ' + String(person.facetCount || 0) + ' · 交互 ' + String(person.interactions || 0))),
+                h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, String(person.displayName || '未命名')), h('span', { className: 'ob-list-sub' }, '画像项 ' + String(person.facetCount || 0) + ' · ' + safeArray(person.identities).length + ' 个身份')),
                 h(Icon, { name: 'chevron', size: 14 }),
               ),
             ),

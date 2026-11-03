@@ -63,6 +63,7 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
   }
   const state = new Map()
   const botMessageIds = new Set()
+  const seenMessageIds = new Set()
   let disposed = false
   const stats = { received: 0, buffered: 0, turns: 0, cancelled: 0, recalled: 0, forced: 0 }
 
@@ -104,6 +105,7 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
       chatType: buf.chatType,
       chatId: buf.chatId,
       senderId: buf.senderId,
+      selfId: buf.selfId || '',
       text: buf.messages.map((message) => message.text).filter(Boolean).join('\n'),
       messages: buf.messages.slice(),
       messageIds: buf.messages.map((message) => message.messageId).filter(Boolean),
@@ -163,6 +165,9 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
     if (!chatId || !senderId) return null
     const messageId = String(message.id || `${record.seq || 0}`)
     stats.received += 1
+    if (seenMessageIds.has(messageId)) return null
+    seenMessageIds.add(messageId)
+    if (seenMessageIds.size > 5000) seenMessageIds.delete(seenMessageIds.values().next().value)
     const key = keyOf(chatType, chatId, senderId)
     let buf = state.get(key)
     const now = clock.now()
@@ -173,6 +178,7 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
         chatType,
         chatId,
         senderId,
+        selfId: String(record.selfId || ''),
         messages: [],
         messageIds: new Set(),
         firstAt: now,
@@ -181,7 +187,7 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
         completeness: 0.5,
         softMs: 1800,
         hardMs: 10000,
-        record: { chatType, chatId, senderId, status: 'open', startedAt: now },
+        record: { chatType, chatId, senderId, selfId: String(record.selfId || ''), status: 'open', startedAt: now },
       }
       state.set(key, buf)
       if (store) {

@@ -390,6 +390,16 @@ function Invoke-Verify {
         $groupsOk = ($configPayload.ok -eq $true) -and ($null -ne $configPayload.groups) -and (@($configPayload.groups).Count -gt 0)
       } catch { $groupsOk = $false }
       Add-Step 'api: GET /onebot-qq/api/config exposes the field groups' $groupsOk ''
+
+      $cognitionOk = $false
+      $cognitionDetail = ''
+      try {
+        $cognitionPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/cognition/overview') -TimeoutSec 8
+        $cogDb = Join-Path $script:dataDir 'cognition/cognition.sqlite'
+        $cognitionOk = ($cognitionPayload.ok -eq $true) -and ($cognitionPayload.ready -eq $true) -and (Test-Path -LiteralPath $cogDb)
+        $cognitionDetail = 'ready=' + [string]$cognitionPayload.ready + '; mode=' + [string]$cognitionPayload.mode + '; skills=' + [string]$cognitionPayload.counts.skill
+      } catch { $cognitionDetail = $_.Exception.Message }
+      Add-Step 'cognition: overview API ready and SQLite database created' $cognitionOk $cognitionDetail
     } catch {
       Add-Step 'api: GET /onebot-qq/api/status returns a gateway snapshot' $false $_.Exception.Message
     }

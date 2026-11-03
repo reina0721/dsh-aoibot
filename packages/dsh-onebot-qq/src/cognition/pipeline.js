@@ -238,7 +238,10 @@ export function createPipeline({
       attributionConfidence: 0.5,
     }
     try { policy.recordOutcome(item.decisionId, observation) } catch (error) { log.debug?.('outcome 记录失败：', error.message) }
-    try { skills?.applyOutcome?.(policy.history({ limit: 1 })[0], observation.positiveReaction || observation.sentiment > 0 ? true : observation.explicitCorrection ? false : null) } catch (error) {}
+    try {
+      const decision = store.get('decision', item.decisionId)
+      skills?.applyOutcome?.(decision, observation.positiveReaction || observation.sentiment > 0 ? true : observation.explicitCorrection ? false : null)
+    } catch (error) {}
     return observation
   }
 
@@ -290,6 +293,10 @@ export function createPipeline({
     const c = cfg()
     if (!c.enabled) return buildResult({ ok: false, error: 'cognition_disabled' })
     if (c.paused) return buildResult({ ok: false, error: 'cognition_paused' })
+    // 绝不把机器人自己的消息当成用户输入；否则会形成回复循环。
+    if (turn.senderId && (turn.senderId === turn.selfId || turn.senderId === String(getConfig()?.botQQ || ''))) {
+      return buildResult({ ok: false, error: 'self_message' })
+    }
     const started = clock.now()
     stats.turns += 1
     trace(turn.id, 'turn_start', { text: truncate(turn.text, 200), data: { chatType: turn.chatType, addressed: turn.addressed, completeness: turn.completeness } })
@@ -387,6 +394,33 @@ export function createPipeline({
       lastDecision: decision?.action || '',
       updatedAt: clock.now(),
     })
+    maybeEvolvePersona()
+  }
+
+  /** 人格慢演化：最多每 24h 一次，依据近期结果，不因单次事件剧变。 */
+  function maybeEvolvePersona() {
+    try {
+      const last = store.get('state', 'persona.lastEvolvedAt')
+      const lastAt = Number(last?.at || 0)
+      const elapsed = lastAt ? clock.now() - lastAt : Infinity
+      if (elapsed < 24 * 60 * 60 * 1000) return
+      const decisions = policy.history({ limit: 40 }).filter((item) => Number.isFinite(item.reward))
+      if (decisions.length < 5) return
+      const average = decisions.reduce((sum, item) => sum + Number(item.reward || 0), 0) / decisions.length
+      const unknowns = store.list('unknown', { limit: 100, where: (item) => item.status === 'open' }).length
+      const evidence = {
+        socialInitiative: average * 0.35,
+        extraversion: average * 0.18,
+        caution: -average * 0.3,
+        humor: average * 0.2,
+        openness: unknowns > 3 ? 0.25 : 0.02,
+      }
+      persona.maybeEvolve(evidence, Math.min(30, Math.max(1, elapsed / (24 * 60 * 60 * 1000))))
+      store.put('state', 'persona.lastEvolvedAt', { at: clock.now(), average, sample: decisions.length })
+      trace('', 'persona_evolved', { text: `avg=${average.toFixed(2)}`, data: evidence })
+    } catch (error) {
+      log.debug?.('人格演化跳过：', error.message)
+    }
   }
 
   /** 每次新的真人 turn 到达时，先观察上一条决策的结果。 */

@@ -84,6 +84,36 @@ test('集成：连发碎片聚合只形成一次决策/发送，并持久化人�
   }
 })
 
+test('集成：群聊默认只回应点名；机器人自己的消息不触发回复', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-group-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 77 } } } }
+  const cog = makeCog({ dir, gateway, scheduler })
+  try {
+    cog.observe({
+      seq: 1, kind: 'message', selfId: '999', time: 1,
+      message: { id: 1, chatType: 'group', chatId: 'g1', sender: { userId: '10001', nickname: 'A' }, text: '大家好。', segments: [{ type: 'text', data: { text: '大家好。' } }], mentions: [], images: [], replyId: '' },
+    }, { accepted: true })
+    scheduler.advance(4000)
+    await flush(40)
+    assert.equal(sent.length, 0, '群聊未点名默认不回复')
+    assert.equal(cog.services.policy.history({ limit: 5 }).length, 0, '不产生回复决策')
+
+    // 机器人自己的消息（sender == selfId）必须跳过，避免回复循环。
+    cog.observe({
+      seq: 2, kind: 'message', selfId: '999', time: 2,
+      message: { id: 2, chatType: 'private', chatId: '10001', sender: { userId: '999', nickname: '机器人' }, text: '我自己发的。', segments: [{ type: 'text', data: { text: '我自己发的。' } }], mentions: [], images: [], replyId: '' },
+    }, { accepted: true })
+    scheduler.advance(4000)
+    await flush(40)
+    assert.equal(sent.length, 0, '自己的消息不应触发认知回复')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('集成：私聊记忆不会在群聊检索中出现；遗忘≠删除', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-privacy-'))
   const scheduler = createFakeScheduler()
