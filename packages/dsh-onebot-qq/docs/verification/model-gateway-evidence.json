@@ -1,7 +1,7 @@
 {
   "version": "0.5.0",
   "date": "2026-11-03",
-  "keyHandling": "OPENCODE_GO_API_KEY read from environment only; no key stored in repository, docs, screenshots, or this evidence file",
+  "keyHandling": "OpenCode Go key read from environment for the standalone script; for the desktop-after-restart check it was sent over localhost to a temporary provider and then deleted. No key is stored in the repository, docs, screenshots, this evidence file, or the final models.json",
   "script": "packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs",
   "checks": [
     { "name": "registry/presets", "ok": true, "detail": "presets=12" },
@@ -22,6 +22,15 @@
     "pipeline": { "turns": 1, "decisions": 1, "sent": 1, "degraded": 0, "errors": 0, "pending": 1 },
     "replyPreview": "你好呀，辛苦了。累的时候不用硬撑着聊天，想说说发生了什么我听着，想歇会儿就去歇会儿也行，我在这儿。",
     "note": "mock QQ gateway; no real QQ account"
+  },
+  "desktopAfterRestart": {
+    "hostVersion": "0.5.0",
+    "gatewayState": "connected",
+    "providerTests": [
+      { "provider": "opencode-go", "protocol": "openai-completions", "model": "deepseek-v4.1-flash", "ok": true, "latencyMs": 1706 },
+      { "provider": "opencode-anthropic", "protocol": "anthropic-messages", "model": "qwen3.8-flash", "ok": true, "latencyMs": 1647 }
+    ],
+    "cleanup": "temporary providers deleted; models.json empty; key not persisted"
   },
   "notLive": [
     "Command Code chat completion (no paid API key; Go plan has no API access)",

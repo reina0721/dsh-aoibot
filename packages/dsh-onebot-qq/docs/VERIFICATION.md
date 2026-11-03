@@ -230,6 +230,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 
 pipeline：`turns=1 decisions=1 sent=1 degraded=0 errors=0 pending=1`。
 
+**重启后的 desktop profile 实测**：DSH 宿主已加载 `0.5.0`（`/onebot-qq/api/health` 返回
+`version=0.5.0`，QQ `state=connected`）；在 desktop 数据目录临时保存 OpenCode Go provider 后，
+经宿主 API 测试 `deepseek-v4.1-flash`（OpenAI，1706ms）与 `qwen3.8-flash`（Anthropic，1647ms）均返回 200；
+随后删除临时 provider，`models.json` 恢复为空，未持久化测试 key。
+
 模型页浏览器验证：9 个顶层标签；provider 列表/编辑/测试按钮/密钥状态均渲染；密钥只显示
 `…tIe8` 与来源；360×800 无横向溢出；0 个 `pageerror`（仅 DSH 自身 account 日志）。
 
