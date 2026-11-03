@@ -38,6 +38,7 @@ export function contextBucket({ turn, relationship, emotion, appraisal, unknown 
 export function buildCandidates({ turn, relationship, emotion, appraisal, unknown, memories, persona, skills = {}, config = {}, recall = null } = {}) {
   const c = config.policy || {}
   const addressed = Boolean(turn?.addressed)
+  const groupEngaged = Boolean(turn?.groupEngaged)
   const valence = Number(emotion?.valence || 0)
   const stress = Number(emotion?.stress || 0)
   const trust = Number(relationship?.trust ?? 0.3)
@@ -70,10 +71,10 @@ export function buildCandidates({ turn, relationship, emotion, appraisal, unknow
     return candidates.sort((a, b) => b.utility - a.utility)
   }
 
-  push('reply', 0.5 + (addressed ? Number(c.addressedBoost ?? 0.15) : -Number(c.groupPenalty ?? 0.1))
+  push('reply', 0.5 + (addressed ? Number(c.addressedBoost ?? 0.15) : groupEngaged ? 0 : -Number(c.groupPenalty ?? 0.1))
     + trust * 0.12 + affinity * 0.08 + valence * 0.06 - conflict * 0.12 - risk * 0.15 + (memories?.length ? 0.02 : 0),
   '普通回复：维持交流/回应目标')
-  push('reply_short', 0.46 + (addressed ? 0.1 : -0.06) + (stress > 0.5 ? 0.06 : 0) - conflict * 0.06,
+  push('reply_short', 0.46 + (addressed ? 0.1 : groupEngaged ? 0 : -0.06) + (stress > 0.5 ? 0.06 : 0) - conflict * 0.06,
     '简短回应：低能量/低信息量')
   if (unknown || (appraisal?.confidence != null && appraisal.confidence < 0.45)) {
     push('clarify', 0.47 + (addressed ? 0.12 : 0) + (novelty * 0.08), '理解置信度低，先澄清而不是编造')
@@ -94,7 +95,7 @@ export function buildCandidates({ turn, relationship, emotion, appraisal, unknow
   }
   push('wait', Number(c.waitThreshold ?? 0.38) + 0.12 + (turn?.completeness != null && turn.completeness < 0.6 ? 0.1 : 0) - stress * 0.05,
     '等待更多信息/不打断')
-  push('silence', Number(c.silenceThreshold ?? 0.3) + (addressed ? -0.12 : 0.12) + conflict * 0.05 - (valence > 0.2 ? 0.05 : 0),
+  push('silence', Number(c.silenceThreshold ?? 0.3) + (addressed ? -0.12 : groupEngaged ? -0.04 : 0.12) + conflict * 0.05 - (valence > 0.2 ? 0.05 : 0),
     '保持沉默，不打扰')
   if (stress > 0.55) {
     for (const item of candidates) if (['tease', 'reply'].includes(item.action)) item.utility = round(item.utility - 0.06, 4)
@@ -106,7 +107,7 @@ export function utilityToProbability(utility) {
   return round(1 / (1 + Math.exp(-(utility - 0.45) * 6)), 4)
 }
 
-export function chooseAction(candidates, { config = {}, rng = Math.random, addressed = false, contextKey = '' } = {}) {
+export function chooseAction(candidates, { config = {}, rng = Math.random, addressed = false, groupEngaged = false, contextKey = '' } = {}) {
   const c = config.policy || {}
   const epsilon = clamp(Number(c.epsilon ?? 0.04), 0, 0.2)
   const scored = candidates.map((candidate) => ({
@@ -128,13 +129,13 @@ export function chooseAction(candidates, { config = {}, rng = Math.random, addre
   const best = scored[0]
   const replyCandidates = scored.filter((item) => ['reply', 'reply_short', 'clarify', 'comfort', 'tease', 'serious', 'change_topic', 'recall_tease', 'recall_concern', 'recall_probe'].includes(item.action))
   const bestReply = replyCandidates[0]
-  const threshold = Number(c.replyThreshold ?? 0.52) + (addressed ? -Number(c.addressedBoost ?? 0.15) : Number(c.groupPenalty ?? 0))
+  const threshold = Number(c.replyThreshold ?? 0.52) + (addressed ? -Number(c.addressedBoost ?? 0.15) : groupEngaged ? 0 : Number(c.groupPenalty ?? 0))
   let action = 'silence'
   let chosen = scored.find((item) => item.action === 'silence') || best
   if (bestReply && bestReply.utility >= threshold) {
     chosen = bestReply
     action = bestReply.action
-  } else if ((scored.find((item) => item.action === 'wait')?.utility || 0) >= Number(c.waitThreshold ?? 0.38) && !addressed) {
+  } else if ((scored.find((item) => item.action === 'wait')?.utility || 0) >= Number(c.waitThreshold ?? 0.38) && !addressed && !groupEngaged) {
     chosen = scored.find((item) => item.action === 'wait')
     action = 'wait'
   } else if (best.action === 'silence' || best.action === 'wait') {
@@ -202,7 +203,9 @@ export function createPolicyService({ store, getConfig, clock, rng = Math.random
       return { ...candidate, bandit: round(beta.mean, 3), utility: round(candidate.utility + (beta.mean - 0.5) * 0.12, 4) }
     })
     const gate = canSend(turn?.chatType, turn?.chatId)
-    const choice = chooseAction(adjusted, { config: c, rng, addressed: Boolean(turn?.addressed), contextKey })
+    const choice = chooseAction(adjusted, {
+      config: c, rng, addressed: Boolean(turn?.addressed), groupEngaged: Boolean(turn?.groupEngaged), contextKey,
+    })
     if (!gate.ok && ['reply', 'reply_short', 'clarify', 'comfort', 'tease', 'serious', 'change_topic', 'recall_tease', 'recall_concern', 'recall_probe'].includes(choice.action)) {
       const silence = choice.candidates.find((item) => item.action === 'silence') || { action: 'silence', utility: 0.3, probability: 0.3 }
       choice.action = 'silence'
@@ -220,7 +223,7 @@ export function createPolicyService({ store, getConfig, clock, rng = Math.random
       contextKey,
       candidates: choice.candidates,
       features: {
-        addressed: Boolean(turn?.addressed), completeness: turn?.completeness,
+        addressed: Boolean(turn?.addressed), groupEngaged: Boolean(turn?.groupEngaged), completeness: turn?.completeness,
         valence: emotion?.valence, stress: emotion?.stress,
         trust: relationship?.trust, affinity: relationship?.affinity, conflict: relationship?.conflict,
         recall: recall ? { sawContent: Boolean(recall.sawContent), messageId: recall.messageId } : null,

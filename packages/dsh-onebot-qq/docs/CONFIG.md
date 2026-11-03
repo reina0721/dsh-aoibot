@@ -181,12 +181,12 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 |---|---|---|---|
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
 | `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；超预算/失败降级，不伪造 |
-| `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `shortMsgMs` / `incompleteFactorMs` / `addressedOnlyGroups` | `1800` / `10000` / `9000` / `1200` / `4500` / `true` | 碎片聚合的软/硬等待窗口；群聊默认只响应点名/回复/唤醒词/命令 |
-| `cog-persona` | `persona.evolveEnabled` / `maxDeltaPerDay` / `lockedTraits` / `initial` | `true` / `0.03` / `[]` / 见默认值 | 12 维稳定人格与表达风格；最长每日小步慢演化，锁定项不变 |
+| `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `groupReplyMode` / `groupReplyProbability` / `groupCooldownMs` / `groupMaxRepliesPerMinute` | `1800` / `10000` / `9000` / `addressed` / `0.2` / `3000` / `6` | 碎片聚合软/硬等待；群聊参与方式（仅@/概率/所有消息）及冷却/频率上限；旧 `addressedOnlyGroups` 仍兼容映射 |
+| `cog-persona` | `persona.traits` / `style` / `values` / `evolutionEnabled` / `evolutionPerDay` | 见默认值 | 12 维稳定人格、6 维表达风格、价值边界；最长每日小步慢演化。**文本人设（名字/背景/性格/风格/喜好/边界）存在认知 persona 记录，不在此表** |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
 | `cog-relationship` | `relationship.inertia` / `conflictGain` / `repairRate` / `maxDeltaPerTurn` | `–` | 多维有向关系；冲突升快降慢、单轮变化有上限 |
 | `cog-memory` | `memory.retrievalLimit` / `importanceDecayDays` / `consolidateThreshold` / `privateIsolation` | `–` / `–` / `–` / `true` | 工作/情景/语义/关联检索、遗忘≠删除、私聊隔离与保留期 |
-| `cog-policy` | `policy.proactive` / `groupAmbient` / `silenceThreshold` / `exploration` / `rateLimitPerMinute` | `false` / `false` / `–` / `0.08` / `–` | 候选动作效用 + Beta 后验 + 结果归因；沉默/等待是一等动作；主动/群聊 ambient 默认关 |
+| `cog-policy` | `policy.proactive` / `silenceThreshold` / `replyThreshold` / `groupPenalty` / `dailyGlobalLimit` / `perChatGroup` | `false` / `0.3` / `0.52` / `0.1` / `120` / `10` | 候选动作效用 + Beta 后验 + 结果归因；沉默/等待是一等动作；旧 `policy.groupAmbient` 只作兼容映射，不再显示 |
 | `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
@@ -201,6 +201,9 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 
 支持 Node.js 22.13+ 的 `node:sqlite`；不可用时自动回退为 `cognition.json`，接口保持同一套。
 升级不会重置认知状态。
+
+**文本人设**：`persona` 记录里的 `profile` 字段（`displayName/tagline/identity/background/personality/speakingStyle/likes/dislikes/boundaries/examples`）
+由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。它优先于数值 style，但不能覆盖安全/隐私边界。
 
 ### 3.11 模型网关（`models.json`）
 

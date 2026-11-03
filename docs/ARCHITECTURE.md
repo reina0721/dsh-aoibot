@@ -212,7 +212,13 @@ export function normalizeEvent(raw, cfg) -> null | {
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
 - LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
   路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
-  每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
+  persona 记录含 12 维特质 + 6 维风格 + 文本 `profile`；文本 profile 进入 analysis/compose prompt（约 2000 字符上限），
+  空字段不注入。每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
+- 群聊参与：`cognition.turn.groupReplyMode = addressed|probability|all`；`addressed` 默认只处理 @/回复/唤醒词/人设名；
+  `probability` 未点名按概率采样；`all` 全部进入策略但仍可沉默。发送前有同群冷却与每分钟上限；跳过写记忆、trace 与
+  `lastTurn` 诊断字段，不调用 LLM。旧 `addressedOnlyGroups=false` / `policy.groupAmbient=true` 非破坏性映射为 `all`。
+- 人格编辑：`POST /cognition/persona/edit` 接受 `profile`，清洗/截断后写 persona 记录并追加 history/version；
+  UI 顶层「人格」工作台与「认知 → 人格」共享同一数据源。
 - Web/知识源：`ctx.get('web')` 可用时优先；否则内建合法公共 API/RSS；外部内容一律不可信，不执行其指令。
 - 配置：`cognition.*` 默认值与 `cog-*` 字段组在 `src/core/config.js`；`CONFIG_VERSION=2`；旧配置自动补默认。
   面板「配置」页过滤 `cog-*`；「认知 → 设置」页使用同一字段表即时保存。
@@ -220,13 +226,14 @@ export function normalizeEvent(raw, cfg) -> null | {
   失败/取消/降级都持久化，重启按硬截止关闭 open turn，发送使用幂等键防重复。
 - 可观测：每个阶段写脱敏 `traces`/`metrics`；关键状态变化写 `state_transitions`/`audit_log`；UI 可查。
 - 隐私：scope/sensitivity 在写入与检索双层校验；私聊记忆不得进入群聊检索；secret 不进 LLM；删除/导出/保留可配。
-- 安全默认：群聊仅点名/回复/唤醒词/命令；主动行为默认关闭；外部学习仅公共概念、预算受限、可暂停；
-  运行时不自安装插件/不改代码/不扩权。
+- 安全默认：群聊默认仅点名/回复/唤醒词/人设名；可显式切换概率/所有消息，并受策略沉默、冷却、频率上限约束；
+  主动行为默认关闭；外部学习仅公共概念、预算受限、可暂停；运行时不自安装插件/不改代码/不扩权。
 
 ### 3.9 认知 REST 与 UI
 
 - 路由前缀仍为 `/onebot-qq/api/cognition/*`，响应 `{ok:true,...}` / `{ok:false,message}`；GET 无副作用。
-- 面板第 8 个顶层标签「认知」，内部持久设置壳复用 `SettingsShell`：状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置。
+- 面板第 10 个顶层标签「人格」是文本人设 + 群聊参与工作台；第 8 个「认知」仍提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置，
+  以及同源的数值人格编辑入口。概览和认知状态页显示最近 turn 的 outcome/reason 诊断。
 - 认知 API 不可用时页面显示 degraded/空态，不影响平台连接与配置页。
 
 ### 3.10 模型协议契约（v0.5+）
@@ -240,7 +247,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 认证：bearer / x-api-key / 自定义 header / none；禁止跨源重定向转发认证头；错误/日志/trace 脱敏。
 - 路由：`cognition.llm.mode = auto|dsh|fixed|direct|chain`；直连 selected + fallback，最后可回退 DSH；
   空文本、只有 reasoning、bad JSON 都不算成功。
-- REST：`/onebot-qq/api/models/*`；UI 第 9 个顶层标签「模型」；详细矩阵见
+- REST：`/onebot-qq/api/models/*`；UI 第 6 个顶层标签「模型」；详细矩阵见
   `packages/dsh-onebot-qq/docs/MODEL-GATEWAY.md`。
 
 ## 4. 数据目录

@@ -396,10 +396,20 @@ function Invoke-Verify {
       try {
         $cognitionPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/cognition/overview') -TimeoutSec 8
         $cogDb = Join-Path $script:dataDir 'cognition/cognition.sqlite'
-        $cognitionOk = ($cognitionPayload.ok -eq $true) -and ($cognitionPayload.ready -eq $true) -and (Test-Path -LiteralPath $cogDb)
-        $cognitionDetail = 'ready=' + [string]$cognitionPayload.ready + '; mode=' + [string]$cognitionPayload.mode + '; skills=' + [string]$cognitionPayload.counts.skill
+        $cognitionOk = ($cognitionPayload.ok -eq $true) -and ($cognitionPayload.ready -eq $true) -and (Test-Path -LiteralPath $cogDb) -and ($null -ne $cognitionPayload.pipeline) -and ($null -ne $cognitionPayload.pipeline.groupMode)
+        $cognitionDetail = 'ready=' + [string]$cognitionPayload.ready + '; mode=' + [string]$cognitionPayload.mode + '; groupMode=' + [string]$cognitionPayload.pipeline.groupMode + '; skills=' + [string]$cognitionPayload.counts.skill
       } catch { $cognitionDetail = $_.Exception.Message }
       Add-Step 'cognition: overview API ready and SQLite database created' $cognitionOk $cognitionDetail
+
+      $personaOk = $false
+      $personaDetail = ''
+      try {
+        $personaPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/cognition/persona') -TimeoutSec 8
+        $profile = $personaPayload.persona.profile
+        $personaOk = ($personaPayload.ok -eq $true) -and ($null -ne $profile) -and ($null -ne $profile.displayName) -and ($null -ne $profile.boundaries)
+        $personaDetail = 'personaVersion=' + [string]$personaPayload.persona.version + '; displayName=' + [string]$profile.displayName + '; profileFields=ok'
+      } catch { $personaDetail = $_.Exception.Message }
+      Add-Step 'persona: /cognition/persona exposes editable profile' $personaOk $personaDetail
 
       $modelsOk = $false
       $modelsDetail = ''

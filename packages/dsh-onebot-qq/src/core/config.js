@@ -109,7 +109,11 @@ export const DEFAULTS = {
       incompleteFactorMs: 4500,
       habitAdjMaxMs: 1500,
       maxAggregateMessages: 20,
-      addressedOnlyGroups: true,
+      groupReplyMode: 'addressed', // addressed | probability | all
+      groupReplyProbability: 0.2,
+      groupCooldownMs: 3000,
+      groupMaxRepliesPerMinute: 6,
+      addressedOnlyGroups: true, // 兼容旧配置；新代码以 groupReplyMode 为准
       wakeWords: [],
     },
     llm: {
@@ -151,6 +155,18 @@ export const DEFAULTS = {
         warmth: 0.6,
       },
       values: ['诚实', '尊重边界', '不假装感知', '承认不确定', '关心具体的人'],
+      profile: {
+        displayName: '',
+        tagline: '',
+        identity: '',
+        background: '',
+        personality: '',
+        speakingStyle: '',
+        likes: [],
+        dislikes: [],
+        boundaries: [],
+        examples: '',
+      },
       evolutionPerDay: 0.005,
       evolutionEnabled: true,
       min: 0.1,
@@ -486,7 +502,14 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.turn.incompleteFactorMs', label: '未完成表达等待系数', type: 'number', default: 4500, min: 0, max: 8000, step: 100, unit: 'ms' },
       { path: 'cognition.turn.habitAdjMaxMs', label: '个人节奏修正上限', type: 'number', default: 1500, min: 0, max: 3000, step: 100, unit: 'ms' },
       { path: 'cognition.turn.maxAggregateMessages', label: '单轮最多聚合消息数', type: 'number', default: 20, min: 1, max: 50, step: 1 },
-      { path: 'cognition.turn.addressedOnlyGroups', label: '群聊仅回应点名/回复/唤醒词', type: 'switch', default: true },
+      { path: 'cognition.turn.groupReplyMode', label: '群聊参与方式', type: 'select', default: 'addressed', options: [
+        { value: 'addressed', label: '仅 @/回复/唤醒词' },
+        { value: 'probability', label: '点名必回，未点名按概率' },
+        { value: 'all', label: '所有消息都分析（仍可沉默）' },
+      ], help: '概率/所有消息模式仍受策略沉默与频率限制；私聊始终处理。' },
+      { path: 'cognition.turn.groupReplyProbability', label: '未点名参与概率', type: 'number', default: 0.2, min: 0, max: 1, step: 0.05 },
+      { path: 'cognition.turn.groupCooldownMs', label: '同群回复冷却', type: 'number', default: 3000, min: 0, max: 60000, step: 500, unit: 'ms' },
+      { path: 'cognition.turn.groupMaxRepliesPerMinute', label: '群聊每分钟上限', type: 'number', default: 6, min: 1, max: 60, step: 1 },
       { path: 'cognition.turn.wakeWords', label: '唤醒词', type: 'string-list', default: [], placeholder: '输入昵称后回车' },
     ],
   },
@@ -580,7 +603,6 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.policy.perChatGroup', label: '群聊每小时上限', type: 'number', default: 10, min: 0, max: 100, step: 1 },
       { path: 'cognition.policy.maxConsecutiveBotMessages', label: '连续 Bot 发言上限', type: 'number', default: 2, min: 1, max: 5, step: 1 },
       { path: 'cognition.policy.proactive', label: '允许主动发起', type: 'switch', default: false },
-      { path: 'cognition.policy.groupAmbient', label: '群聊非点名参与', type: 'switch', default: false, help: '危险：可能打扰群聊；开启后仍受显著性/频率限制。' },
       { path: 'cognition.policy.analyzeWithLlm', label: '使用 LLM 做语义分析', type: 'switch', default: true },
     ],
   },
@@ -825,7 +847,7 @@ export function normalizeConfig(raw) {
       pageTransition: pickEnum(merged.ui?.pageTransition, DEFAULTS.ui.pageTransition, ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']),
       contrast: pickEnum(merged.ui?.contrast, DEFAULTS.ui.contrast, ['system', 'standard', 'high']),
     },
-    cognition: normalizeCognition(merged.cognition),
+    cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}),
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
     },
@@ -841,7 +863,7 @@ export function normalizeConfig(raw) {
   return { config: cfg, issues }
 }
 
-function normalizeCognition(raw) {
+function normalizeCognition(raw, rawCognition = {}) {
   const src = isPlainObject(raw) ? raw : {}
   const d = DEFAULTS.cognition
   const traits = {}
@@ -852,6 +874,23 @@ function normalizeCognition(raw) {
   for (const [key, def] of Object.entries(d.persona.style)) {
     style[key] = pickNumber(src.persona?.style?.[key], def, { min: 0, max: 1 })
   }
+  const profile = {
+    displayName: pickString(src.persona?.profile?.displayName, d.persona.profile.displayName, { max: 40 }),
+    tagline: pickString(src.persona?.profile?.tagline, d.persona.profile.tagline, { max: 120 }),
+    identity: pickString(src.persona?.profile?.identity, d.persona.profile.identity, { max: 300 }),
+    background: pickString(src.persona?.profile?.background, d.persona.profile.background, { max: 1500 }),
+    personality: pickString(src.persona?.profile?.personality, d.persona.profile.personality, { max: 1000 }),
+    speakingStyle: pickString(src.persona?.profile?.speakingStyle, d.persona.profile.speakingStyle, { max: 800 }),
+    likes: pickStringArray(src.persona?.profile?.likes, d.persona.profile.likes, { maxItems: 20 }),
+    dislikes: pickStringArray(src.persona?.profile?.dislikes, d.persona.profile.dislikes, { maxItems: 20 }),
+    boundaries: pickStringArray(src.persona?.profile?.boundaries, d.persona.profile.boundaries, { maxItems: 20 }),
+    examples: pickString(src.persona?.profile?.examples, d.persona.profile.examples, { max: 1500 }),
+  }
+  const legacyGroupMode = (rawCognition.turn?.addressedOnlyGroups === false || rawCognition.policy?.groupAmbient === true) ? 'all' : d.turn.groupReplyMode
+  const explicitGroupMode = rawCognition.turn && Object.prototype.hasOwnProperty.call(rawCognition.turn, 'groupReplyMode')
+    ? rawCognition.turn.groupReplyMode
+    : undefined
+  const groupReplyMode = pickEnum(explicitGroupMode, legacyGroupMode, ['addressed', 'probability', 'all'])
   return {
     enabled: pickBool(src.enabled, d.enabled),
     paused: pickBool(src.paused, d.paused),
@@ -867,6 +906,10 @@ function normalizeCognition(raw) {
       incompleteFactorMs: pickNumber(src.turn?.incompleteFactorMs, d.turn.incompleteFactorMs, { min: 0, max: 8000, integer: true }),
       habitAdjMaxMs: pickNumber(src.turn?.habitAdjMaxMs, d.turn.habitAdjMaxMs, { min: 0, max: 3000, integer: true }),
       maxAggregateMessages: pickNumber(src.turn?.maxAggregateMessages, d.turn.maxAggregateMessages, { min: 1, max: 50, integer: true }),
+      groupReplyMode,
+      groupReplyProbability: pickNumber(src.turn?.groupReplyProbability, d.turn.groupReplyProbability, { min: 0, max: 1 }),
+      groupCooldownMs: pickNumber(src.turn?.groupCooldownMs, d.turn.groupCooldownMs, { min: 0, max: 60000, integer: true }),
+      groupMaxRepliesPerMinute: pickNumber(src.turn?.groupMaxRepliesPerMinute, d.turn.groupMaxRepliesPerMinute, { min: 1, max: 60, integer: true }),
       addressedOnlyGroups: pickBool(src.turn?.addressedOnlyGroups, d.turn.addressedOnlyGroups),
       wakeWords: pickStringArray(src.turn?.wakeWords, d.turn.wakeWords, { maxItems: 20 }),
     },
@@ -888,6 +931,7 @@ function normalizeCognition(raw) {
     persona: {
       traits,
       style,
+      profile,
       values: pickStringArray(src.persona?.values, d.persona.values, { maxItems: 20 }),
       evolutionPerDay: pickNumber(src.persona?.evolutionPerDay, d.persona.evolutionPerDay, { min: 0, max: 0.02 }),
       evolutionEnabled: pickBool(src.persona?.evolutionEnabled, d.persona.evolutionEnabled),

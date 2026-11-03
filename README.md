@@ -6,7 +6,7 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
 并提供**完整的网页面板与持久化配置**。
 
 > 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
-> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
+> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
 > 连接、核验、事件规范化、消息收发保持稳定边界；人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在
 > `packages/dsh-onebot-qq/src/cognition/` 中实现，通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
 
@@ -22,14 +22,16 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
   原始 action 透传（默认关闭，需显式开启）。
 - **SnowLuma 只读适配**：自动探测安装目录、读取它自己的 `config/onebot*.json`（含 `onebot_<uin>.json`、
   `mode: snapshot`）得到地址与 token；**不下载、不启动、不注入**（尊重其 EULA）。读不到时回退手填地址并说明原因。
-- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，九个标签：概览 / 连接 / 消息 / 配置 / 模型 / 系统设置 / 认知 / 日志 / 关于。
+- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，十个标签：概览 / 连接 / 消息 / 配置 / 人格 / 模型 / 系统设置 / 认知 / 日志 / 关于。
   视觉与动效按 `console-web` 的设计体系（令牌 + 语义动效配方）重做：eyebrow 页头、软底 + surface 卡片、
   软阴影/大圆角、soft Tabs + 滑块、StatTile/MiniBars、骨架屏、presence 反馈、trickle 进度、状态脉冲与数字滚动。
   新增的「系统设置」参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、
   密度、字号、内容宽度、动效模式与页面切换动画；分类切换只替换右侧内容、不整页滑动，修改即时保存。
-  「认知」第 8 标签提供状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 11 个子页，
+  「认知」标签提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 11 个子页，
   可暂停/演练、查看决策与未知、删除/导出人物数据，全部走服务层命令。
-  「模型」第 9 标签提供统一协议网关：OpenAI Chat/Responses、Anthropic、Gemini、Ollama，
+  「人格」顶层工作台用自然语言编辑名字、身份、背景、性格、说话风格、喜好/边界和示例，
+  可预览注入 prompt 并决定群聊参与方式（仅@/概率/所有消息）；文本人设与数值人格同源持久化。
+  「模型」标签提供统一协议网关：OpenAI Chat/Responses、Anthropic、Gemini、Ollama，
   以及 OpenCode Go、Command Code、OpenRouter 预设；可配 base URL/认证/headers/模型，
   支持流式、模型发现、连通测试、直连/DSH 路由与 fallback；密钥只在本地，API 只回传后四位。
   配置页 100% 由服务端字段表驱动（新增配置项不需要改 UI），支持保存/撤销/恢复默认/Ctrl+S、
@@ -72,7 +74,7 @@ dsh-bot/
 └── packages/dsh-onebot-qq/             # 插件包（DSH bundle + client plugin）
     ├── package.json                    # dsh.bundle.patch / dsh.client 清单
     ├── cordis.patch.yml                # bundle 插入行
-    ├── client.js                       # 网页半边：侧栏入口 + 九标签整页面板（配置/模型/系统设置/认知持久壳）
+    ├── client.js                       # 网页半边：侧栏入口 + 十标签整页面板（配置/人格/模型/系统设置/认知持久壳）
     ├── src/host.js                     # 宿主半边入口（组装 gateway/events/models/routes）
     ├── src/core/                       # 配置、持久化、日志、脱敏、事件缓冲
     ├── src/gateway/                    # 连接生命周期、事件规范化、action、SnowLuma 只读适配
@@ -80,21 +82,21 @@ dsh-bot/
     ├── src/http/routes.js              # /onebot-qq/api/* REST（含 /cognition/*、/models/*）
     ├── src/cognition/                  # 认知内核：turn/store/persona/emotion/person/relationships/memory/policy/learning/skills/meta/proactivity
     ├── src/model/                      # 模型协议网关：OpenAI/Responses/Anthropic/Gemini/Ollama/中转预设
-    ├── test/                           # 123 个 node:test（含认知/模型协议/live 环境门控/e2e/UI）
+    ├── test/                           # 132 个 node:test（含人格/认知/模型协议/live 环境门控/e2e/UI）
     ├── scripts/                        # 真实 DSH 验证 / 模型连通验证 / 独立 mock 网关
     └── docs/                           # 用户手册、配置手册、模型协议、验证报告、截图
 ```
 
 ## 验证
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **123 个用例**（无 key 118 通过 + 4 live skip；有 OpenCode key 时 live 通过）；
+- `node --test packages/dsh-onebot-qq/test/*.test.js` → **132 个用例**（无 key 128 通过 + 4 live skip；有 OpenCode key 时 132/132）；
 - `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图/认知 SQLite/模型 API
   **RESULT: PASS**（可重复运行，自动清理）；
 - `packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs` → 真实 OpenCode Go OpenAI/Anthropic/模型发现，
   OpenRouter/Command Code 公开模型发现；key 只从 env 读取。
 - 真实 DSH + mock 网关 + Chrome headless：面板实际渲染、连接态核验、事件/发送/断开全链路 **16/16**；
-  认知真实数据流：人物/关系/记忆/决策产生、演练不发送、9 标签与 11 子页、360px 无横向溢出；
-  模型真实链路：OpenCode Go 直连分析+回复、9 标签、模型页无溢出；
+  认知真实数据流：人物/关系/记忆/决策产生、演练不发送、10 标签与 11 子页、360px 无横向溢出；
+  模型真实链路：OpenCode Go 直连分析+回复、10 标签、模型页无溢出；
   另有 UI/动效/系统设置专项断言（`getAnimations()`：标签切换 180ms、reveal stagger、持久壳只换右内容、
   DSH 主题切换、即时保存、对比度、reduced/off、暗色根背景、360px 无横向溢出）**48/48** 全部通过，
   截图与证据见 [`packages/dsh-onebot-qq/docs/verification/`](packages/dsh-onebot-qq/docs/verification/)。

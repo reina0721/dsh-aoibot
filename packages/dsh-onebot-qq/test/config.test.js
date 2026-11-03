@@ -113,6 +113,15 @@ test('cognition 配置：默认值、字段分组、非法枚举/数值回退与
   assert.equal(config.cognition.memory.semanticIndex, 'lexical')
   assert.equal(config.cognition.privacy.privateIsolation, true)
   assert.equal(config.cognition.turn.addressedOnlyGroups, true)
+  assert.equal(config.cognition.turn.groupReplyMode, 'addressed')
+  assert.equal(config.cognition.turn.groupReplyProbability, 0.2)
+  assert.equal(config.cognition.turn.groupCooldownMs, 3000)
+  const legacyAll = normalizeConfig({ cognition: { turn: { addressedOnlyGroups: false } } }).config
+  assert.equal(legacyAll.cognition.turn.groupReplyMode, 'all')
+  const legacyAmbient = normalizeConfig({ cognition: { policy: { groupAmbient: true } } }).config
+  assert.equal(legacyAmbient.cognition.turn.groupReplyMode, 'all')
+  const badGroupMode = normalizeConfig({ cognition: { turn: { groupReplyMode: 'wild' } } }).config
+  assert.equal(badGroupMode.cognition.turn.groupReplyMode, 'addressed')
   assert.equal(config.cognition.policy.proactive, false)
   assert.equal(config.cognition.learning.autoResearch, false)
   assert.equal(config.cognition.persona.traits.openness, DEFAULTS.cognition.persona.traits.openness)
@@ -123,6 +132,7 @@ test('cognition 配置：默认值、字段分组、非法枚举/数值回退与
   const paths = cognitionGroups.flatMap((group) => group.fields.map((field) => field.path))
   assert.ok(paths.includes('cognition.llm.mode'))
   assert.ok(paths.includes('cognition.turn.privateMaxMs'))
+  assert.ok(paths.includes('cognition.turn.groupReplyMode'))
   assert.ok(paths.includes('cognition.memory.retrievalTopK'))
   assert.ok(paths.includes('cognition.privacy.rawRetentionDays'))
 

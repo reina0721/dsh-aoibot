@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.6.0",
   "date": "2026-11-03",
   "keyHandling": "OpenCode Go key read from environment for the standalone script; for the desktop-after-restart check it was sent over localhost to a temporary provider and then deleted. No key is stored in the repository, docs, screenshots, this evidence file, or the final models.json",
   "script": "packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs",
@@ -24,13 +24,32 @@
     "note": "mock QQ gateway; no real QQ account"
   },
   "desktopAfterRestart": {
-    "hostVersion": "0.5.0",
+    "hostVersion": "0.6.0",
     "gatewayState": "connected",
     "providerTests": [
       { "provider": "opencode-go", "protocol": "openai-completions", "model": "deepseek-v4.1-flash", "ok": true, "latencyMs": 1706 },
       { "provider": "opencode-anthropic", "protocol": "anthropic-messages", "model": "qwen3.8-flash", "ok": true, "latencyMs": 1647 }
     ],
     "cleanup": "temporary providers deleted; models.json empty; key not persisted"
+  },
+  "personaAndGroupUi": {
+    "persona": { "displayName": "冒烟小Q", "tagline": "在听，也在。", "saved": true, "promptPreview": true },
+    "groupModeAll": { "groupMode": "all", "groupSkipped": 0, "decisions": 1, "lastTurnAddressed": false },
+    "tabs": ["概览", "连接", "消息", "配置", "人格", "模型", "系统设置", "认知", "日志", "关于"],
+    "narrowNoOverflow": true,
+    "pageErrors": ["[deepseek-account] account read failed [object Object] (DSH 自身，不是插件)"]
+  },
+  "realGroupReply": {
+    "chatType": "group",
+    "addressed": false,
+    "groupMode": "all",
+    "provider": "opencode-go",
+    "model": "deepseek-v4.1-flash",
+    "protocol": "openai-completions",
+    "sent": 1,
+    "latencyMs": 19705,
+    "replyPreview": "在。累了就先歇会儿，别硬撑。想说就说，不想说也没事，我在这儿。",
+    "note": "mock OneBot group; unique messageId; real OpenCode API"
   },
   "notLive": [
     "Command Code chat completion (no paid API key; Go plan has no API access)",

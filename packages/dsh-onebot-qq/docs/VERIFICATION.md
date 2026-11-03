@@ -5,7 +5,7 @@
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
 - 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket` + `node:sqlite`）
-- 插件版本：`dsh-onebot-qq@0.5.0`（本版新增统一模型协议网关与第 9 标签「模型」；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核）
+- 插件版本：`dsh-onebot-qq@0.6.0`（本版新增人格工作台、群聊参与与运行诊断；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核、v0.5 模型协议）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,18 +15,20 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **123 个用例**：无 key 时 118 通过 + 4 live skip；提供 OpenCode key 时 4/4 live 通过（15 个测试文件） |
-| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition overview/SQLite 与 models 预设检查） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **132 个用例**：无 key 时 128 通过 + 4 live skip；提供 OpenCode key 时 132/132 通过（16 个测试文件） |
+| 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition/SQLite、persona profile、models 预设检查） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
-| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **9 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
+| 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **10 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
 | 认知 UI（真实 DSH 页面 + 真实 REST 数据） | ✅ **15 / 15 布尔断言**：11 个子页、无横向溢出、空态/数据态、无页面异常 |
 | 认知数据流（mock QQ → 真实宿主 → SQLite → UI） | ✅ 人物 1、关系 2、记忆 1、决策 1；演练模式不发送；人物/记忆/策略/关系页真实渲染 |
-| 模型页 UI（真实 DSH + 真实 provider） | ✅ provider 列表/编辑/测试/选择；密钥只显示后四位；9 标签；360px 无溢出；无页面异常 |
+| 人格工作台 UI（v0.6） | ✅ 10 标签中「人格」可见；文本人设/边界/Prompt 预览/群聊参与/高级参数渲染；360px 无溢出 |
+| 群聊参与（v0.6） | ✅ all 模式未点名消息产生决策且 `groupSkipped=0`；addressed 模式仍跳过；冷却/概率/名字唤醒有集成测试 |
+| 模型页 UI（真实 DSH + 真实 provider） | ✅ provider 列表/编辑/测试/选择；密钥只显示后四位；360px 无溢出；无页面异常 |
 | 模型协议 live（OpenCode Go key） | ✅ OpenAI 流式/非流式 + Anthropic 流式 + 模型发现；真实认知 analysis + compose 发送成功 |
 | 模型发现（公开端点） | ✅ OpenRouter 451 个模型；Command Code 84 个可用（按 supported_endpoints 过滤） |
 | UI/动效/设置断言（`document.getAnimations()`、主题、即时保存、持久壳、浅/暗色、窄屏） | ✅ **48 / 48 布尔断言全过**（见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
-| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.5.0 需要重启一次 DSH |
-| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）与模型网关集成缺陷（§6.3） |
+| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.6.0 需要重启一次 DSH |
+| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）、模型网关集成缺陷（§6.3）与人格/群聊可见性缺陷（§6.4） |
 
 截图（本目录 `docs/verification/`）：
 
@@ -42,6 +44,10 @@
 | `models-overview.png` | 第 9 标签「模型」：路由模式、DSH/直连状态、provider 列表 |
 | `models-editor.png` | provider 编辑器：协议/端点/认证/模型 ID/测试；密钥只显示状态与后四位 |
 | `models-narrow-360px.png` | 360×800 模型页：单列、无横向溢出 |
+| `persona-overview.png` | 顶层「人格」：文本人设、Prompt 预览、群聊参与、高级参数 |
+| `persona-group-mode.png` | 群聊参与方式、概率/冷却/分钟上限与当前状态 |
+| `persona-narrow-360px.png` | 360×800 人格页：无横向溢出 |
+| `overview-diagnostic.png` | QQ 概览：人格卡与运行诊断（最近 turn、群聊模式、跳过原因） |
 | `overview-connected.png` | 已连接状态：eyebrow + 大标题页头、状态 pill、登录账号 `冒烟机器人 (20000002)`、`核验通过`、统计 tile、分布条形图、最近事件 |
 | `overview-stopped.png` | 未配置状态：warning banner +「去连接」、可读空态、连接操作 |
 | `connect-unconfigured.png` | 连接页空态：三步 stepper 与地址表单 |
@@ -140,7 +146,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 浏览器端（Chrome 143 headless + puppeteer-core，对同一真实 DSH 页面）：
 
 - 侧栏出现「QQ 连接」，点击后整页面板渲染，页面无 `Failed to load plugins`；
-- 九个标签 `概览 / 连接 / 消息 / 配置 / 模型 / 系统设置 / 认知 / 日志 / 关于` 全部存在且可切换；
+- 十个标签 `概览 / 连接 / 消息 / 配置 / 人格 / 模型 / 系统设置 / 认知 / 日志 / 关于` 全部存在且可切换；
 - 配置页字段完全来自 `GET /config.groups`（开关/文本/密钥/数字/下拉/列表/多行文本均可见），
   左侧分组切换只替换右侧内容、不滚动整页；
 - 「系统设置」页的左侧分类固定，切换分类只替换右侧内容；主题切换会真实改变整个 DSH 的浅/深色；
@@ -230,7 +236,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packages\dsh-onebot-qq\scrip
 
 pipeline：`turns=1 decisions=1 sent=1 degraded=0 errors=0 pending=1`。
 
-**重启后的 desktop profile 实测**：DSH 宿主已加载 `0.5.0`（`/onebot-qq/api/health` 返回
+**v0.5 阶段重启后的 desktop profile 实测**：DSH 宿主已加载 `0.5.0`（`/onebot-qq/api/health` 返回
 `version=0.5.0`，QQ `state=connected`）；在 desktop 数据目录临时保存 OpenCode Go provider 后，
 经宿主 API 测试 `deepseek-v4.1-flash`（OpenAI，1706ms）与 `qwen3.8-flash`（Anthropic，1647ms）均返回 200；
 随后删除临时 provider，`models.json` 恢复为空，未持久化测试 key。
@@ -241,6 +247,35 @@ pipeline：`turns=1 decisions=1 sent=1 degraded=0 errors=0 pending=1`。
 未做真实调用：Command Code（无付费 key；Go 套餐无 API）、OpenRouter 聊天（无 key）、
 OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证据：
 [`model-gateway-evidence.json`](verification/model-gateway-evidence.json)。
+
+### 4.4 人格可见性与群聊参与专项验证（v0.6.0）
+
+**根因证据（真实 desktop 数据，修复前）**：
+
+- `/cognition/persona` 正常，已有 12 维人格/风格/价值边界与 5 次 `reason:"ui"` 编辑；但没有文本人设字段；
+- 最近 13 条 `turn_start` 全部是 `chatType=group, addressed=false`；
+- 统计 `turns=7, decisions=0, sent=0, errors=0`，原因是群聊门控在分析前直接跳过并写入 `group_ambient_skipped`；
+- 因此不是连接/模型/人格后端损坏，而是入口过深、缺少文本人设、群聊默认仅点名且 UI 没有任何解释。
+
+**修复后验证（v0.6.0）**：
+
+| 检查 | 结果 |
+|---|---|
+| 全量测试 | ✅ 132/132（有 OpenCode key；无 key 128 pass + 4 live skip） |
+| 真实 DSH `verify-plugin.ps1` | ✅ PASS；`version=0.6.0`、`groupMode=addressed`、persona profile 可读 |
+| 浏览器 10 标签 | ✅ 概览/连接/消息/配置/人格/模型/系统设置/认知/日志/关于 |
+| 人格工作台 | ✅ 名字/身份/背景/性格/风格/喜好/边界/示例；Prompt 预览；高级 12+6 参数；保存后 API 持久化 |
+| 群聊 `all` 未点名 | ✅ mock 群消息产生 decision，`groupSkipped=0`，`lastTurn.addressed=false`；真实 OpenCode 直连时实际发送回复（19.7s） |
+| 群聊 `addressed` | ✅ 未点名只写记忆不决策（回归测试） |
+| 概率/冷却/名字唤醒 | ✅ 集成测试：probability=0、cooldown、displayName 唤醒 |
+| 概览运行诊断 | ✅ 显示群聊模式、跳过计数、最近 turn outcome/reason |
+| 360px | ✅ 无横向溢出；无插件 pageerror（仅 DSH 自身 account 日志） |
+
+截图：[`persona-overview.png`](verification/persona-overview.png)、
+[`persona-group-mode.png`](verification/persona-group-mode.png)、
+[`persona-narrow-360px.png`](verification/persona-narrow-360px.png)、
+[`overview-diagnostic.png`](verification/overview-diagnostic.png)。
+原始 UI 证据：`docs/verification/persona-ui-summary.json`（由浏览器 smoke 生成）。
 
 ## 5. 复用与配置化核对
 
@@ -318,17 +353,29 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 | `/models` API 包版本被注册表 version 覆盖 | 注册表字段改名 `registryVersion`；API 返回包版本 |
 | 直连 analysis 在 700 tokens 下被 reasoning 截断 | 分析默认上限提升到 1800；真实直连 analysis `degraded=false` |
 
+### 6.4 人格/群聊可见性修复
+
+| 问题 | 修复 |
+|---|---|
+| 人格只有 12 个数值滑杆，没有用户能读懂的文本人设 | persona 记录增加 profile（名字/身份/背景/性格/风格/喜好/边界/示例），并加入 analysis/compose prompt |
+| 人格入口埋在「认知 → 人格」，顶层看不到 | 新增第 10 个顶层「人格」标签 + QQ 概览人格卡 + 认知人格页跳转入口 |
+| 群聊未点名被硬跳过，UI 不解释 | 新增 `groupReplyMode`（addressed/probability/all）、冷却/分钟上限；trace/stats/overview 记录 `group_skipped` 与 `lastTurn`；概览/诊断卡展示原因 |
+| 改名后群友叫名字不触发 | `profile.displayName` 自动并入唤醒词；集成测试覆盖 |
+| 群聊模式与旧 `addressedOnlyGroups` 冲突 | 旧字段保留兼容映射，UI 只暴露新 `groupReplyMode`；全部模式仍受 policy 沉默/限频约束 |
+
 ## 7. 安装进当前 DSH profile
 
 - 当前 GUI（`http://127.0.0.1:60932`）属于 `desktop` profile。验证完成后通过 DSH 的插件管理
   （`plugin_manager` / `dsh plugin add`）把本包安装/链接进 `desktop` profile；
   安装结果与「是否需要刷新页面 / 重启 DSH」以安装工具返回的 `application` 字段为准。
-- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.5.0`（`link:` 指向本仓库的 source 目录，
-  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.5.0（新增 `models.json` 与第 9 标签）；
+- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.6.0`（`link:` 指向本仓库的 source 目录，
+  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.6.0（新增人格页、群聊参与与诊断）；
   仅刷新页面只会加载客户端部分。
 - 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；模型 provider/密钥在 `models.json`，
   不在 `config.json` 中，不会被 `/config` 回传。验证产生的临时 provider 已删除；mock 连接配置已
   通过 `POST /config/reset` 恢复默认。
+- 当前 desktop 的 `config.json` 已把 `cognition.turn.groupReplyMode` 预置为 `all`（备份 `config.json.v06.bak`）；
+  旧宿主 0.5 不识别该字段，**重启到 0.6 后生效**。若只想被 @ 时回复，重启后在「人格 → 群聊参与」切回 `addressed`。
 
 ## 8. 局限与未覆盖项
 
@@ -345,11 +392,13 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 5. **动效矩阵**：在 1440×900 与 360×800 两个断点验证；未覆盖全部窗口宽度矩阵与高刷新率屏幕的
    逐帧性能测量（实现只使用合成友好的 opacity/transform/width，无 JS RAF 动画循环）。
 6. **模型协议边界**：本版验证了 OpenCode Go 的真实 OpenAI/Anthropic 调用；Command Code/OpenRouter
-   只有公开模型发现，Gemini/Ollama 只有 mock 协议测试；工具调用、视觉/语音多模态、Azure/Bedrock/Vertex
+   只有公开模型发现，Gemini/Ollama 只有 mock 协议测试；工具调用、视觉/音视频多模态、Azure/Bedrock/Vertex
    等需要额外认证方式的协议不在本版。
-7. **模型密钥**：测试 key 只通过环境变量/临时 provider 使用；本地 `models.json` 的 key 属于本地明文存储，
-   生产环境建议用 `apiKeyEnv` 并定期轮换。
-8. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新/重启取决于 DSH 的运行时热加载行为；以重启后的加载结果为准。
+7. **群聊参与边界**：`all` 模式会让所有群消息进入分析，成本/打扰随群活跃度增长；默认仍是 `addressed`，
+   冷却与每分钟上限只能降低、不能消除刷屏风险；当前 desktop 验收需显式切换并观察真实群流量。
+8. **文本人设**：profile 由本地操作者编辑，属于可信配置；模型仍可能不完全遵循，需通过示例和边界迭代；
+   不能覆盖安全/隐私硬规则。
+9. 客户端插件在**已运行的 desktop GUI** 中是否需要刷新/重启取决于 DSH 的运行时热加载行为；以重启后的加载结果为准。
 
 ## 9. 复现方式
 

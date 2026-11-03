@@ -57,7 +57,7 @@ export function waitWindowMs({ text, completeness, addressed = false, chatType =
   return { soft, hard, base, short, habit, shuffled }
 }
 
-export function createTurnAggregator({ getConfig, clock, scheduler, store, log, onTurn, onRecall } = {}) {
+export function createTurnAggregator({ getConfig, clock, scheduler, store, log, onTurn, onRecall, getWakeWords } = {}) {
   const cfg = () => {
     try { return getConfig()?.cognition || {} } catch (error) { return {} }
   }
@@ -82,8 +82,10 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
       return id && (id === selfId || id === botQQ || id === 'all')
     })) return true
     if (message.replyId && botMessageIds.has(String(message.replyId))) return true
-    const words = c.turn?.wakeWords || []
-    return words.some((word) => word && String(message.text || '').includes(word))
+    let extra = []
+    try { extra = getWakeWords?.() || [] } catch (error) {}
+    const words = [...(c.turn?.wakeWords || []), ...extra].filter(Boolean)
+    return words.some((word) => String(message.text || '').includes(String(word)))
   }
 
   function close(key, reason, record = null) {

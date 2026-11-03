@@ -202,6 +202,36 @@ test('模型 API：provider CRUD/选中/公开返回不包含密钥', { timeout:
   assert.ok(!Array.isArray(after.providers) || !after.providers.some((item) => item.id === 'e2e-openai'))
 })
 
+test('人格 profile API：读取默认、编辑持久化、群聊模式写入 config', { timeout: 20000 }, async (t) => {
+  const { fake } = await boot(t, { rowConfig: {} })
+  const initial = await getJson(fake, '/cognition/persona')
+  assert.ok(initial.persona && initial.persona.profile)
+  assert.equal(typeof initial.persona.profile.displayName, 'string')
+
+  const edited = await postJson(fake, '/cognition/persona/edit', {
+    profile: {
+      displayName: 'E2E 小Q',
+      personality: '温和、直接',
+      speakingStyle: '短句',
+      likes: ['猫', '音乐'],
+      boundaries: ['不编造事实'],
+    },
+    reason: 'ui',
+  })
+  assert.equal(edited.result.persona.profile.displayName, 'E2E 小Q')
+  assert.deepEqual(edited.result.persona.profile.likes, ['猫', '音乐'])
+  assert.ok(edited.result.changes.some((change) => change.key === 'profile.displayName'))
+
+  const persisted = await getJson(fake, '/cognition/persona')
+  assert.equal(persisted.persona.profile.displayName, 'E2E 小Q')
+
+  const saved = await patchConfig(fake, { cognition: { turn: { groupReplyMode: 'all', groupReplyProbability: 0.5 } } })
+  assert.equal(saved.config.cognition.turn.groupReplyMode, 'all')
+  assert.equal(saved.config.cognition.turn.groupReplyProbability, 0.5)
+  const config = await getJson(fake, '/config')
+  assert.equal(config.config.cognition.turn.groupReplyMode, 'all')
+})
+
 test('启动即提供 health / status / config，配置默认值与字段表完整', { timeout: 20000 }, async (t) => {
   const { dir, fake } = await boot(t, { rowConfig: {} })
 

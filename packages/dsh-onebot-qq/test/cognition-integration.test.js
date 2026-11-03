@@ -52,6 +52,29 @@ function privateEvent(id, text, userId = '10001') {
   }
 }
 
+function groupEvent(id, text, { chatId = 'g1', mentions = [], senderId = '10001' } = {}) {
+  return {
+    seq: id, kind: 'message', selfId: '999', time: Math.floor(Date.now() / 1000),
+    message: { id, chatType: 'group', chatId, sender: { userId: senderId, nickname: 'A' }, text, segments: [{ type: 'text', data: { text } }], mentions, images: [], replyId: '' },
+  }
+}
+
+function groupTurnConfig(extra = {}) {
+  return {
+    privateBaseMs: 300,
+    privateMaxMs: 1200,
+    groupMaxMs: 1200,
+    fastPathMs: 80,
+    shortMsgMs: 0,
+    incompleteFactorMs: 200,
+    habitAdjMaxMs: 0,
+    groupReplyMode: 'addressed',
+    groupCooldownMs: 0,
+    groupMaxRepliesPerMinute: 60,
+    ...extra,
+  }
+}
+
 async function flush(rounds = 20) {
   for (let i = 0; i < rounds; i += 1) await new Promise((resolve) => setImmediate(resolve))
 }
@@ -137,6 +160,89 @@ test('集成：私聊记忆不会在群聊检索中出现；遗忘≠删除', ()
   }
 })
 
+test('集成：群聊 all 模式未点名会分析并产生决策；诊断保留 lastTurn', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-group-all-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 78 } } } }
+  const cog = makeCog({ dir, gateway, scheduler, configOverride: { turn: groupTurnConfig({ groupReplyMode: 'all' }) } })
+  try {
+    cog.observe(groupEvent(1, '大家好。'), { accepted: true })
+    scheduler.advance(4000)
+    await flush(60)
+    const overview = await cog.overview()
+    assert.equal(overview.pipeline.groupMode, 'all')
+    assert.equal(overview.pipeline.lastTurn.chatType, 'group')
+    assert.equal(overview.pipeline.lastTurn.addressed, false)
+    assert.ok(overview.pipeline.decisions >= 1, '未点名也应进入决策')
+    assert.equal(overview.pipeline.groupSkipped, 0)
+    assert.ok(sent.length >= 1, '策略选择回复时应发送')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('集成：群聊 probability=0 跳过并记录原因；人设名可充当唤醒词', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-group-prob-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 79 } } } }
+  const cog = makeCog({
+    dir, gateway, scheduler,
+    configOverride: { turn: groupTurnConfig({ groupReplyMode: 'probability', groupReplyProbability: 0 }) },
+  })
+  try {
+    cog.observe(groupEvent(1, '没人叫我。'), { accepted: true })
+    scheduler.advance(4000)
+    await flush(50)
+    const skipped = await cog.overview()
+    assert.equal(skipped.pipeline.groupSkipped, 1)
+    assert.equal(skipped.pipeline.groupSkippedByReason.probability_miss, 1)
+    assert.equal(skipped.pipeline.lastTurn.reason, 'probability_miss')
+    assert.equal(sent.length, 0)
+
+    cog.services.persona.edit({ profile: { displayName: '小Q' } })
+    cog.observe(groupEvent(2, '小Q你在吗？'), { accepted: true })
+    scheduler.advance(4000)
+    await flush(60)
+    const after = await cog.overview()
+    assert.ok(after.pipeline.decisions >= 1, '名字唤醒后应进入决策')
+    assert.ok(sent.length >= 1, '名字唤醒后策略回复应发送')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('集成：群聊冷却跳过后不产生第二个决策，仍写入记忆', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-group-cool-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 80 } } } }
+  const cog = makeCog({
+    dir, gateway, scheduler,
+    configOverride: { turn: groupTurnConfig({ groupReplyMode: 'all', groupCooldownMs: 60000 }) },
+  })
+  try {
+    cog.observe(groupEvent(1, '第一句。'), { accepted: true })
+    scheduler.advance(4000)
+    await flush(60)
+    const firstSent = sent.length
+    cog.observe(groupEvent(2, '第二句。'), { accepted: true })
+    scheduler.advance(4000)
+    await flush(40)
+    const overview = await cog.overview()
+    assert.ok(firstSent >= 1)
+    assert.equal(sent.length, firstSent, '冷却期内不发送')
+    assert.ok(overview.pipeline.groupSkipped >= 1)
+    assert.equal(overview.pipeline.lastTurn.reason, 'cooldown')
+    assert.ok(cog.services.memory.stats().total >= 2, '跳过时仍写入情景记忆')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
 test('集成：撤回在无原文时不假装看见；有原文时 sawContent=true', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-recall-'))
   const scheduler = createFakeScheduler()

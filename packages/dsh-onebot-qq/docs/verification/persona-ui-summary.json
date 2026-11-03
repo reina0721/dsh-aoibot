@@ -1,0 +1,74 @@
+{
+  "checks": {
+    "configSave": true,
+    "personaSave": true,
+    "connected": true,
+    "groupMode": true,
+    "groupNotSkipped": true,
+    "groupHasDecision": true,
+    "lastTurnAddress": true,
+    "tabs10": true,
+    "personaPage": true,
+    "personaInput": true,
+    "personaPromptShown": true,
+    "narrowNoOverflow": true,
+    "noErrors": false
+  },
+  "errors": [
+    "console: [deepseek-account] account read failed [object Object]"
+  ],
+  "screens": [
+    "overview-diagnostic.png",
+    "persona-overview.png",
+    "persona-group-mode.png",
+    "persona-narrow-360.png"
+  ],
+  "groupId": "23743521",
+  "overview": {
+    "pipeline": {
+      "turns": 3,
+      "decisions": 3,
+      "sent": 1,
+      "dryRun": 2,
+      "degraded": 2,
+      "errors": 0,
+      "silenced": 0,
+      "groupSkipped": 0,
+      "groupSkippedByReason": {},
+      "lastTurn": {
+        "at": 1793723744803,
+        "chatType": "group",
+        "chatId": "23743521",
+        "addressed": false,
+        "mode": "all",
+        "outcome": "composed_empty",
+        "reason": "skipped"
+      },
+      "pending": 1,
+      "groupMode": "all"
+    },
+    "persona": {
+      "displayName": "冒烟小Q",
+      "tagline": "在听，也在。",
+      "identity": "群友，喜欢音乐和猫",
+      "personality": "温和、直接，会接住情绪但不夸张",
+      "speakingStyle": "短句，偶尔吐槽，不用敬语",
+      "boundaries": [
+        "不编造事实",
+        "不泄露私聊"
+      ]
+    }
+  },
+  "tabLabels": [
+    "概览",
+    "连接",
+    "消息",
+    "配置",
+    "人格",
+    "模型",
+    "系统设置",
+    "认知",
+    "日志",
+    "关于"
+  ]
+}

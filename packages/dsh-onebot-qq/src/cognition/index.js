@@ -108,6 +108,10 @@ export function createCognition({
         scheduler,
         store: state.store,
         log,
+        getWakeWords: () => {
+          const name = state.services.persona?.get?.()?.profile?.displayName
+          return name ? [String(name)] : []
+        },
         onTurn: (turn) => {
           state.stats.turns += 1
           try { state.services.pipeline.observeIncoming(turn) } catch (error) { log.debug?.('outcome 观察失败：', error.message) }
@@ -280,7 +284,10 @@ export function createCognition({
       counts: counts(),
       stats: { ...state.stats },
       turn: state.services.aggregator?.stats || null,
-      pipeline: state.services.pipeline?.stats?.() || null,
+      pipeline: state.services.pipeline ? {
+        ...(state.services.pipeline.stats?.() || {}),
+        groupMode: state.services.pipeline.groupMode?.() || 'addressed',
+      } : null,
       capabilities: [...capabilities.keys()],
       knowledgeSources: [...knowledgeSources.keys(), ...(state.services.sources?.list?.().map((item) => item.id) || [])].filter((value, index, all) => all.indexOf(value) === index),
       config: publicState(),

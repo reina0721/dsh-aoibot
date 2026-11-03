@@ -16,9 +16,14 @@ export function createPipeline({
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
   const pending = new Map() // chatKey -> { decisionId, sentAt, action }
+  const groupReplyAt = new Map() // chatKey -> last reply timestamp
+  const groupReplyTimes = [] // sliding minute window
   const cfg = () => getConfig()?.cognition || {}
   const isDry = () => (dryRun == null ? Boolean(cfg().dryRun) : Boolean(dryRun))
-  const stats = { turns: 0, decisions: 0, sent: 0, dryRun: 0, degraded: 0, errors: 0, silenced: 0 }
+  const stats = {
+    turns: 0, decisions: 0, sent: 0, dryRun: 0, degraded: 0, errors: 0, silenced: 0,
+    groupSkipped: 0, groupSkippedByReason: {}, lastTurn: null,
+  }
 
   function trace(turnId, stage, summary = {}, extra = {}) {
     if (!cfg().debug?.trace) return
@@ -42,6 +47,58 @@ export function createPipeline({
 
   function chatKey(turn) {
     return `${turn?.chatType || 'unknown'}:${turn?.chatId || ''}`
+  }
+
+  function effectiveGroupMode() {
+    const t = cfg().turn || {}
+    if (['addressed', 'probability', 'all'].includes(t.groupReplyMode)) return t.groupReplyMode
+    if (t.addressedOnlyGroups === false || cfg().policy?.groupAmbient) return 'all'
+    return 'addressed'
+  }
+
+  function groupReplyAllowed(turn) {
+    const now = clock.now()
+    while (groupReplyTimes.length && now - groupReplyTimes[0] > 60000) groupReplyTimes.shift()
+    const max = Math.max(1, Number(cfg().turn?.groupMaxRepliesPerMinute) || 6)
+    if (groupReplyTimes.length >= max) return { ok: false, reason: 'rate_limited' }
+    if (!turn.addressed) {
+      const cooldown = Math.max(0, Number(cfg().turn?.groupCooldownMs) || 0)
+      const last = Number(groupReplyAt.get(chatKey(turn)) || 0)
+      if (cooldown && last && now - last < cooldown) return { ok: false, reason: 'cooldown' }
+    }
+    return { ok: true }
+  }
+
+  function noteGroupReply(turn) {
+    if (turn?.chatType !== 'group') return
+    const now = clock.now()
+    groupReplyAt.set(chatKey(turn), now)
+    groupReplyTimes.push(now)
+  }
+
+  function markLast(turn, outcome, reason = '', extra = {}) {
+    stats.lastTurn = {
+      at: clock.now(),
+      chatType: turn?.chatType || '',
+      chatId: String(turn?.chatId || ''),
+      addressed: Boolean(turn?.addressed),
+      mode: turn?.chatType === 'group' ? effectiveGroupMode() : 'private',
+      outcome,
+      reason,
+      ...extra,
+    }
+  }
+
+  function skipGroup(turn, personRecord, emotionState, scope, reason) {
+    memory.encodeTurn(turn, { personId: personRecord?.person?.id || '', emotion: emotionState, scope, source: 'ambient' })
+    stats.groupSkipped += 1
+    stats.groupSkippedByReason[reason] = (stats.groupSkippedByReason[reason] || 0) + 1
+    markLast(turn, 'skipped', reason)
+    trace(turn.id, 'group_skipped', {
+      text: reason,
+      data: { mode: effectiveGroupMode(), addressed: Boolean(turn.addressed), reason },
+    })
+    return buildResult({ ok: true, decision: null, reply: '', degraded: false, error: `group_${reason}` })
   }
 
   function scopeOf(turn) {
@@ -210,6 +267,7 @@ export function createPipeline({
       policy.markSent(decision.id, { messageId })
       turnAggregatorRef?.noteBotMessage?.(messageId)
       stats.sent += 1
+      noteGroupReply(turn)
       pending.set(chatKey(turn), { decisionId: decision.id, sentAt: clock.now(), action: decision.action, text })
       try { ctxEmit('onebot-qq/cognition-sent', { decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId, action: decision.action }) } catch (error) {}
       return { ok: true, messageId, result }
@@ -299,6 +357,7 @@ export function createPipeline({
     }
     const started = clock.now()
     stats.turns += 1
+    markLast(turn, 'processing')
     trace(turn.id, 'turn_start', { text: truncate(turn.text, 200), data: { chatType: turn.chatType, addressed: turn.addressed, completeness: turn.completeness } })
     const record = personFromTurn(turn)
     const personRecord = record
@@ -308,10 +367,20 @@ export function createPipeline({
     const scope = boundScope(turn)
     const memories = memory.retrieve({ query: turn.text, personId: personRecord?.person?.id || '', scope, emotion: emotionState, relationship: rel })
     trace(turn.id, 'retrieved', { text: `${memories.length} memories`, data: { memoryIds: memories.map((item) => item.memory.id) } })
-    // 群聊默认只回应点名/回复/唤醒词；ambient 模式需显式开启。
-    if (turn.chatType === 'group' && !turn.addressed && (cfg().turn?.addressedOnlyGroups !== false) && !cfg().policy?.groupAmbient) {
-      memory.encodeTurn(turn, { personId: personRecord?.person?.id || '', emotion: emotionState, scope, source: 'ambient' })
-      return buildResult({ ok: true, decision: null, reply: '', degraded: false, error: 'group_ambient_skipped' })
+    // 群聊 gate：默认仅点名；可配置为概率参与或所有消息。所有模式仍写记忆。
+    if (turn.chatType === 'group') {
+      const mode = effectiveGroupMode()
+      if (mode === 'addressed' && !turn.addressed) {
+        return skipGroup(turn, personRecord, emotionState, scope, 'addressed_only')
+      }
+      if (mode === 'probability' && !turn.addressed) {
+        const probability = clamp(Number(cfg().turn?.groupReplyProbability ?? 0.2), 0, 1)
+        if (Math.random() >= probability) {
+          return skipGroup(turn, personRecord, emotionState, scope, 'probability_miss')
+        }
+      }
+      const allowed = groupReplyAllowed(turn)
+      if (!allowed.ok) return skipGroup(turn, personRecord, emotionState, scope, allowed.reason)
     }
     const analysis = await analyzeTurn({
       turn, person: personRecord?.person, relationship: rel, emotion: emotionState, memories, persona: personaState,
@@ -352,35 +421,42 @@ export function createPipeline({
     }
     const skillMap = {}
     for (const skill of skills?.list?.() || []) skillMap[skill.name] = skill.effectiveMastery
-    const decision = policy.decide({ turn, relationship: rel, emotion: emotion.get(), appraisal, unknown: gaps[0] || null, memories, persona: personaState, skills: skillMap })
+    const groupEngaged = turn.chatType === 'group' && !turn.addressed && effectiveGroupMode() !== 'addressed'
+    const policyTurn = groupEngaged ? { ...turn, groupEngaged: true } : turn
+    const decision = policy.decide({ turn: policyTurn, relationship: rel, emotion: emotion.get(), appraisal, unknown: gaps[0] || null, memories, persona: personaState, skills: skillMap })
     stats.decisions += 1
     trace(turn.id, 'decision', { text: decision.action, data: { candidates: decision.candidates?.slice(0, 5), utilities: decision.candidates?.slice(0, 5) } })
     if (decision.action === 'silence' || decision.action === 'wait' || decision.action === 'recall_silence' || decision.action === 'recall_ignore') {
       stats.silenced += 1
+      markLast(turn, 'silenced', decision.action)
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       trimWorking(turn, personRecord, analysis, decision)
       metric('decision', 1, { action: decision.action })
       return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
     }
     if (decision.action === 'learn') {
+      markLast(turn, 'learned', decision.action)
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       return buildResult({ ok: true, decision, reply: '', degraded: false })
     }
     const composed = await composeFor(decision, { turn, personRecord, relationship: rel, emotionState: emotion.get(), personaState, memories, analysis })
     if (!composed.ok) {
       stats.degraded += 1
+      markLast(turn, 'degraded', composed.error || 'compose_failed')
       policy.markFailed(decision.id, composed.error)
       trace(turn.id, 'compose_failed', { text: composed.error || 'compose failed', data: { message: composed.message || '', route: composed.route || null } })
       log.warn?.('回复生成失败：', composed.error || composed.message || 'unknown')
       return buildResult({ ok: false, decision, degraded: true, error: composed.error })
     }
     if (composed.skipped) {
+      markLast(turn, 'composed_empty', composed.error || 'skipped')
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       else { policy.markSent(decision.id, { dryRun: true }); stats.dryRun += 1 }
       trimWorking(turn, personRecord, analysis, decision)
       return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
     }
     const sent = await sendDecision(decision, composed.text, turn)
+    markLast(turn, sent.ok ? 'sent' : 'send_failed', sent.error || decision.action)
     trace(turn.id, 'sent', { text: truncate(composed.text, 120) }, { latencyMs: clock.now() - started })
     trimWorking(turn, personRecord, analysis, decision)
     metric('decision', 1, { action: decision.action })
@@ -440,5 +516,8 @@ export function createPipeline({
     turnAggregatorRef = aggregator
   }
 
-  return { handleTurn, handleRecall, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator, _pending: pending }
+  return {
+    handleTurn, handleRecall, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator,
+    groupMode: effectiveGroupMode, _pending: pending,
+  }
 }

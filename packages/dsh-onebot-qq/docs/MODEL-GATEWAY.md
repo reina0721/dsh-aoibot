@@ -1,6 +1,6 @@
 # 模型协议与模型网关（MODEL-GATEWAY）
 
-> 版本：`dsh-onebot-qq@0.5.0`。本文描述统一模型协议层、直连 provider、DSH 路由、密钥/安全边界、
+> 版本：`dsh-onebot-qq@0.6.0`（模型层自 v0.5.0 起）。本文描述统一模型协议层、直连 provider、DSH 路由、密钥/安全边界、
 > REST API、UI 与验证方式。实现代码：`packages/dsh-onebot-qq/src/model/`。
 
 ## 1. 为什么需要这一层
@@ -212,7 +212,7 @@ cognition pipeline
 
 ## 9. UI
 
-第 9 个顶层标签「模型」：
+第 6 个顶层标签「模型」（v0.6 起人格为第 5、模型为第 6）：
 
 - 路由模式与 DSH/直连状态、直连回退开关、备用路由；
 - provider 列表、预设新增、编辑/保存/删除；

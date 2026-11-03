@@ -1790,6 +1790,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-cog-slider{display:flex;flex-direction:column;gap:4px;min-width:0}
 .ob-cog-slider-head{display:flex;justify-content:space-between;gap:8px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
 .ob-cog-slider input[type="range"]{width:100%;accent-color:var(--ob-brand);cursor:pointer}
+.ob-persona-prompt{margin:0;padding:12px 14px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-sm);background:var(--ob-surface-sunken);color:var(--ob-ink);font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto}
+.ob-persona-subtitle{margin:14px 0 6px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
+.ob-persona-subtitle:first-child{margin-top:0}
+.ob-diagnostic-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
 .ob-models-grid{display:grid;gap:var(--ob-control-gap);grid-template-columns:minmax(240px,320px) minmax(0,1fr);align-items:start}
@@ -3030,6 +3034,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'config', label: '配置', icon: 'config' },
+      { id: 'persona', label: '人格', icon: 'sparkles' },
       { id: 'models', label: '模型', icon: 'bolt' },
       { id: 'settings', label: '系统设置', icon: 'palette' },
       { id: 'cognition', label: '认知', icon: 'brain' },
@@ -3157,6 +3162,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const events = safeObject(status && status.events)
       const logs = safeObject(status && status.logs)
       const config = safeObject(props.configInfo && props.configInfo.config)
+      const cognition = useCognitionOverview(props)
+      const cogData = safeObject(cognition.data)
+      const cogPersona = safeObject(cogData.persona)
+      const cogPipeline = safeObject(cogData.pipeline)
+      const cogTurn = safeObject(cogData.config && cogData.config.turn)
       const state = stateLabel(gateway.state)
       const check = loginCheckLabel(gateway.loginCheck)
       const login = isPlainObject(gateway.login) ? gateway.login : null
@@ -3277,6 +3287,58 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(StatTile, { label: '已丢弃', value: Number(events.dropped) || 0, icon: 'filter', tone: 'warn', hint: '被过滤或无效事件' }),
           h(StatTile, { label: '事件缓冲', value: buffered, denominator: capacity, icon: 'bolt', tone: 'info', hint: '环形缓冲上限 ' + (capacity || '—'), progress: capacity ? buffered / capacity : 0 }),
           h(StatTile, { label: '日志总数', value: Number(logs.total) || 0, icon: 'logs', tone: 'muted', hint: '当前缓冲 ' + (Number(logs.buffered) || 0) + ' 条' }),
+        ),
+
+        h(
+          Reveal,
+          { className: 'ob-grid two' },
+          h(
+            Panel,
+            {
+              title: '人格',
+              description: '固定人设、说话风格与边界；也可从「认知 → 人格」进入。',
+              actions: h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: () => props.go('persona') }, '编辑人格'),
+            },
+            cogPersona.profile && cogPersona.profile.displayName
+              ? h('div', { className: 'ob-stack', style: { gap: '8px' } },
+                  h('div', { className: 'ob-row' },
+                    h(Badge, { tone: 'brand' }, cogPersona.profile.displayName),
+                    cogPersona.profile.tagline ? h('span', { className: 'ob-muted' }, cogPersona.profile.tagline) : null,
+                    h(Badge, { tone: 'muted' }, 'v' + String(cogPersona.version || 1)),
+                  ),
+                  h('p', { className: 'ob-field-help' }, cogPersona.profile.personality || cogPersona.profile.speakingStyle || '还没有填写文本人设；点击「编辑人格」开始。'),
+                )
+              : h('div', { className: 'ob-stack', style: { gap: '6px' } },
+                  h('p', { className: 'ob-muted' }, '还没有可读的文本人设；数值人格已存在，但用户看不到。'),
+                  h(Btn, { small: true, kind: 'secondary', onClick: () => props.go('persona') }, '去填写人格'),
+                ),
+          ),
+          h(
+            Panel,
+            {
+              title: '运行诊断',
+              description: '最近一条消息为什么回复/沉默/跳过；群聊 gate 的实时状态。',
+              actions: h(Btn, { small: true, kind: 'ghost', icon: 'brain', onClick: () => props.go('cognition') }, '查看认知'),
+            },
+            h('div', { className: 'ob-diagnostic-row', style: { marginBottom: '8px' } },
+              h(Badge, { tone: 'info' }, '群聊：' + (cogPipeline.groupMode === 'all' ? '所有消息' : cogPipeline.groupMode === 'probability' ? '按概率参与' : '仅 @/唤醒词')),
+              h(Badge, { tone: Number(cogPipeline.groupSkipped) ? 'warn' : 'muted' }, '跳过 ' + String(Number(cogPipeline.groupSkipped) || 0)),
+            ),
+            cogPipeline.lastTurn
+              ? h('div', { className: 'ob-stack', style: { gap: '4px' } },
+                  h('p', { className: 'ob-feed-meta', style: { margin: 0 } },
+                    '最近：' + (cogPipeline.lastTurn.chatType === 'group' ? '群聊' : '私聊') +
+                    (cogPipeline.lastTurn.addressed ? '（点名）' : '（未点名）') +
+                    ' → ' + String(cogPipeline.lastTurn.outcome || '—') + (cogPipeline.lastTurn.reason ? ' · ' + String(cogPipeline.lastTurn.reason) : ''),
+                  ),
+                  h('p', { className: 'ob-field-help', style: { margin: 0 } },
+                    cogPipeline.lastTurn.outcome === 'skipped'
+                      ? '这条消息被群聊规则跳过；可在「人格 → 群聊参与」里改为概率或所有消息。'
+                      : '最近一条消息已进入认知流程；若没有回复，可能是策略选择沉默。',
+                  ),
+                )
+              : h('p', { className: 'ob-muted' }, '还没有认知事件；连接后发一条消息试试。'),
+          ),
         ),
 
         h(
@@ -5301,6 +5363,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const metrics = safeObject(data.metrics)
       const llm = safeObject(data.llm)
       const direct = safeObject(llm.direct)
+      const pipeline = safeObject(data.pipeline)
       const decisions = safeArray(data.recentDecisions)
       const unknowns = safeArray(data.recentUnknowns)
       return h(
@@ -5322,7 +5385,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           { className: 'ob-grid two' },
           h(
             Panel,
-            { title: '当前状态', description: '模拟情绪与人格摘要；不声称主观体验。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: props.reload }, '刷新') },
+            { title: '当前状态', description: '模拟情绪与人格摘要；不声称主观体验。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: () => props.go && props.go('persona') }, '编辑人格'), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: props.reload }, '刷新')) },
             h(
               'div',
               { className: 'ob-stack', style: { gap: '12px' } },
@@ -5353,6 +5416,33 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               ] }),
               llm.serviceWarning ? h('p', { className: 'ob-field-help' }, '诊断：' + llm.serviceWarning) : null,
             ),
+          ),
+        ),
+        h(
+          Panel,
+          {
+            title: '运行诊断',
+            description: '最近一条消息发生了什么；群聊 gate 是否跳过、为什么。',
+            actions: props.go ? h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: () => props.go('persona') }, '调整群聊参与') : null,
+          },
+          h('div', { className: 'ob-stack', style: { gap: '8px' } },
+            h('div', { className: 'ob-diagnostic-row' },
+              h(CogTag, { tone: 'info' }, '群聊：' + (pipeline.groupMode === 'all' ? '所有消息' : pipeline.groupMode === 'probability' ? '按概率参与' : '仅 @/唤醒词')),
+              h(CogTag, { tone: Number(pipeline.groupSkipped) ? 'warn' : 'muted' }, '跳过 ' + String(Number(pipeline.groupSkipped) || 0)),
+              h(CogTag, { tone: Number(pipeline.decisions) ? 'ok' : 'muted' }, '决策 ' + String(Number(pipeline.decisions) || 0)),
+              h(CogTag, { tone: Number(pipeline.sent) ? 'ok' : 'muted' }, '发送 ' + String(Number(pipeline.sent) || 0)),
+            ),
+            pipeline.lastTurn
+              ? h('p', { className: 'ob-field-help', style: { margin: 0 } },
+                  '最近：' + (pipeline.lastTurn.chatType === 'group' ? '群聊' : '私聊') +
+                  (pipeline.lastTurn.addressed ? '（点名）' : '（未点名）') +
+                  ' → ' + String(pipeline.lastTurn.outcome || '—') +
+                  (pipeline.lastTurn.reason ? ' · ' + String(pipeline.lastTurn.reason) : ''),
+                )
+              : h('p', { className: 'ob-field-help', style: { margin: 0 } }, '还没有认知事件；收到消息后会在这里显示。'),
+            pipeline.lastTurn && pipeline.lastTurn.outcome === 'skipped'
+              ? h('p', { className: 'ob-field-help', style: { margin: 0, color: 'var(--ob-warn)' } }, '这条消息被群聊规则跳过；若希望 bot 参与，请到「人格 → 群聊参与」切换模式。')
+              : null,
           ),
         ),
         h(
@@ -5430,6 +5520,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h(
         'div',
         { className: 'ob-stack', style: { gap: '14px' } },
+        h(Banner, {
+          tone: 'info',
+          message: '这里只调数值人格；名字、身份、背景、性格描述、说话风格和群聊参与方式在顶层「人格」页。',
+          actions: props.go ? h(Btn, { small: true, kind: 'ghost', onClick: () => props.go('persona') }, '去人格工作台') : null,
+        }),
         h(Panel, { title: '稳定人格', description: '长期行为倾向；单次互动不改变。修改后立即持久化；锁定项不参与慢演化。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: saving, onClick: () => save(traits, style) }, '保存') },
           h('div', { className: 'ob-cog-sliders' }, keys.map(([key, label]) => h(
             'label',
@@ -5732,6 +5827,341 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
     // =====================================================================
+    // 人格工作台：文本人设 + 群聊参与 + 高级认知参数
+    // 顶层「人格」标签；与「认知」共享同一套 /cognition/persona API。
+    // =====================================================================
+
+    const PERSONA_PROFILE_FIELDS = [
+      { key: 'displayName', label: '名字 / 自称', kind: 'input', max: 40, placeholder: '例如：小Q', help: '群聊里被叫到这个名字也会触发回应。' },
+      { key: 'tagline', label: '一句话介绍', kind: 'input', max: 120, placeholder: '例如：在听，也在。' },
+      { key: 'identity', label: '身份 / 角色', kind: 'input', max: 300, placeholder: '例如：群里的普通群友，喜欢音乐和猫。' },
+      { key: 'background', label: '背景', kind: 'textarea', rows: 3, max: 1500, placeholder: '可写成长环境、经历、与群友的关系。' },
+      { key: 'personality', label: '性格描述', kind: 'textarea', rows: 3, max: 1000, placeholder: '用自然语言描述性格；比滑杆更直接。' },
+      { key: 'speakingStyle', label: '说话风格 / 口癖', kind: 'textarea', rows: 3, max: 800, placeholder: '例如：短句，偶尔吐槽，不用敬语。' },
+      { key: 'examples', label: '示例对话（可选）', kind: 'textarea', rows: 3, max: 1500, placeholder: '示例：\n用户：今天好累。\n小Q：那就先歇会儿，别硬撑。' },
+    ]
+    const PERSONA_LIST_FIELDS = [
+      { key: 'likes', label: '喜欢', placeholder: '每行一个，例如：猫\n音乐' },
+      { key: 'dislikes', label: '不喜欢', placeholder: '每行一个' },
+      { key: 'boundaries', label: '边界 / 禁忌', placeholder: '每行一个，例如：不编造事实\n不泄露私聊' },
+    ]
+    const PERSONA_TRAIT_LABELS = [
+      ['extraversion', '外向'], ['openness', '开放/好奇'], ['agreeableness', '宜人'], ['conscientiousness', '尽责'],
+      ['emotionalSensitivity', '情绪敏感'], ['humor', '幽默'], ['socialInitiative', '社交主动'], ['caution', '谨慎'],
+      ['expressiveness', '表达欲'], ['conflictApproach', '冲突倾向'], ['riskTolerance', '风险偏好'], ['consistency', '行为一致性'],
+    ]
+    const PERSONA_STYLE_LABELS = [
+      ['formality', '正式度'], ['verbosity', '话痨度'], ['emojiRate', 'emoji 倾向'],
+      ['punctuation', '标点强度'], ['teasingBound', '调侃边界'], ['warmth', '温暖度'],
+    ]
+    const GROUP_MODE_OPTIONS = [
+      { value: 'addressed', label: '仅 @ / 回复 / 唤醒词' },
+      { value: 'probability', label: '点名必回，未点名按概率' },
+      { value: 'all', label: '所有群消息都分析（仍可沉默）' },
+    ]
+
+    function personaListText(value) {
+      return safeArray(value).join('\n')
+    }
+
+    function parsePersonaList(text) {
+      return String(text || '')
+        .split(/[\n,，]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 20)
+    }
+
+    function personaProfileDraft(profile) {
+      const source = safeObject(profile)
+      const draft = {}
+      for (const field of PERSONA_PROFILE_FIELDS) draft[field.key] = String(source[field.key] || '')
+      const lists = {}
+      for (const field of PERSONA_LIST_FIELDS) lists[field.key] = personaListText(source[field.key])
+      return { profile: draft, lists }
+    }
+
+    function personaPreview(profile) {
+      const lines = []
+      const add = (label, value) => { if (String(value || '').trim()) lines.push(label + '：' + String(value).trim()) }
+      add('名字/自称', profile.displayName)
+      add('一句话介绍', profile.tagline)
+      add('身份', profile.identity)
+      add('背景', profile.background)
+      add('性格', profile.personality)
+      add('说话风格', profile.speakingStyle)
+      add('喜欢', safeArray(profile.likes).join('、'))
+      add('不喜欢', safeArray(profile.dislikes).join('、'))
+      add('边界/禁忌', safeArray(profile.boundaries).join('、'))
+      add('示例对话', profile.examples)
+      const text = lines.join('\n')
+      return [...text].length > 2000 ? [...text].slice(0, 1999).join('') + '…' : text
+    }
+
+    function PersonaField(props) {
+      return h(
+        'div',
+        { className: 'ob-field' },
+        h('div', { className: 'ob-field-label' }, h('span', null, props.label), props.optional ? h('span', { className: 'ob-muted' }, '可选') : null),
+        h('div', { className: 'ob-field-control' }, props.children),
+        props.help ? h('p', { className: 'ob-field-help' }, props.help) : null,
+      )
+    }
+
+    function PersonaTab(props) {
+      const [persona, setPersona] = useState(null)
+      const [draft, setDraft] = useState(null)
+      const [lists, setLists] = useState({})
+      const [error, setError] = useState('')
+      const [loading, setLoading] = useState(true)
+      const [saving, setSaving] = useState(false)
+      const [dirty, setDirty] = useState(false)
+      const [advanced, setAdvanced] = useState(false)
+      const [behavior, setBehavior] = useState(null)
+      const [behaviorStatus, setBehaviorStatus] = useState('')
+
+      const syncFromPersona = useCallback((next) => {
+        setPersona(next)
+        const view = personaProfileDraft(next && next.profile)
+        setDraft(view.profile)
+        setLists(view.lists)
+        setDirty(false)
+      }, [])
+
+      useEffect(() => {
+        let alive = true
+        ;(async () => {
+          try {
+            const parsed = parseApiResponse(await get('/cognition/persona'))
+            if (!alive) return
+            if (!parsed.ok) setError(parsed.message)
+            else syncFromPersona(parsed.data.persona)
+          } catch (err) {
+            if (alive) setError(String(err && err.message ? err.message : err))
+          } finally {
+            if (alive) setLoading(false)
+          }
+        })()
+        return () => { alive = false }
+      }, [syncFromPersona])
+
+      const turnCfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition && props.configInfo.config.cognition.turn)
+      useEffect(() => {
+        if (!props.configInfo) return
+        setBehavior({
+          groupReplyMode: turnCfg.groupReplyMode || 'addressed',
+          groupReplyProbability: Number(turnCfg.groupReplyProbability ?? 0.2),
+          groupCooldownMs: Number(turnCfg.groupCooldownMs ?? 3000),
+          groupMaxRepliesPerMinute: Number(turnCfg.groupMaxRepliesPerMinute ?? 6),
+        })
+      }, [props.configInfo, turnCfg.groupReplyMode, turnCfg.groupReplyProbability, turnCfg.groupCooldownMs, turnCfg.groupMaxRepliesPerMinute])
+
+      const change = (key, value) => {
+        setDraft((previous) => Object.assign({}, previous, { [key]: value }))
+        setDirty(true)
+      }
+      const changeList = (key, value) => {
+        setLists((previous) => Object.assign({}, previous, { [key]: value }))
+        setDirty(true)
+      }
+
+      const save = async () => {
+        if (!persona || !draft || saving) return
+        setSaving(true)
+        try {
+          const profile = Object.assign({}, draft, {
+            likes: parsePersonaList(lists.likes),
+            dislikes: parsePersonaList(lists.dislikes),
+            boundaries: parsePersonaList(lists.boundaries),
+          })
+          const result = await cogPost(props, '/cognition/persona/edit', {
+            profile,
+            traits: persona.traits,
+            style: persona.style,
+            values: persona.values,
+            reason: 'ui',
+          })
+          const next = result && (result.result && result.result.persona ? result.result.persona : result.persona)
+          if (next) {
+            syncFromPersona(next)
+            props.toast && props.toast('人格已保存', 'ok')
+          }
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      const reset = async () => {
+        if (!window.confirm('恢复默认人格？会清除人格历史并重置为配置初值。')) return
+        const result = await cogPost(props, '/cognition/persona/reset', {})
+        const next = result && result.persona
+        if (next) {
+          syncFromPersona(next)
+          props.toast && props.toast('人格已重置', 'ok')
+        }
+      }
+
+      const updateTrait = (key, value) => {
+        setPersona((previous) => previous ? Object.assign({}, previous, { traits: Object.assign({}, previous.traits, { [key]: value }) }) : previous)
+        setDirty(true)
+      }
+      const updateStyle = (key, value) => {
+        setPersona((previous) => previous ? Object.assign({}, previous, { style: Object.assign({}, previous.style, { [key]: value }) }) : previous)
+        setDirty(true)
+      }
+
+      const updateBehavior = async (key, value) => {
+        const next = Object.assign({}, behavior || {}, { [key]: value })
+        setBehavior(next)
+        if (!props.saveConfigPatch) {
+          setBehaviorStatus('配置接口不可用')
+          return
+        }
+        setBehaviorStatus('保存中…')
+        try {
+          const saved = await props.saveConfigPatch({ cognition: { turn: { [key]: value } } })
+          setBehaviorStatus(saved === false ? '保存失败' : '已保存')
+          if (saved === false) props.toast && props.toast('群聊设置保存失败', 'err')
+        } catch (err) {
+          setBehaviorStatus('保存失败')
+          props.toast && props.toast('群聊设置保存失败：' + String(err && err.message ? err.message : err), 'err')
+        }
+      }
+
+      if (loading) return h(CogLoading)
+      if (error || !persona || !draft) return h(Banner, { tone: 'err', message: error || '人格数据加载失败' })
+
+      const profileForPreview = Object.assign({}, draft, {
+        likes: parsePersonaList(lists.likes),
+        dislikes: parsePersonaList(lists.dislikes),
+        boundaries: parsePersonaList(lists.boundaries),
+      })
+      const preview = personaPreview(profileForPreview)
+      const profile = safeObject(persona.profile)
+      const displayName = draft.displayName || '未命名'
+
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, {
+          title: '人格',
+          description: '这些是长期、稳定的设定；保存后进入每次分析与回复的 prompt。群聊消息仍是不可信外部数据。',
+          actions: h('div', { className: 'ob-row' },
+            dirty ? h(Badge, { tone: 'warn' }, '有未保存修改') : null,
+            h(Btn, { small: true, kind: 'primary', busy: saving, onClick: save }, dirty ? '保存人格' : '保存'),
+            h(Btn, { small: true, kind: 'ghost', onClick: reset }, '恢复默认'),
+          ),
+        },
+          h('div', { className: 'ob-row', style: { marginBottom: '8px' } },
+            h(CogTag, { tone: 'brand' }, displayName),
+            h(CogTag, { tone: 'muted' }, '人格 v' + String(persona.version || 1)),
+            profileForPreview.tagline ? h('span', { className: 'ob-muted' }, profileForPreview.tagline) : null,
+          ),
+          h('div', { className: 'ob-grid two' }, PERSONA_PROFILE_FIELDS.slice(0, 3).map((field) => h(
+            PersonaField,
+            { key: field.key, label: field.label, help: field.help, optional: field.key === 'tagline' },
+            h('input', {
+              className: 'ob-input', type: 'text', value: draft[field.key] || '', maxLength: field.max, placeholder: field.placeholder,
+              onChange: (event) => change(field.key, event.target.value),
+            }),
+          ))),
+          h('div', { className: 'ob-grid two' }, PERSONA_PROFILE_FIELDS.slice(3).map((field) => h(
+            PersonaField,
+            { key: field.key, label: field.label, optional: field.key === 'background' || field.key === 'examples' },
+            h('textarea', {
+              className: 'ob-textarea', rows: field.rows || 3, value: draft[field.key] || '', maxLength: field.max, placeholder: field.placeholder,
+              onChange: (event) => change(field.key, event.target.value),
+            }),
+          ))),
+          h('div', { className: 'ob-grid two' }, PERSONA_LIST_FIELDS.map((field) => h(
+            PersonaField,
+            { key: field.key, label: field.label, help: '每行一个，最多 20 条。', optional: true },
+            h('textarea', {
+              className: 'ob-textarea', rows: 3, value: lists[field.key] || '', placeholder: field.placeholder,
+              onChange: (event) => changeList(field.key, event.target.value),
+            }),
+          ))),
+          h('div', { className: 'ob-row', style: { marginTop: '8px' } },
+            h(CogTag, { tone: 'muted' }, '边界会作为硬性表达约束，不覆盖安全与隐私规则'),
+          ),
+        ),
+        h(Panel, {
+          title: 'Prompt 预览',
+          description: '实际注入 compose system 的人设块（截断到 2000 字符）；空字段不会出现。',
+        },
+          preview
+            ? h('pre', { className: 'ob-persona-prompt' }, preview)
+            : h(CogEmpty, { compact: true, title: '还没有填写人设', description: '填名字、性格或说话风格后，这里会显示将注入的内容。' }),
+        ),
+        h(Panel, {
+          title: '群聊参与',
+          description: '默认仅 @/回复/唤醒词。想让 bot 在群里更像普通聊天机器人，可切到“所有消息”或“按概率”。',
+          actions: behaviorStatus ? h('span', { className: 'ob-muted ob-small' }, behaviorStatus) : null,
+        },
+          behavior ? h('div', null,
+            h(PersonaField, { label: '回应方式', help: '所有消息模式仍受策略沉默、冷却和每分钟上限约束。' },
+              h('select', {
+                className: 'ob-select', value: behavior.groupReplyMode,
+                onChange: (event) => updateBehavior('groupReplyMode', event.target.value),
+              }, GROUP_MODE_OPTIONS.map((option) => h('option', { key: option.value, value: option.value }, option.label))),
+            ),
+            behavior.groupReplyMode === 'probability' ? h(PersonaField, { label: '未点名参与概率', help: '0–1；点名消息不受这个概率影响。' },
+              h('input', {
+                className: 'ob-input', type: 'number', min: 0, max: 1, step: 0.05, value: behavior.groupReplyProbability,
+                onChange: (event) => updateBehavior('groupReplyProbability', Number(event.target.value)),
+              }),
+            ) : null,
+            h('div', { className: 'ob-grid two' },
+              h(PersonaField, { label: '同群回复冷却', help: '单位毫秒；只影响未点名消息。' },
+                h('input', {
+                  className: 'ob-input', type: 'number', min: 0, max: 60000, step: 500, value: behavior.groupCooldownMs,
+                  onChange: (event) => updateBehavior('groupCooldownMs', Number(event.target.value)),
+                }),
+              ),
+              h(PersonaField, { label: '群聊每分钟上限', help: '全局滑动窗口，防刷屏。' },
+                h('input', {
+                  className: 'ob-input', type: 'number', min: 1, max: 60, step: 1, value: behavior.groupMaxRepliesPerMinute,
+                  onChange: (event) => updateBehavior('groupMaxRepliesPerMinute', Number(event.target.value)),
+                }),
+              ),
+            ),
+            h('p', { className: 'ob-field-help' }, '提示：当前状态会在「认知 → 状态」的运行诊断里显示；如果仍然不回复，先看最近一条消息是否被群聊 gate 跳过。'),
+          ) : h(CogLoading),
+        ),
+        h(Panel, {
+          title: '高级认知参数',
+          description: '数值会参与策略和表达；普通使用只需要上面的文本人设。',
+          actions: h(Btn, { small: true, kind: 'ghost', icon: 'chevron', onClick: () => setAdvanced(!advanced) }, advanced ? '收起' : '展开'),
+        },
+          advanced ? h('div', null,
+            h('h4', { className: 'ob-persona-subtitle' }, '稳定特质'),
+            h('div', { className: 'ob-grid two' }, PERSONA_TRAIT_LABELS.map(([key, label]) => h(PersonaField, { key, label: label + ' · ' + Number(persona.traits && persona.traits[key] || 0).toFixed(2) },
+              h('input', {
+                type: 'range', min: 0.1, max: 0.9, step: 0.05, value: Number(persona.traits && persona.traits[key] || 0.5),
+                'aria-label': label,
+                onChange: (event) => updateTrait(key, Number(event.target.value)),
+              }),
+            ))),
+            h('h4', { className: 'ob-persona-subtitle' }, '表达风格'),
+            h('div', { className: 'ob-grid two' }, PERSONA_STYLE_LABELS.map(([key, label]) => h(PersonaField, { key, label: label + ' · ' + Number(persona.style && persona.style[key] || 0).toFixed(2) },
+              h('input', {
+                type: 'range', min: 0, max: 1, step: 0.05, value: Number(persona.style && persona.style[key] || 0),
+                'aria-label': label,
+                onChange: (event) => updateStyle(key, Number(event.target.value)),
+              }),
+            ))),
+          ) : h('p', { className: 'ob-muted ob-small' }, '展开后可微调 12 维人格和 6 维表达风格；保存仍使用上方按钮。'),
+        ),
+        h(Panel, { title: '演化历史', description: '记录人工编辑与长期慢演化；可追溯原因。' },
+          safeArray(persona.history).slice(-10).reverse().map((item, index) => h('div', { key: index, className: 'ob-cog-history' },
+            h(CogTag, { tone: 'muted' }, String(new Date(item.at || Date.now()).toLocaleString())),
+            h('span', { className: 'ob-small' }, String(item.reason || 'evolution') + (safeArray(item.changes).length ? ' · ' + item.changes.map((change) => change.key).join(', ') : '')),
+          )),
+          (!Array.isArray(persona.history) || !persona.history.length) ? h(CogEmpty, { compact: true, title: '还没有编辑记录' }) : null,
+        ),
+      )
+    }
+    // =====================================================================
     // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
 
@@ -5776,6 +6206,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             eyebrow: 'DIAGNOSTICS',
             title: '日志',
             description: '增量拉取宿主日志环形缓冲；token 与密钥已在服务端脱敏。',
+          }
+        case 'persona':
+          return {
+            eyebrow: 'PERSONA STUDIO',
+            title: '人格',
+            description: '用自然语言编辑固定人设、说话风格与边界，并决定 bot 在群聊里的参与方式。文本会进入分析与回复 prompt。',
           }
         case 'models':
           return {
@@ -6175,6 +6611,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         reset,
         undo,
         saveUiPatch,
+        saveConfigPatch: saveUiPatch,
         retryPrefSave,
         prefStatus,
         now,
@@ -6185,6 +6622,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
+      else if (tab === 'persona') body = h(PersonaTab, tabProps)
       else if (tab === 'models') body = h(ModelTab, tabProps)
       else if (tab === 'settings') body = h(SettingsTab, tabProps)
       else if (tab === 'cognition') body = h(CognitionTab, tabProps)
@@ -6327,6 +6765,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.SettingsShell = SettingsShell
     exports.ModelTab = ModelTab
     exports.CognitionTab = CognitionTab
+    exports.PersonaTab = PersonaTab
     exports.COG_SECTIONS = COG_SECTIONS
     exports.Logs = Logs
     exports.About = About

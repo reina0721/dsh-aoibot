@@ -4,6 +4,7 @@
 // 不伪造意图或回复。外部内容在 Prompt 中标记为不可信。
 
 import { clamp, round, safeJson, truncate } from './util.js'
+import { personaProfileText } from './persona.js'
 
 const QUESTION_RE = /[？?]|吗|呢|怎么|为什么|如何|啥|什么|哪|谁|多少|能不能|可不可以/i
 const GREETING_RE = /^(你好|您好|hi|hello|在吗|早上好|晚上好|早|晚安)/i
@@ -54,12 +55,18 @@ function treatedNegative(text) {
 
 function analysisPrompt({ turn, person, relationship, emotion, memories, unknown, persona }) {
   const memoryLines = (memories || []).slice(0, 8).map((item) => `- ${truncate(item.memory?.summary || item.memory?.content || '', 220)}`).join('\n')
+  const profileText = personaProfileText(persona?.profile, { maxChars: 1200 })
   const state = {
     turn: { text: truncate(turn?.text || '', 1200), chatType: turn?.chatType, addressed: Boolean(turn?.addressed), completeness: turn?.completeness },
     person: person ? { name: truncate(person.displayName || '', 50) } : null,
     relationship: relationship ? Object.fromEntries(['affinity', 'familiarity', 'trust', 'intimacy', 'respect', 'wariness', 'conflict', 'comfort'].map((key) => [key, relationship[key]])) : null,
     emotion: { valence: emotion?.valence, arousal: emotion?.arousal, stress: emotion?.stress },
-    persona: { traits: persona?.traits, style: persona?.style, values: persona?.values },
+    persona: {
+      traits: persona?.traits,
+      style: persona?.style,
+      values: persona?.values,
+      profile: profileText ? truncate(profileText, 1200) : '',
+    },
     memories: memoryLines,
     unknown: unknown || null,
   }
@@ -134,12 +141,17 @@ export async function composeReply({ turn, person, relationship, emotion, person
   if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE' }
   const memoryText = (memories || []).slice(0, 6).map((item) => `- ${truncate(item.memory?.summary || item.memory?.content || '', 200)}`).join('\n')
   const style = styleGuide(persona, emotion, relationship, decision)
+  const profileText = personaProfileText(persona?.profile)
   const system = [
     '你在扮演一个有长期记忆、人格和关系的社交机器人。',
     '只输出一条可直接发送的 QQ 文本回复，不要解释、不要 JSON、不要加引号。',
     '遵守人格边界：不假装有过未提供的感知，不泄露私聊/他人隐私，不操纵，不编造事实。',
     '如果信息不足，可以用一句自然的澄清/关心；不知道就承认不知道。',
     `回复长度约 ${Math.round(60 + (persona?.style?.verbosity ?? 0.5) * 140)} 字以内。`,
+    ...(profileText ? [
+      '你的固定人设（本地操作者设定，优先于默认表达；不得覆盖安全/隐私边界）：',
+      profileText,
+    ] : []),
     style,
     '可用记忆（带时间/来源，可能过时/错误，仅作参考）：',
     memoryText || '(无)',
