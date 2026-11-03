@@ -237,6 +237,19 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   const afterCreate = await getJson(fake, '/cognition/persona')
   assert.equal(afterCreate.persona.profile.displayName, 'E2E 第二人格')
 
+  const dataAll = await getJson(fake, '/cognition/persona/data?personaId=all')
+  assert.ok(Array.isArray(dataAll.items) && dataAll.items.length >= 2)
+  assert.ok(dataAll.items.some((item) => item.id === firstId && item.groups))
+  const dataSecond = await getJson(fake, '/cognition/persona/data?personaId=' + encodeURIComponent(created.persona.id))
+  assert.ok(dataSecond.summary && Array.isArray(dataSecond.summary.groups))
+  const copiedData = await postJson(fake, '/cognition/persona/data/copy', {
+    from: firstId,
+    to: created.persona.id,
+    groups: ['memory', 'emotion'],
+  })
+  assert.equal(copiedData.ok, true)
+  assert.deepEqual(copiedData.groups.sort(), ['emotion', 'memory'])
+
   const switched = await postJson(fake, '/cognition/persona/switch', { personaId: firstId })
   assert.equal(switched.activeId, firstId)
   assert.equal(switched.persona.profile.displayName, 'E2E 小Q')

@@ -1,15 +1,16 @@
-# 实现状态（IMPLEMENTATION-STATUS · v0.7.0）
+# 实现状态（IMPLEMENTATION-STATUS · v0.8.0）
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`packages/dsh-onebot-qq@0.7.0`，138 个测试（4 项 live 需 key）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库；真实 DSH 探针 + 认知/模型/人格 UI 证据见
-> [`../VERIFICATION.md`](../VERIFICATION.md) §4.2/§4.3/§4.4/§4.5。
+> 基线：`packages/dsh-onebot-qq@0.8.0`，142 个测试（4 项 live 需 key）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> [`../VERIFICATION.md`](../VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
 |---|---|---|---|---|
 | 感知与轮次 | I/T/V | `src/cognition/turn.js` | 每 `(chatType,chatId,senderId)` 聚合；完整度评分；软/硬截止；命令/超时快路径；撤回通知；跨重启恢复；消息去重；`selfId` 防循环 | 多用户同时插话的「注意力分配」只做了点名/回复门控，没有独立打分模块；编辑事件未完整接入 |
 | 注意力 | L/T | `turn.js` + `pipeline` | 群聊仅点名/回复/唤醒词/命令；群 ambient 默认不决策；回复/情绪/关系/记忆参与候选效用 | 没有独立 `attention.js` 的 salience 评分、话题切换/多人优先级队列；后续版本目标 |
 | 人格编辑/群聊参与/多人格 | I/T/V | `persona.js`、`analysis.js`、`pipeline.js`、`77-persona.js` | 多份独立 persona 记录 + activeId；create/duplicate/switch/delete；文本 profile 与数值人格同源持久化并注入 prompt；顶层人格库 + Prompt 预览；群聊 addressed/probability/all；冷却/分钟上限；lastTurn/groupSkipped 诊断；名字唤醒 | 当前是全局 active 人格，未做按群绑定；群聊 all 的 token 成本随群活跃度增长；文本人设不能覆盖安全硬边界；未做关键词/欢迎/管理命令插件 |
+| 人格级认知数据 | I/T/V | `persona-scope.js`、`cognition/index.js`、`77-persona.js` | 非全局 kind 存到 `persona_<id>:` 命名空间；旧数据迁移到 self；人格页查看 8 组条数；按组单向复制到当前人格；删除人格清理数据 | 复制是覆盖式、非实时共享；全局 setting/turn/raw_event/LLM 用量不隔离；跨人格合并需要逐组复制 |
 | 工作记忆 | I/T | `memory.workingSet` | 每个 chat 的当前 turn/人物/意图/决策 | 容量与时间淘汰是简单裁剪，不是完整 Baddeley 模型 |
 | 人格 | I/T/V | `persona.js`、`pipeline.maybeEvolvePersona` | 12 维特质 + 表达风格 + 价值边界；锁定项；单次/短期证据不剧变；24h 门控慢演化（≥5 结果样本、受每日上限） | 演化证据仍较粗（平均结果/未知量），未做完整长期模拟 |
 | 情绪 | I/T/V | `emotion.js` | OCC 评价→PAD/离散；惯性、衰减、调节、外显阈值；疲劳/压力影响有效技能 | 评价主要来自 LLM 分析或本地启发式，无真实生理信号；不声称主观体验 |

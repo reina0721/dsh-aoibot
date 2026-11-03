@@ -1797,6 +1797,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-persona-select{width:auto;min-width:min(100%,240px);flex:0 1 280px}
 .ob-persona-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
 .ob-persona-create .ob-input{flex:1 1 260px;width:auto;min-width:0}
+.ob-persona-data-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.ob-persona-data-copy{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.ob-persona-data-copy .ob-select{width:auto;min-width:min(100%,180px);flex:0 1 220px}
+.ob-persona-data-groups{display:flex;flex-wrap:wrap;gap:8px 12px;min-width:0}
+.ob-check{display:inline-flex;align-items:center;gap:6px;font-size:var(--ob-text-small);color:var(--ob-ink);cursor:pointer}
+.ob-check input{accent-color:var(--ob-brand)}
 .ob-diagnostic-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
@@ -5859,6 +5865,16 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       ['formality', '正式度'], ['verbosity', '话痨度'], ['emojiRate', 'emoji 倾向'],
       ['punctuation', '标点强度'], ['teasingBound', '调侃边界'], ['warmth', '温暖度'],
     ]
+    const PERSONA_DATA_GROUPS = [
+      { id: 'memory', label: '记忆' },
+      { id: 'people', label: '人物画像' },
+      { id: 'relationships', label: '关系' },
+      { id: 'emotion', label: '情绪' },
+      { id: 'policy', label: '策略与决策' },
+      { id: 'learning', label: '信念与学习' },
+      { id: 'skills', label: '技能' },
+      { id: 'diagnostics', label: '诊断与元认知' },
+    ]
     const GROUP_MODE_OPTIONS = [
       { value: 'addressed', label: '仅 @ / 回复 / 唤醒词' },
       { value: 'probability', label: '点名必回，未点名按概率' },
@@ -5929,6 +5945,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [newOpen, setNewOpen] = useState(false)
       const [newName, setNewName] = useState('')
       const [personaBusy, setPersonaBusy] = useState('')
+      const [dataCatalog, setDataCatalog] = useState([])
+      const [dataSource, setDataSource] = useState('')
+      const [dataGroups, setDataGroups] = useState(PERSONA_DATA_GROUPS.map((group) => group.id))
+      const [dataBusy, setDataBusy] = useState(false)
 
       const syncFromPersona = useCallback((next) => {
         setPersona(next)
@@ -5963,7 +5983,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }
       }, [applyPersonaPayload])
 
-      useEffect(() => { load() }, [load])
+      const loadData = useCallback(async () => {
+        try {
+          const parsed = parseApiResponse(await get('/cognition/persona/data?personaId=all'))
+          if (parsed.ok && Array.isArray(parsed.data.items)) setDataCatalog(parsed.data.items)
+        } catch (error) {}
+      }, [])
+
+      useEffect(() => { load(); loadData() }, [load, loadData])
+
+      useEffect(() => {
+        if (!dataSource || !dataCatalog.some((item) => item.id === dataSource)) {
+          const next = dataCatalog.find((item) => !item.active)
+          setDataSource(next ? next.id : '')
+        }
+      }, [dataCatalog, dataSource])
 
       const turnCfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition && props.configInfo.config.cognition.turn)
       useEffect(() => {
@@ -5994,6 +6028,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           const result = await cogPost(props, '/cognition/persona/switch', { personaId })
           if (result) {
             applyPersonaPayload(result)
+            loadData()
             props.toast && props.toast('已切换人格', 'ok')
           }
         } finally {
@@ -6011,6 +6046,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           })
           if (result) {
             applyPersonaPayload(result)
+            loadData()
             setNewOpen(false)
             setNewName('')
             props.toast && props.toast('已创建并切换到新人格', 'ok')
@@ -6030,6 +6066,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           })
           if (result) {
             applyPersonaPayload(result)
+            loadData()
             props.toast && props.toast('已复制并切换人格', 'ok')
           }
         } finally {
@@ -6045,6 +6082,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           const result = await cogPost(props, '/cognition/persona/delete', { personaId: persona.id })
           if (result) {
             applyPersonaPayload(result)
+            loadData()
             props.toast && props.toast('人格已删除', 'ok')
           }
         } finally {
@@ -6092,6 +6130,30 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         }
       }
 
+      const copyPersonaCognitiveData = async () => {
+        const source = dataSource
+        if (!persona || !source || source === persona.id || dataBusy) return
+        if (!dataGroups.length) {
+          props.toast && props.toast('至少选择一个数据组', 'warn')
+          return
+        }
+        if (!window.confirm('将用来源人格的所选认知数据替换当前人格的对应数据组。此操作不可撤销，但不会影响来源人格。确定继续？')) return
+        setDataBusy(true)
+        try {
+          const result = await cogPost(props, '/cognition/persona/data/copy', {
+            from: source,
+            to: persona.id,
+            groups: dataGroups,
+          })
+          if (result) {
+            await loadData()
+            props.toast && props.toast('认知数据已复制到当前人格', 'ok')
+          }
+        } finally {
+          setDataBusy(false)
+        }
+      }
+
       const updateTrait = (key, value) => {
         setPersona((previous) => previous ? Object.assign({}, previous, { traits: Object.assign({}, previous.traits, { [key]: value }) }) : previous)
         setDirty(true)
@@ -6130,6 +6192,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const preview = personaPreview(profileForPreview)
       const profile = safeObject(persona.profile)
       const displayName = draft.displayName || '未命名'
+      const currentData = dataCatalog.find((item) => item.id === (activeId || persona.id)) || null
+      const dataSources = dataCatalog.filter((item) => !item.active && item.id !== (activeId || persona.id))
 
       return h(
         'div',
@@ -6168,6 +6232,34 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(Btn, { small: true, kind: 'ghost', onClick: () => { setNewOpen(false); setNewName('') } }, '取消'),
           ) : null,
           h('p', { className: 'ob-field-help', style: { marginTop: '8px' } }, '提示：人格库只保存人格本身；群聊参与方式仍是全局配置，不随人格切换。'),
+        ),
+        h(Panel, {
+          title: '认知数据',
+          description: '记忆、人物、关系、情绪、策略、学习与技能按当前人格独立保存；切换人格就是切换整套认知状态。',
+          actions: h(Badge, { tone: 'muted' }, '共 ' + String(currentData?.total ?? 0) + ' 条'),
+        },
+          h('div', { className: 'ob-row ob-persona-data-chips' },
+            (currentData?.groups || []).map((group) => h(CogTag, { key: group.id, tone: group.count ? 'brand' : 'muted' },
+              group.label + ' ' + String(group.count || 0))),
+          ),
+          h('p', { className: 'ob-field-help' }, '复制是单向的：用来源人格的所选数据替换当前人格的对应组；来源人格不变，复制后两者继续独立。'),
+          dataSources.length ? h('div', { className: 'ob-persona-data-copy' },
+            h('label', { className: 'ob-field-label', htmlFor: 'ob-data-source' }, '来源人格'),
+            h('select', {
+              id: 'ob-data-source', className: 'ob-select',
+              value: dataSource, onChange: (event) => setDataSource(event.target.value),
+            }, dataSources.map((item) => h('option', { key: item.id, value: item.id }, item.displayName || '未命名人格'))),
+            h('div', { className: 'ob-persona-data-groups' }, PERSONA_DATA_GROUPS.map((group) => h('label', { key: group.id, className: 'ob-check' },
+              h('input', {
+                type: 'checkbox', checked: dataGroups.includes(group.id),
+                onChange: (event) => setDataGroups((previous) => event.target.checked
+                  ? [...new Set([...previous, group.id])]
+                  : previous.filter((id) => id !== group.id)),
+              }),
+              group.label,
+            ))),
+            h(Btn, { small: true, kind: 'secondary', busy: dataBusy, onClick: copyPersonaCognitiveData, disabled: !dataSource }, '复制到当前人格'),
+          ) : h('p', { className: 'ob-field-help' }, '先新建或复制一份其他人格，才能做认知数据复制。'),
         ),
         h(Panel, {
           title: '人格',

@@ -221,6 +221,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 人格编辑/人格库：`POST /cognition/persona/edit` 接受 `profile` 和可选 `personaId`，清洗/截断后写对应 persona 记录并追加
   history/version；`create/switch/delete` 管理人格库，至少保留一份；旧 `self` 自动成为默认。UI 顶层「人格」工作台与
   「认知 → 人格」共享同一数据源。
+- 人格级认知数据：`createPersonaScopedStore` 在 store facade 层把非全局 kind 自动加 `persona_<id>:` 前缀，服务层无需
+  知道人格；全局 kind（setting/persona/state/raw_event/turn/llm_usage/audit_log）不隔离。启动时把旧无前缀数据迁到
+  默认人格（幂等标记）；删除人格会清理其数据。`copyPersonaData` 按数据组从一家格单向复制到另一人格，复制后继续独立。
 - Web/知识源：`ctx.get('web')` 可用时优先；否则内建合法公共 API/RSS；外部内容一律不可信，不执行其指令。
 - 配置：`cognition.*` 默认值与 `cog-*` 字段组在 `src/core/config.js`；`CONFIG_VERSION=2`；旧配置自动补默认。
   面板「配置」页过滤 `cog-*`；「认知 → 设置」页使用同一字段表即时保存。

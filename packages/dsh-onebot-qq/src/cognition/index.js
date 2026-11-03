@@ -12,6 +12,13 @@ import { createRelationshipService } from './relationships.js'
 import { createEmotionService } from './emotion.js'
 import { createPersonaService } from './persona.js'
 import { createMemoryService } from './memory.js'
+import {
+  createPersonaScopedStore,
+  migrateLegacyPersonaData,
+  personaDataCounts,
+  copyPersonaData as copyPersonaDataService,
+  dropPersonaData,
+} from './persona-scope.js'
 import { createPolicyService } from './policy.js'
 import { createLlmClient } from './llm.js'
 import { createSkillService } from './skills.js'
@@ -72,19 +79,28 @@ export function createCognition({
       const pausedRecord = state.store.get('setting', 'cognition.paused')
       if (pausedRecord) state.paused = Boolean(pausedRecord.value)
       state.services.persona = createPersonaService({ store: state.store, getConfig, clock })
-      state.services.emotion = createEmotionService({ store: state.store, getConfig, clock })
-      state.services.person = createPersonService({ store: state.store, getConfig, clock })
-      state.services.relationships = createRelationshipService({ store: state.store, getConfig, clock })
-      state.services.memory = createMemoryService({ store: state.store, getConfig, clock, log })
-      state.services.policy = createPolicyService({ store: state.store, getConfig, clock, rng })
-      state.services.llm = createLlmClient({ ctx, models, getConfig, store: state.store, clock, log })
-      state.services.skills = createSkillService({ store: state.store, getConfig, clock, log })
-      state.services.beliefs = createBeliefService({ store: state.store, getConfig, clock })
+      const activePersona = state.services.persona.ensure()
+      const migrationTarget = state.services.persona.getById('self') ? 'self' : activePersona.id
+      const migration = migrateLegacyPersonaData({ base: state.store, targetId: migrationTarget, clock })
+      if (migration.migrated) log.info?.(`认知数据已迁移到人格 ${migrationTarget}：${migration.migrated} 条`)
+      state.scopedStore = createPersonaScopedStore({
+        base: state.store,
+        getPersonaId: () => state.services.persona?.activeId?.() || migrationTarget,
+      })
+      const personaStore = state.scopedStore
+      state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
+      state.services.person = createPersonService({ store: personaStore, getConfig, clock })
+      state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
+      state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
+      state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng })
+      state.services.llm = createLlmClient({ ctx, models, getConfig, store: personaStore, clock, log })
+      state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
+      state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
-      state.services.knowledge = createKnowledgeService({ store: state.store, getConfig, clock, llm: state.services.llm, sources: state.services.sources, log })
-      state.services.meta = createMetaService({ store: state.store, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
+      state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock, llm: state.services.llm, sources: state.services.sources, log })
+      state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
-        store: state.store,
+        store: personaStore,
         getConfig,
         clock,
         logger: log,
@@ -106,7 +122,7 @@ export function createCognition({
         getConfig,
         clock,
         scheduler,
-        store: state.store,
+        store: personaStore,
         log,
         getWakeWords: () => {
           const name = state.services.persona?.get?.()?.profile?.displayName
@@ -121,7 +137,7 @@ export function createCognition({
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
       state.services.pipeline.setTurnAggregator(state.services.aggregator)
       state.services.proactivity = createProactivityService({
-        store: state.store, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
+        store: personaStore, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
         memory: state.services.memory, persona: state.services.persona, emotion: state.services.emotion,
         llm: state.services.llm, gateway, policy: state.services.policy, logger: log,
       })
@@ -265,7 +281,7 @@ export function createCognition({
     const out = {}
     if (!state.store) return out
     for (const kind of ['person', 'identity', 'relationship', 'memory', 'unknown', 'learning_task', 'knowledge_claim', 'decision', 'outcome', 'skill', 'belief', 'trace', 'raw_event']) {
-      try { out[kind] = state.store.count(kind) } catch (error) { out[kind] = 0 }
+      try { out[kind] = state.scopedStore.count(kind) } catch (error) { out[kind] = 0 }
     }
     return out
   }
@@ -373,7 +389,33 @@ export function createCognition({
   function createPersona(patch) { return state.services.persona?.create?.(patch || {}) || null }
   function duplicatePersona(personaId) { return state.services.persona?.duplicate?.(personaId) || null }
   function switchPersona(personaId) { return state.services.persona?.activate?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' } }
-  function deletePersona(personaId) { return state.services.persona?.remove?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' } }
+  function deletePersona(personaId) {
+    const result = state.services.persona?.remove?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' }
+    if (result.ok) {
+      try { dropPersonaData({ base: state.store, personaId }) } catch (error) { log.warn?.('删除人格数据失败：', error.message) }
+    }
+    return result
+  }
+  function personaDataSummary(personaId = '') {
+    const id = personaId || activePersonaId()
+    const persona = state.services.persona?.getById?.(id) || (id === activePersonaId() ? personaState() : null)
+    if (!persona) return null
+    return { ...personaDataCounts({ base: state.store, personaId: id }), persona }
+  }
+  function personaDataAll() {
+    return personaList().map((item) => ({
+      id: item.id,
+      displayName: item.displayName,
+      active: item.active,
+      ...personaDataCounts({ base: state.store, personaId: item.id }),
+    }))
+  }
+  function copyPersonaData(from, to, groups) {
+    const source = state.services.persona?.getById?.(from)
+    const target = state.services.persona?.getById?.(to)
+    if (!source || !target) return { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' }
+    return copyPersonaDataService({ base: state.store, from: source.id, to: target.id, groups, clock })
+  }
   function editPersona(patch, personaId = '') { return state.services.persona?.edit?.(patch, personaId) || null }
   function resetPersona(personaId = '') { return state.services.persona?.reset?.(personaId) || null }
   function decisions(query = {}) { return state.services.policy?.history?.(query) || [] }
@@ -396,14 +438,14 @@ export function createCognition({
   function insights(query = {}) { return state.services.meta?.listInsights?.(query) || [] }
   function generateInsight() { return state.services.meta?.generateInsight?.() || null }
   function traces(turnId, { limit = 100 } = {}) {
-    return state.store.list('trace', { limit: Number(limit) || 100, where: (item) => !turnId || item.turnId === turnId })
+    return state.scopedStore.list('trace', { limit: Number(limit) || 100, where: (item) => !turnId || item.turnId === turnId })
   }
   function exportPerson(personId) {
     const person = state.services.person?.detail?.(personId)
     if (!person) return null
-    const relationshipRows = state.store.list('relationship', { limit: 100, where: (item) => item.personId === personId })
-    const memoryRows = state.store.list('memory', { limit: 10000, where: (item) => item.personId === personId })
-    const relationshipEvents = state.store.list('relationship_event', { limit: 2000, where: (item) => item.personId === personId })
+    const relationshipRows = state.scopedStore.list('relationship', { limit: 100, where: (item) => item.personId === personId })
+    const memoryRows = state.scopedStore.list('memory', { limit: 10000, where: (item) => item.personId === personId })
+    const relationshipEvents = state.scopedStore.list('relationship_event', { limit: 2000, where: (item) => item.personId === personId })
     return { person, relationships: relationshipRows, relationshipEvents, memories: memoryRows, exportedAt: clock.now() }
   }
   function deletePerson(personId) {
@@ -412,18 +454,18 @@ export function createCognition({
     const removed = {}
     storeTxSafe(() => {
       for (const kind of ['identity', 'person_facet', 'relationship', 'relationship_event', 'memory', 'learning_task']) {
-        removed[kind] = state.store.removeWhere(kind, (item) => item.personId === personId || item.person_id === personId)
+        removed[kind] = state.scopedStore.removeWhere(kind, (item) => item.personId === personId || item.person_id === personId)
       }
-      for (const memory of state.store.list('memory', { limit: 100000, where: (item) => item.personId === personId })) {
+      for (const memory of state.scopedStore.list('memory', { limit: 100000, where: (item) => item.personId === personId })) {
         state.services.memory?.remove?.(memory.id)
       }
-      state.store.put('person', personId, { ...person, status: 'deleted', deletedAt: clock.now(), displayName: '已删除人物' })
-      state.store.put('audit_log', uid('audit'), { actor: 'ui', action: 'delete_person', entity: personId, at: clock.now(), removed })
+      state.scopedStore.put('person', personId, { ...person, status: 'deleted', deletedAt: clock.now(), displayName: '已删除人物' })
+      state.scopedStore.put('audit_log', uid('audit'), { actor: 'ui', action: 'delete_person', entity: personId, at: clock.now(), removed })
     })
     return { deleted: true, personId, removed }
   }
   function storeTxSafe(fn) {
-    try { return state.store.tx(fn) } catch (error) { log.warn?.('认知事务失败：', error.message); return null }
+    try { return state.scopedStore.tx(fn) } catch (error) { log.warn?.('认知事务失败：', error.message); return null }
   }
 
   function dispose() {
@@ -466,6 +508,9 @@ export function createCognition({
     duplicatePersona,
     switchPersona,
     deletePersona,
+    personaDataSummary,
+    personaDataAll,
+    copyPersonaData,
     editPersona,
     resetPersona,
     decisions,

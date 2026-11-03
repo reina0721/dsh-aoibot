@@ -206,6 +206,11 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。多份人格用 `persona.activeId` setting 记录当前激活项，
 切换后下一轮消息生效；旧 `self` 自动成为默认人格。文本 profile 优先于数值 style，但不能覆盖安全/隐私边界。
 
+**人格级认知数据**：存储层会用 `persona_<id>:` 前缀隔离记忆/人物/关系/情绪/策略/学习/技能/诊断记录；
+`setting/persona/state/raw_event/turn/llm_usage/audit_log` 保持全局。旧数据在启动时迁移到默认人格，
+迁移标记为 `setting.persona.dataMigration.v08`；人格页的「复制数据」调用 `POST /cognition/persona/data/copy`，
+按数据组单向替换目标人格。
+
 ### 3.11 模型网关（`models.json`）
 
 模型 provider 与密钥**不放在 `config.json`**，避免 `/config` 回传；它们存在单独的文件，由「模型」页

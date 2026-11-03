@@ -1,0 +1,22 @@
+{
+  "checks": {
+    "sourceHasData": true,
+    "dataPanel": true,
+    "sourceSelect": true,
+    "groupChecks": true,
+    "dataCounts": true,
+    "copyButton": true,
+    "apiAfterCopy": true,
+    "copyToast": true,
+    "narrowNoOverflow": true,
+    "noPluginErrors": true
+  },
+  "errors": [
+    "console: [deepseek-account] account read failed [object Object]"
+  ],
+  "screens": [
+    "persona-data.png",
+    "persona-data-after-copy.png",
+    "persona-data-narrow.png"
+  ]
+}

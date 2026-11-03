@@ -1,5 +1,5 @@
 {
-  "version": "0.7.0",
+  "version": "0.8.0",
   "date": "2026-11-03",
   "keyHandling": "OpenCode Go key read from environment for the standalone script; for the desktop-after-restart check it was sent over localhost to a temporary provider and then deleted. No key is stored in the repository, docs, screenshots, this evidence file, or the final models.json",
   "script": "packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs",
@@ -24,7 +24,7 @@
     "note": "mock QQ gateway; no real QQ account"
   },
   "desktopAfterRestart": {
-    "hostVersion": "0.7.0",
+    "hostVersion": "0.8.0",
     "gatewayState": "connected",
     "providerTests": [
       { "provider": "opencode-go", "protocol": "openai-completions", "model": "deepseek-v4.1-flash", "ok": true, "latencyMs": 1706 },
@@ -44,6 +44,13 @@
     "personas": ["self", "温柔版", "吐槽版", "UI新建人格"],
     "activePersist": true,
     "note": "真实 DSH probe + puppeteer；创建/切换/删除 API 与 UI 均验证"
+  },
+  "personaDataScope": {
+    "isolatedGroups": ["memory", "people", "relationships", "emotion", "policy", "learning", "skills", "diagnostics"],
+    "globalKinds": ["setting", "persona", "state", "raw_event", "turn", "llm_usage", "audit_log"],
+    "legacyMigration": "v0.7 无前缀数据 14 条迁移到 self",
+    "copyMode": "按组单向替换目标人格；来源不变",
+    "note": "单元测试 + 真实 DSH probe：数据摘要、复制、360px UI"
   },
   "realGroupReply": {
     "chatType": "group",

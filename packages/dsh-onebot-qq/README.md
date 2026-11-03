@@ -29,6 +29,9 @@
 - **多人格库与切换（v0.7）**：可保存多份互相独立的人格，新建/复制/切换/删除；
   每份保留自己的 profile、12 维特质、风格、价值、历史与版本；activeId 持久化，切换后下一轮即生效；
   旧 `self` 自动成为默认人格，不丢历史。
+- **人格级认知数据隔离与复制（v0.8）**：记忆、人物、关系、情绪、策略、学习、技能、诊断数据按当前人格
+  存储；切换人格即切换整套认知状态。旧数据一次性迁移到默认人格；人格页可把来源人格的指定数据组
+  单向复制到当前人格（来源不变，复制后继续独立）。
 - **统一模型协议网关（v0.5）**：统一 OpenAI Chat/Responses、Anthropic Messages、
   Gemini generateContent、Ollama Chat；内置 OpenCode Go、Command Code、OpenRouter、DeepSeek 等预设，
   自定义 base URL/认证/headers/session/模型，支持 SSE 流式、模型发现、连通测试以及 direct/DSH/chain 路由。
@@ -49,6 +52,7 @@
 | 调试 | HTTP 探测（`get_login_info`）；可选的原始 action 透传（默认关闭） |
 | Web 面板 | 侧栏「QQ 连接」→ 整页面板：概览 / 连接 / 消息 / 配置 / 人格 / 模型 / 系统设置 / 认知 / 日志 / 关于；数据驱动配置表单、Ctrl+S 保存、dirty 提示 |
 | 人格工作台 | 顶层「人格」页：多人格库（新建/复制/切换/删除）+ 名字/身份/背景/性格/说话风格/喜好/边界/示例 + prompt 预览 + 群聊参与（仅@/概率/所有消息）+ 冷却/频率上限；每份人格独立持久化 |
+| 人格认知数据 | 记忆/人物/关系/情绪/策略/学习/技能/诊断按人格隔离；人格页查看各组条数，可从其他人格单向复制指定组到当前人格 |
 | 模型协议 | 统一 OpenAI Chat/Responses、Anthropic Messages、Gemini generateContent、Ollama Chat；OpenCode Go、Command Code、OpenRouter、DeepSeek 预设；自定义 base/认证/headers/session；流式、模型发现、连通测试、直连/DSH/链式路由 |
 | 系统设置 | 参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、密度、字号、内容宽度、动效、页面转场；持久设置壳 + 即时保存 + 预览 |
 | 认知内核 | 轮次聚合/防抖、注意力、人格慢演化、人物画像、多维关系、情绪、工作/情景/语义/关联记忆、检索/巩固/遗忘、信念/未知、策略-结果分离、撤回专项、主动行为、学习闭环、技能/退化、元认知 |
@@ -189,6 +193,8 @@ packages/dsh-onebot-qq/
 ![人格工作台：文本人设、Prompt 预览与群聊参与](docs/verification/persona-overview.png)
 
 ![多人格库：新建/复制/切换/删除](docs/verification/persona-library.png)
+
+![人格级认知数据：各组条数与定向复制](docs/verification/persona-data.png)
 
 更多截图（浅色/暗色/窄屏/配置/模型/系统设置/日志/关于）见 [docs/VERIFICATION.md](docs/VERIFICATION.md#0-结论速览)。
 

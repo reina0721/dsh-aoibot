@@ -232,6 +232,15 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       const body = await readBody(req)
       return cognition.createPersona(body || {})
     })
+    route('GET', '/cognition/persona/data', async (req) => {
+      const q = queryOf(req)
+      if (q.personaId === 'all') return { ok: true, items: cognition.personaDataAll() }
+      return { ok: true, summary: cognition.personaDataSummary(q.personaId || '') }
+    })
+    route('POST', '/cognition/persona/data/copy', async (req) => {
+      const body = await readBody(req)
+      return cognition.copyPersonaData(body?.from || '', body?.to || '', body?.groups)
+    })
     route('POST', '/cognition/persona/switch', async (req) => {
       const body = await readBody(req)
       return cognition.switchPersona(body?.personaId || body?.id || '')

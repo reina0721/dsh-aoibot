@@ -411,6 +411,16 @@ function Invoke-Verify {
       } catch { $personaDetail = $_.Exception.Message }
       Add-Step 'persona: /cognition/persona exposes editable profile + library' $personaOk $personaDetail
 
+      $personaDataOk = $false
+      $personaDataDetail = ''
+      try {
+        $personaDataPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/cognition/persona/data?personaId=all') -TimeoutSec 8
+        $items = @($personaDataPayload.items)
+        $personaDataOk = ($personaDataPayload.ok -eq $true) -and ($items.Count -ge 1) -and ($null -ne $items[0].groups) -and (@($items[0].groups).Count -ge 8)
+        $personaDataDetail = 'personas=' + [string]$items.Count + '; groups=' + [string]@($items[0].groups).Count + '; total=' + [string]$items[0].total
+      } catch { $personaDataDetail = $_.Exception.Message }
+      Add-Step 'persona data: scoped summaries + copy API ready' $personaDataOk $personaDataDetail
+
       $modelsOk = $false
       $modelsDetail = ''
       try {

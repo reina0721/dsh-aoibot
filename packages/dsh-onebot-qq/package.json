@@ -1,6 +1,6 @@
 {
   "name": "dsh-onebot-qq",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "OneBot v11 QQ bridge for DeepSeek Harness with a complete cognitive core: turn aggregation, personality, emotion, relationships, memory, policy, learning, skills and a web panel.",
   "license": "MIT",
   "private": true,
