@@ -222,12 +222,37 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return { ok: true, emotion: cognition.adjustEmotion(body || {}) }
     })
     route('POST', '/cognition/emotion/reset', async () => ({ ok: true, emotion: cognition.resetEmotion() }))
-    route('GET', '/cognition/persona', async () => ({ ok: true, persona: cognition.personaState() }))
+    route('GET', '/cognition/persona', async () => ({
+      ok: true,
+      persona: cognition.personaState(),
+      activeId: cognition.activePersonaId(),
+      personas: cognition.personaList(),
+    }))
+    route('POST', '/cognition/persona/create', async (req) => {
+      const body = await readBody(req)
+      return cognition.createPersona(body || {})
+    })
+    route('POST', '/cognition/persona/switch', async (req) => {
+      const body = await readBody(req)
+      return cognition.switchPersona(body?.personaId || body?.id || '')
+    })
+    route('POST', '/cognition/persona/delete', async (req) => {
+      const body = await readBody(req)
+      return cognition.deletePersona(body?.personaId || body?.id || '')
+    })
     route('POST', '/cognition/persona/edit', async (req) => {
       const body = await readBody(req)
-      return { ok: true, result: cognition.editPersona(body || {}) }
+      return { ok: true, result: cognition.editPersona(body || {}, body?.personaId || '') }
     })
-    route('POST', '/cognition/persona/reset', async () => ({ ok: true, persona: cognition.resetPersona() }))
+    route('POST', '/cognition/persona/reset', async (req) => {
+      const body = await readBody(req)
+      return {
+        ok: true,
+        persona: cognition.resetPersona(body?.personaId || ''),
+        activeId: cognition.activePersonaId(),
+        personas: cognition.personaList(),
+      }
+    })
     route('GET', '/cognition/decisions', async (req) => {
       const q = queryOf(req)
       return { ok: true, items: cognition.decisions({ limit: toInt(q.limit, 50, 1, 200) }), stats: cognition.policyStats() }

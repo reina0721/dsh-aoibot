@@ -1,0 +1,23 @@
+{
+  "checks": {
+    "apiCreate": true,
+    "apiCount": true,
+    "apiSwitch": true,
+    "select": true,
+    "options": true,
+    "library": true,
+    "uiCreate": true,
+    "uiActive": true,
+    "uiSwitch": true,
+    "narrowNoOverflow": true,
+    "noPluginErrors": true
+  },
+  "errors": [
+    "console: [deepseek-account] account read failed [object Object]"
+  ],
+  "screens": [
+    "persona-library.png",
+    "persona-library-switched.png",
+    "persona-library-narrow.png"
+  ]
+}

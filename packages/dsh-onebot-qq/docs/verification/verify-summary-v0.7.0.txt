@@ -1,14 +1,14 @@
 dsh-onebot-qq real-DSH verification
 ==================================
 result:     PASS
-started:    2026-11-03T11:38:05.9342778-05:00
-finished:   2026-11-03T11:38:13.4182800-05:00
+started:    2026-11-03T12:03:34.0463536-05:00
+finished:   2026-11-03T12:03:41.2725618-05:00
 plugin:     C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq
 dsh:        C:\Users\Run\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd (version 0.2.1-rc.3)
 profile:    lead-ui
 port:       3198
 data dir:   C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\plugin-data
-boot url:   http://127.0.0.1:3198/?token=WILWOLgsvJdh7NpavrMrcelzfL69A82YIrIlIaupVNA
+boot url:   http://127.0.0.1:3198/?token=r3UxkYbhnpSEs4yWpGWHVRwjxsqBmxeQG81ZN7pfNt4
 evidence:   C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out
 
 [PASS] preflight: dsh CLI exists - C:\Users\Run\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd
@@ -23,16 +23,16 @@ evidence:   C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out
 [PASS] profile: created from the shipped web template - exit=0; log=C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\profile-create.log
 [PASS] install: plugin added as profile dependency - dependency=link:C:/rin/coder/rin721/dsh-bot/packages/dsh-onebot-qq; exit=0; log=C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\plugin-add.log
 [PASS] install: dsh-onebot-qq registered in dsh.profile.bundles - @deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-onebot-qq
-[PASS] boot: DSH started in background - pid=49640; boot log=C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\boot.log
-[PASS] api: GET /onebot-qq/api/health is ok - state=unconfigured; version=0.6.0; attempts=2
+[PASS] boot: DSH started in background - pid=40136; boot log=C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\boot.log
+[PASS] api: GET /onebot-qq/api/health is ok - state=unconfigured; version=0.7.0; attempts=2
 [PASS] api: GET /onebot-qq/api/status returns a gateway snapshot - gateway.state=unconfigured; apiVersion=1
 [PASS] api: DSH_ONEBOT_QQ_DATA_DIR override honored (isolated verification data) - reported=C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\plugin-data
 [PASS] api: plugin wrote its config.json into the isolated data dir - C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq\verify-out\plugin-data\config.json
 [PASS] api: GET /onebot-qq/api/config exposes the field groups
 [PASS] cognition: overview API ready and SQLite database created - ready=True; mode=sqlite; groupMode=addressed; skills=13
-[PASS] persona: /cognition/persona exposes editable profile - personaVersion=1; displayName=; profileFields=ok
+[PASS] persona: /cognition/persona exposes editable profile + library - personaVersion=1; displayName=; personas=1; activeId=self
 [PASS] models: protocol presets and provider API available - presets=12; protocols=5; providers=0
-[PASS] web: parsed tokenized boot URL from boot.log - http://127.0.0.1:3198/?token=WILWOLgsvJdh7NpavrMrcelzfL69A82YIrIlIaupVNA
+[PASS] web: parsed tokenized boot URL from boot.log - http://127.0.0.1:3198/?token=r3UxkYbhnpSEs4yWpGWHVRwjxsqBmxeQG81ZN7pfNt4
 [PASS] web: GET boot page with token - bytes=38141; saved to boot-page.html
 [PASS] web: boot page references the dsh-onebot-qq client plugin - expects dsh-onebot-qq in the __DSH_BOOT__ plugin list
 [PASS] web: boot page references client.js assets - every DSH client plugin is served as client.js

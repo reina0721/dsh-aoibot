@@ -406,10 +406,10 @@ function Invoke-Verify {
       try {
         $personaPayload = Invoke-RestMethod -Uri ($base + '/onebot-qq/api/cognition/persona') -TimeoutSec 8
         $profile = $personaPayload.persona.profile
-        $personaOk = ($personaPayload.ok -eq $true) -and ($null -ne $profile) -and ($null -ne $profile.displayName) -and ($null -ne $profile.boundaries)
-        $personaDetail = 'personaVersion=' + [string]$personaPayload.persona.version + '; displayName=' + [string]$profile.displayName + '; profileFields=ok'
+        $personaOk = ($personaPayload.ok -eq $true) -and ($null -ne $profile) -and ($null -ne $profile.displayName) -and ($null -ne $profile.boundaries) -and ($null -ne $personaPayload.activeId) -and ($null -ne $personaPayload.personas) -and (@($personaPayload.personas).Count -ge 1)
+        $personaDetail = 'personaVersion=' + [string]$personaPayload.persona.version + '; displayName=' + [string]$profile.displayName + '; personas=' + [string]@($personaPayload.personas).Count + '; activeId=' + [string]$personaPayload.activeId
       } catch { $personaDetail = $_.Exception.Message }
-      Add-Step 'persona: /cognition/persona exposes editable profile' $personaOk $personaDetail
+      Add-Step 'persona: /cognition/persona exposes editable profile + library' $personaOk $personaDetail
 
       $modelsOk = $false
       $modelsDetail = ''

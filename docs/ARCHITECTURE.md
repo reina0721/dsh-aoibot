@@ -212,13 +212,15 @@ export function normalizeEvent(raw, cfg) -> null | {
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
 - LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
   路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
-  persona 记录含 12 维特质 + 6 维风格 + 文本 `profile`；文本 profile 进入 analysis/compose prompt（约 2000 字符上限），
+  persona 记录含 12 维特质 + 6 维风格 + 文本 `profile`；可保存多份，`setting.persona.activeId` 指向当前激活项。
+  文本 profile 进入 analysis/compose prompt（约 2000 字符上限），
   空字段不注入。每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
 - 群聊参与：`cognition.turn.groupReplyMode = addressed|probability|all`；`addressed` 默认只处理 @/回复/唤醒词/人设名；
   `probability` 未点名按概率采样；`all` 全部进入策略但仍可沉默。发送前有同群冷却与每分钟上限；跳过写记忆、trace 与
   `lastTurn` 诊断字段，不调用 LLM。旧 `addressedOnlyGroups=false` / `policy.groupAmbient=true` 非破坏性映射为 `all`。
-- 人格编辑：`POST /cognition/persona/edit` 接受 `profile`，清洗/截断后写 persona 记录并追加 history/version；
-  UI 顶层「人格」工作台与「认知 → 人格」共享同一数据源。
+- 人格编辑/人格库：`POST /cognition/persona/edit` 接受 `profile` 和可选 `personaId`，清洗/截断后写对应 persona 记录并追加
+  history/version；`create/switch/delete` 管理人格库，至少保留一份；旧 `self` 自动成为默认。UI 顶层「人格」工作台与
+  「认知 → 人格」共享同一数据源。
 - Web/知识源：`ctx.get('web')` 可用时优先；否则内建合法公共 API/RSS；外部内容一律不可信，不执行其指令。
 - 配置：`cognition.*` 默认值与 `cog-*` 字段组在 `src/core/config.js`；`CONFIG_VERSION=2`；旧配置自动补默认。
   面板「配置」页过滤 `cog-*`；「认知 → 设置」页使用同一字段表即时保存。

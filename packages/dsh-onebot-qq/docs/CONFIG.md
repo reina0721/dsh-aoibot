@@ -202,8 +202,9 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 支持 Node.js 22.13+ 的 `node:sqlite`；不可用时自动回退为 `cognition.json`，接口保持同一套。
 升级不会重置认知状态。
 
-**文本人设**：`persona` 记录里的 `profile` 字段（`displayName/tagline/identity/background/personality/speakingStyle/likes/dislikes/boundaries/examples`）
-由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。它优先于数值 style，但不能覆盖安全/隐私边界。
+**文本人设 / 多人格**：每条 `persona` 记录的 `profile` 字段（`displayName/tagline/identity/background/personality/speakingStyle/likes/dislikes/boundaries/examples`）
+由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。多份人格用 `persona.activeId` setting 记录当前激活项，
+切换后下一轮消息生效；旧 `self` 自动成为默认人格。文本 profile 优先于数值 style，但不能覆盖安全/隐私边界。
 
 ### 3.11 模型网关（`models.json`）
 

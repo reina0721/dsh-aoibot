@@ -6,7 +6,7 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
 并提供**完整的网页面板与持久化配置**。
 
 > 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
-> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
+> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
 > 连接、核验、事件规范化、消息收发保持稳定边界；人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在
 > `packages/dsh-onebot-qq/src/cognition/` 中实现，通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
 
@@ -30,7 +30,7 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
   「认知」标签提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 11 个子页，
   可暂停/演练、查看决策与未知、删除/导出人物数据，全部走服务层命令。
   「人格」顶层工作台用自然语言编辑名字、身份、背景、性格、说话风格、喜好/边界和示例，
-  可预览注入 prompt 并决定群聊参与方式（仅@/概率/所有消息）；文本人设与数值人格同源持久化。
+  可预览注入 prompt 并决定群聊参与方式（仅@/概率/所有消息）；支持保存多份人格并随时切换，
   「模型」标签提供统一协议网关：OpenAI Chat/Responses、Anthropic、Gemini、Ollama，
   以及 OpenCode Go、Command Code、OpenRouter 预设；可配 base URL/认证/headers/模型，
   支持流式、模型发现、连通测试、直连/DSH 路由与 fallback；密钥只在本地，API 只回传后四位。
@@ -82,14 +82,14 @@ dsh-bot/
     ├── src/http/routes.js              # /onebot-qq/api/* REST（含 /cognition/*、/models/*）
     ├── src/cognition/                  # 认知内核：turn/store/persona/emotion/person/relationships/memory/policy/learning/skills/meta/proactivity
     ├── src/model/                      # 模型协议网关：OpenAI/Responses/Anthropic/Gemini/Ollama/中转预设
-    ├── test/                           # 132 个 node:test（含人格/认知/模型协议/live 环境门控/e2e/UI）
+    ├── test/                           # 138 个 node:test（含多人格/认知/模型协议/live 环境门控/e2e/UI）
     ├── scripts/                        # 真实 DSH 验证 / 模型连通验证 / 独立 mock 网关
     └── docs/                           # 用户手册、配置手册、模型协议、验证报告、截图
 ```
 
 ## 验证
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **132 个用例**（无 key 128 通过 + 4 live skip；有 OpenCode key 时 132/132）；
+- `node --test packages/dsh-onebot-qq/test/*.test.js` → **138 个用例**（无 key 134 通过 + 4 live skip；有 OpenCode key 时 138/138）；
 - `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图/认知 SQLite/模型 API
   **RESULT: PASS**（可重复运行，自动清理）；
 - `packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs` → 真实 OpenCode Go OpenAI/Anthropic/模型发现，

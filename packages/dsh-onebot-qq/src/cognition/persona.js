@@ -1,7 +1,7 @@
 // Bot 长期人格：稳定特质、价值边界、表达风格，以及操作者可编辑的文本人设。
 // 状态独立于情绪/关系/技能；单次互动不能改变；演化有速率上限与历史。
 
-import { clamp, deepClone, round } from './util.js'
+import { clamp, deepClone, round, uid } from './util.js'
 
 export const TRAIT_KEYS = [
   'extraversion', 'openness', 'agreeableness', 'conscientiousness', 'emotionalSensitivity',
@@ -24,6 +24,7 @@ export const PROFILE_LIST_FIELDS = ['likes', 'dislikes', 'boundaries']
 export const PROFILE_LIST_MAX_ITEMS = 20
 export const PROFILE_LIST_ITEM_MAX = 80
 export const PROFILE_PROMPT_MAX_CHARS = 2000
+export const PERSONA_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
 
 const SINGLE_LINE_FIELDS = new Set(['displayName', 'tagline', 'identity'])
 
@@ -95,6 +96,11 @@ export function personaProfileText(profile, { maxChars = PROFILE_PROMPT_MAX_CHAR
   return chars.slice(0, Math.max(0, limit - 1)).join('').trimEnd() + '…'
 }
 
+export function sanitizePersonaId(value, fallback = 'self') {
+  const id = String(value || '')
+  return PERSONA_ID_RE.test(id) ? id : fallback
+}
+
 export function defaultPersona(config = {}) {
   const persona = config.persona || {}
   const traits = {}
@@ -123,7 +129,7 @@ export function sanitizePersona(input, config = {}) {
   return {
     ...base,
     ...deepClone(src),
-    id: 'self',
+    id: sanitizePersonaId(src.id, 'self'),
     traits,
     style,
     profile: sanitizeProfile(src.profile, config),
@@ -131,6 +137,8 @@ export function sanitizePersona(input, config = {}) {
     locked: Array.isArray(src.locked) ? src.locked.filter((key) => TRAIT_KEYS.includes(key) || STYLE_KEYS.includes(key)) : [],
     history: Array.isArray(src.history) ? src.history.slice(-100) : [],
     version: Math.max(1, Number(src.version) || 1),
+    createdAt: Number(src.createdAt) || 0,
+    updatedAt: Number(src.updatedAt) || 0,
   }
 }
 
@@ -236,42 +244,206 @@ export function personaSummary(persona) {
   }
 }
 
+export function personaPublicItem(persona, activeId = '') {
+  const profile = persona?.profile || {}
+  return {
+    id: persona?.id || 'self',
+    displayName: profile.displayName || '',
+    tagline: profile.tagline || '',
+    version: Number(persona?.version) || 1,
+    active: persona?.id === activeId,
+    hasProfile: Object.values(profile).some((value) => Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim())),
+    createdAt: Number(persona?.createdAt) || 0,
+    updatedAt: Number(persona?.updatedAt) || 0,
+  }
+}
+
 export function createPersonaService({ store, getConfig, clock }) {
+  const cfg = () => getConfig()?.cognition || {}
+  const activeSettingKey = 'persona.activeId'
+
+  function readActiveId() {
+    try {
+      const record = store.get('setting', activeSettingKey)
+      return sanitizePersonaId(record?.value, '')
+    } catch (error) {
+      return ''
+    }
+  }
+
+  function writeActiveId(id) {
+    store.put('setting', activeSettingKey, { value: id, at: clock.now() })
+  }
+
+  function records() {
+    try {
+      return store.list('persona', { limit: 1000 })
+        .map((item) => sanitizePersona(item, cfg()))
+        .sort((a, b) => (Number(a.createdAt) || 0) - (Number(b.createdAt) || 0) || a.id.localeCompare(b.id))
+    } catch (error) {
+      return []
+    }
+  }
+
+  function getById(id) {
+    const wanted = sanitizePersonaId(id, '')
+    if (!wanted) return null
+    const existing = store.get('persona', wanted)
+    return existing ? sanitizePersona(existing, cfg()) : null
+  }
+
+  function ensureActiveId() {
+    const recordsNow = records()
+    let active = readActiveId()
+    if (active && recordsNow.some((item) => item.id === active)) return active
+    active = recordsNow.find((item) => item.id === 'self')?.id || recordsNow[0]?.id || ''
+    if (!active) {
+      const now = clock.now()
+      const persona = sanitizePersona({
+        ...defaultPersona(cfg()),
+        id: 'self',
+        createdAt: now,
+        updatedAt: now,
+        history: [{ at: now, changes: [], reason: 'created' }],
+      }, cfg())
+      store.put('persona', 'self', persona)
+      active = 'self'
+    }
+    writeActiveId(active)
+    return active
+  }
+
   function ensure() {
-    const existing = store.get('persona', 'self')
-    if (existing) return sanitizePersona(existing, getConfig()?.cognition || {})
-    const persona = defaultPersona(getConfig()?.cognition || {})
-    store.put('persona', 'self', persona)
-    return persona
+    const active = ensureActiveId()
+    return getById(active) || getById('self')
+  }
+
+  function list() {
+    const active = ensureActiveId()
+    return records().map((item) => personaPublicItem(item, active))
+  }
+
+  function save(next, reason = 'update', personaId = '') {
+    const active = ensureActiveId()
+    const id = sanitizePersonaId(personaId || next?.id, active)
+    const previous = getById(id)
+    const now = clock.now()
+    const persona = sanitizePersona({
+      ...next,
+      id,
+      createdAt: Number(next?.createdAt) || Number(previous?.createdAt) || now,
+      updatedAt: now,
+    }, cfg())
+    store.put('persona', id, { ...persona, reason, at: now })
+    return store.get('persona', id)
+  }
+
+  function create({ name = '', copyFrom = '', activate = true } = {}) {
+    const active = ensureActiveId()
+    const source = copyFrom ? getById(copyFrom === 'active' ? active : copyFrom) : null
+    const now = clock.now()
+    const id = uid('persona')
+    const count = records().length
+    const displayName = cleanText(name, PROFILE_TEXT_LIMITS.displayName) || (source ? `${source.profile?.displayName || '人格'} 副本` : `人格 ${count + 1}`)
+    const base = source ? deepClone(source) : defaultPersona(cfg())
+    const persona = sanitizePersona({
+      ...base,
+      id,
+      profile: { ...(base.profile || {}), displayName },
+      version: 1,
+      locked: source ? [...source.locked] : [],
+      history: [{ at: now, changes: [], reason: source ? 'duplicated' : 'created' }],
+      createdAt: now,
+      updatedAt: now,
+    }, cfg())
+    store.tx(() => {
+      store.put('persona', id, { ...persona, reason: source ? 'duplicated' : 'created', at: now })
+      if (activate !== false) writeActiveId(id)
+    })
+    return {
+      ok: true,
+      persona: getById(id),
+      activeId: activate === false ? active : id,
+      personas: list(),
+    }
+  }
+
+  function duplicate(personaId = '') {
+    return create({ copyFrom: personaId || ensureActiveId() })
+  }
+
+  function activate(personaId) {
+    const id = sanitizePersonaId(personaId, '')
+    const persona = getById(id)
+    if (!persona) return { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' }
+    writeActiveId(id)
+    return { ok: true, activeId: id, persona: getById(id), personas: list() }
+  }
+
+  function remove(personaId) {
+    const id = sanitizePersonaId(personaId, '')
+    const all = records()
+    if (!all.some((item) => item.id === id)) return { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' }
+    if (all.length <= 1) return { ok: false, code: 'LAST_PERSONA', message: '至少保留一份人格' }
+    store.remove('persona', id)
+    const active = readActiveId()
+    if (active === id) {
+      const next = records()[0]
+      writeActiveId(next.id)
+    }
+    return { ok: true, activeId: readActiveId(), persona: getById(readActiveId()), personas: list() }
   }
 
   function get() { return ensure() }
 
-  function save(next, reason = 'update') {
-    const persona = sanitizePersona(next, getConfig()?.cognition || {})
-    store.put('persona', 'self', { ...persona, reason, at: clock.now() })
-    return persona
+  function edit(patch, personaId = '') {
+    const active = ensureActiveId()
+    const id = sanitizePersonaId(personaId || active, active)
+    const current = getById(id)
+    if (!current) return null
+    const result = applyPersonaEdit(current, patch, { now: clock.now() })
+    store.tx(() => save(result.persona, 'user_edit', id))
+    return { ...result, persona: store.get('persona', id) }
   }
 
-  function edit(patch) {
-    const result = applyPersonaEdit(ensure(), patch, { now: clock.now() })
-    store.tx(() => save(result.persona, 'user_edit'))
-    return { ...result, persona: store.get('persona', 'self') }
+  function reset(personaId = '') {
+    const active = ensureActiveId()
+    const id = sanitizePersonaId(personaId || active, active)
+    const current = getById(id)
+    if (!current) return null
+    const now = clock.now()
+    const persona = sanitizePersona({
+      ...defaultPersona(cfg()),
+      id,
+      createdAt: Number(current.createdAt) || now,
+      updatedAt: now,
+      history: [{ at: now, changes: [], reason: 'reset' }],
+    }, cfg())
+    store.put('persona', id, { ...persona, reason: 'reset', at: now })
+    return persona
   }
 
   function maybeEvolve(evidence, elapsedDays = 1) {
     const before = ensure()
-    const next = evolvePersona(before, evidence, { config: getConfig()?.cognition || {}, elapsedDays, now: clock.now() })
-    if (next.version !== before.version) store.put('persona', 'self', next)
+    const next = evolvePersona(before, evidence, { config: cfg(), elapsedDays, now: clock.now() })
+    if (next.version !== before.version) store.put('persona', before.id, next)
     store.put('state', 'persona.lastEvolutionAt', { at: clock.now(), elapsedDays })
     return next
   }
 
-  function reset() {
-    const persona = defaultPersona(getConfig()?.cognition || {})
-    store.put('persona', 'self', persona)
-    return persona
+  function summary() {
+    const current = ensure()
+    const active = current.id
+    return {
+      ...personaSummary(current),
+      activeId: active,
+      personaCount: records().length,
+    }
   }
 
-  return { ensure, get, save, edit, maybeEvolve, reset, summary: () => personaSummary(ensure()) }
+  return {
+    ensure, get, getById, list, summary, save, edit, maybeEvolve, reset,
+    create, duplicate, activate, remove,
+    activeId: () => ensureActiveId(),
+  }
 }

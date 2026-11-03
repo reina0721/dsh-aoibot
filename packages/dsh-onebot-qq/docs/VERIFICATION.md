@@ -5,7 +5,7 @@
 
 - DSH 版本：`0.2.1-rc.3`（`dsh --version`）
 - 运行环境：Windows / PowerShell；Node `v24.21.0`（DSH 自带运行时，原生 `fetch` + `WebSocket` + `node:sqlite`）
-- 插件版本：`dsh-onebot-qq@0.6.0`（本版新增人格工作台、群聊参与与运行诊断；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核、v0.5 模型协议）
+- 插件版本：`dsh-onebot-qq@0.7.0`（本版新增多人格库与人格切换；v0.2 接入层、v0.3 视觉/设置页、v0.4 认知内核、v0.5 模型协议、v0.6 人格工作台）
 - 真实 QQ 网关：本机没有可登录的 NapCat / SnowLuma 实例，因此连接链路的对端使用**协议兼容的
   OneBot v11 mock 网关**（`test/helpers/mock-onebot.js`，HTTP + WS + token 校验 + 主动推事件）；
   真实网关侧的协议事实见 [RESEARCH-onebot-ecosystem.md](RESEARCH-onebot-ecosystem.md)。
@@ -15,20 +15,21 @@
 | 验证项 | 结果 |
 |---|---|
 | 全部 JS `node --check`（宿主 + 网页半边 + 测试 + 脚本） | ✅ 通过 |
-| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **132 个用例**：无 key 时 128 通过 + 4 live skip；提供 OpenCode key 时 132/132 通过（16 个测试文件） |
+| 单元 / 集成测试 `node --test test/*.test.js` | ✅ **138 个用例**：无 key 时 134 通过 + 4 live skip；提供 OpenCode key 时 138/138 通过（17 个测试文件） |
 | 真实 DSH 安装 + 无头启动 + REST 探活 + boot 图校验（`scripts/verify-plugin.ps1`） | ✅ **RESULT: PASS**（临时 profile `lead-ui`，端口 3198；新增 cognition/SQLite、persona profile、models 预设检查） |
 | 真实 DSH 实例端到端联调（mock 网关 → 面板 REST → 连接/核验/事件/发送/断开） | ✅ **16 / 16 全过** |
 | 浏览器端面板真实渲染（Chrome headless + puppeteer，1440×1000 与 360×800） | ✅ 侧栏入口 + **10 标签** + 数据驱动配置 + 连接态核验全部可见，无插件控制台错误 |
 | 认知 UI（真实 DSH 页面 + 真实 REST 数据） | ✅ **15 / 15 布尔断言**：11 个子页、无横向溢出、空态/数据态、无页面异常 |
 | 认知数据流（mock QQ → 真实宿主 → SQLite → UI） | ✅ 人物 1、关系 2、记忆 1、决策 1；演练模式不发送；人物/记忆/策略/关系页真实渲染 |
 | 人格工作台 UI（v0.6） | ✅ 10 标签中「人格」可见；文本人设/边界/Prompt 预览/群聊参与/高级参数渲染；360px 无溢出 |
+| 多人格库（v0.7） | ✅ 新建/复制/切换/删除；API 与浏览器 smoke：3+ 份人格、activeId 切换、UI 新建、360px 无溢出 |
 | 群聊参与（v0.6） | ✅ all 模式未点名消息产生决策且 `groupSkipped=0`；addressed 模式仍跳过；冷却/概率/名字唤醒有集成测试 |
 | 模型页 UI（真实 DSH + 真实 provider） | ✅ provider 列表/编辑/测试/选择；密钥只显示后四位；360px 无溢出；无页面异常 |
 | 模型协议 live（OpenCode Go key） | ✅ OpenAI 流式/非流式 + Anthropic 流式 + 模型发现；真实认知 analysis + compose 发送成功 |
 | 模型发现（公开端点） | ✅ OpenRouter 451 个模型；Command Code 84 个可用（按 supported_endpoints 过滤） |
 | UI/动效/设置断言（`document.getAnimations()`、主题、即时保存、持久壳、浅/暗色、窄屏） | ✅ **48 / 48 布尔断言全过**（见 §4.1 与 `docs/verification/ui-motion-evidence.json`） |
-| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.6.0 需要重启一次 DSH |
-| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）、模型网关集成缺陷（§6.3）与人格/群聊可见性缺陷（§6.4） |
+| 安装进当前桌面 profile 并生效 | ✅ 链接安装；宿主加载 0.7.0 需要重启一次 DSH |
+| 已知缺陷 | 发现并修复客户端插件致命缺陷（§6.1）、认知存储目录缺陷（§6.2）、模型网关集成缺陷（§6.3）、人格/群聊可见性缺陷（§6.4）与单人格限制（§6.5） |
 
 截图（本目录 `docs/verification/`）：
 
@@ -46,6 +47,9 @@
 | `models-narrow-360px.png` | 360×800 模型页：单列、无横向溢出 |
 | `persona-overview.png` | 顶层「人格」：文本人设、Prompt 预览、群聊参与、高级参数 |
 | `persona-group-mode.png` | 群聊参与方式、概率/冷却/分钟上限与当前状态 |
+| `persona-library.png` | 多人格库：当前人格下拉、新建/复制/删除、份数 |
+| `persona-library-switched.png` | 切换后人格库与编辑表单 |
+| `persona-library-narrow-360px.png` | 360×800 多人数库：按钮换行、无横向溢出 |
 | `persona-narrow-360px.png` | 360×800 人格页：无横向溢出 |
 | `overview-diagnostic.png` | QQ 概览：人格卡与运行诊断（最近 turn、群聊模式、跳过原因） |
 | `overview-connected.png` | 已连接状态：eyebrow + 大标题页头、状态 pill、登录账号 `冒烟机器人 (20000002)`、`核验通过`、统计 tile、分布条形图、最近事件 |
@@ -261,7 +265,7 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 
 | 检查 | 结果 |
 |---|---|
-| 全量测试 | ✅ 132/132（有 OpenCode key；无 key 128 pass + 4 live skip） |
+| 全量测试 | ✅ 138/138（有 OpenCode key；无 key 128 pass + 4 live skip） |
 | 真实 DSH `verify-plugin.ps1` | ✅ PASS；`version=0.6.0`、`groupMode=addressed`、persona profile 可读 |
 | 浏览器 10 标签 | ✅ 概览/连接/消息/配置/人格/模型/系统设置/认知/日志/关于 |
 | 人格工作台 | ✅ 名字/身份/背景/性格/风格/喜好/边界/示例；Prompt 预览；高级 12+6 参数；保存后 API 持久化 |
@@ -276,6 +280,23 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 [`persona-narrow-360px.png`](verification/persona-narrow-360px.png)、
 [`overview-diagnostic.png`](verification/overview-diagnostic.png)。
 原始 UI 证据：`docs/verification/persona-ui-summary.json`（由浏览器 smoke 生成）。
+
+### 4.5 多人格库专项验证（v0.7.0）
+
+- 单元/服务测试：默认 `self` 迁移；新建空人格、复制、切换、删除 active、删除最后一份保护、
+  指定 personaId 编辑/重置、activeId 跨 service 实例持久化、复制不共享引用。
+- 集成测试：切换到新人格后，下一轮 compose system 实际包含新 `名字/自称`、性格和风格。
+- REST 实测：GET 返回 `personas`/`activeId`；create/switch/delete 全链路；最后一份删除返回 `LAST_PERSONA`。
+- 浏览器 smoke（真实 DSH probe）：
+  - 创建「温柔版」「吐槽版」；
+  - 人格页出现下拉、份数、新建/复制/删除按钮；
+  - UI 新建「UI新建人格」后 activeId 指向新人格；
+  - UI 切换回初始人格后服务端 activeId 同步；
+  - 360px 按钮换行、无横向溢出；无插件 pageerror。
+- 截图：[`persona-library.png`](verification/persona-library.png)、
+  [`persona-library-switched.png`](verification/persona-library-switched.png)、
+  [`persona-library-narrow-360px.png`](verification/persona-library-narrow-360px.png)。
+- 原始证据：[`persona-multi-summary.json`](verification/persona-multi-summary.json)。
 
 ## 5. 复用与配置化核对
 
@@ -363,13 +384,23 @@ OpenAI/Anthropic 官方/Gemini/Ollama（只有 mock 协议测试）。原始证�
 | 改名后群友叫名字不触发 | `profile.displayName` 自动并入唤醒词；集成测试覆盖 |
 | 群聊模式与旧 `addressedOnlyGroups` 冲突 | 旧字段保留兼容映射，UI 只暴露新 `groupReplyMode`；全部模式仍受 policy 沉默/限频约束 |
 
+### 6.5 单人格限制修复
+
+| 问题 | 修复 |
+|---|---|
+| `persona` 只读写 `store.get('persona','self')`，无法保存第二份 | 改为 persona 记录集合 + `setting.persona.activeId`；旧 `self` 保留为默认 |
+| 没有切换/新建/复制/删除 API | 新增 `/cognition/persona/{create,switch,delete}`；edit/reset 接受 personaId |
+| 切换是否影响 prompt/唤醒词不明确 | `persona.get()` 始终返回 active；切换后下一轮 compose/唤醒词使用新人格；集成测试锁定 |
+| 删除 active 后可能没有当前人格 | 自动切到剩余最早人格；删除最后一份返回 `LAST_PERSONA` |
+| UI 只能编辑当前那一份 | 顶部「人格库」下拉 + 新建/复制/删除；份数/active 标记/未保存确认 |
+
 ## 7. 安装进当前 DSH profile
 
 - 当前 GUI（`http://127.0.0.1:60932`）属于 `desktop` profile。验证完成后通过 DSH 的插件管理
   （`plugin_manager` / `dsh plugin add`）把本包安装/链接进 `desktop` profile；
   安装结果与「是否需要刷新页面 / 重启 DSH」以安装工具返回的 `application` 字段为准。
-- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.6.0`（`link:` 指向本仓库的 source 目录，
-  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.6.0（新增人格页、群聊参与与诊断）；
+- 本次确认 `desktop` profile 的 bundle 为 `dsh-onebot-qq@0.7.0`（`link:` 指向本仓库的 source 目录，
+  `installed: true`）。**重启 DSH 进程**后宿主/客户端编排会加载 0.7.0（新增多人格库）；
   仅刷新页面只会加载客户端部分。
 - 插件数据目录为 `$DSH_HOME/plugins-data/dsh-onebot-qq/`；模型 provider/密钥在 `models.json`，
   不在 `config.json` 中，不会被 `/config` 回传。验证产生的临时 provider 已删除；mock 连接配置已

@@ -207,6 +207,9 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   const initial = await getJson(fake, '/cognition/persona')
   assert.ok(initial.persona && initial.persona.profile)
   assert.equal(typeof initial.persona.profile.displayName, 'string')
+  assert.ok(Array.isArray(initial.personas) && initial.personas.length >= 1)
+  assert.ok(initial.activeId)
+  const firstId = initial.activeId || initial.persona.id
 
   const edited = await postJson(fake, '/cognition/persona/edit', {
     profile: {
@@ -224,6 +227,27 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
 
   const persisted = await getJson(fake, '/cognition/persona')
   assert.equal(persisted.persona.profile.displayName, 'E2E 小Q')
+  assert.equal(persisted.activeId, firstId)
+
+  const created = await postJson(fake, '/cognition/persona/create', { name: 'E2E 第二人格' })
+  assert.equal(created.persona.profile.displayName, 'E2E 第二人格')
+  assert.equal(created.activeId, created.persona.id)
+  assert.ok(created.personas.some((item) => item.id === firstId))
+  assert.ok(created.personas.some((item) => item.id === created.persona.id && item.active === true))
+  const afterCreate = await getJson(fake, '/cognition/persona')
+  assert.equal(afterCreate.persona.profile.displayName, 'E2E 第二人格')
+
+  const switched = await postJson(fake, '/cognition/persona/switch', { personaId: firstId })
+  assert.equal(switched.activeId, firstId)
+  assert.equal(switched.persona.profile.displayName, 'E2E 小Q')
+
+  const deleted = await postJson(fake, '/cognition/persona/delete', { personaId: created.persona.id })
+  assert.equal(deleted.activeId, firstId)
+  assert.equal(deleted.personas.length, 1)
+
+  const lastDelete = await fake.call(API + '/cognition/persona/delete', { personaId: firstId }, { method: 'POST' })
+  assert.equal(lastDelete.json.ok, false)
+  assert.equal(lastDelete.json.code, 'LAST_PERSONA')
 
   const saved = await patchConfig(fake, { cognition: { turn: { groupReplyMode: 'all', groupReplyProbability: 0.5 } } })
   assert.equal(saved.config.cognition.turn.groupReplyMode, 'all')

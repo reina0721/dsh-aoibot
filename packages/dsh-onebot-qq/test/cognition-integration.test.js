@@ -9,10 +9,11 @@ import { normalizeConfig } from '../src/core/config.js'
 import { createCognition } from '../src/cognition/index.js'
 import { createFakeScheduler, createClock, createRng } from '../src/cognition/util.js'
 
-function fakeLlm() {
+function fakeLlm(capture = null) {
   return {
     async *stream(options) {
       const system = options.messages?.find((message) => message.role === 'system')?.content?.[0]?.text || ''
+      if (Array.isArray(capture)) capture.push(system)
       const text = system.includes('认知分析器')
         ? JSON.stringify({ intent: 'chat', confidence: 0.8, novelty: 0.2, risk: 0, serious: false, appraisal: { desirability: 0.3, relevance: 0.7, intensity: 0.5, novelty: 0.2, control: 0.5, agency: 'other', norm: 0 }, unknownCandidates: [], replyGoal: '自然回应', rationale: 'test' })
         : '测试回复：我在听。'
@@ -24,7 +25,7 @@ function fakeLlm() {
   }
 }
 
-function makeCog({ dir, gateway, scheduler, configOverride = {} }) {
+function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm() }) {
   const cfg = normalizeConfig({
     cognition: {
       enabled: true,
@@ -36,7 +37,7 @@ function makeCog({ dir, gateway, scheduler, configOverride = {} }) {
   }).config
   const ctx = {
     get(key) {
-      if (key === 'llm') return fakeLlm()
+      if (key === 'llm') return llm
       if (key === 'agentDefaultModel') return { currentSelection: () => ({ provider: 'fake', model: 'fake' }) }
       return undefined
     },
@@ -243,6 +244,31 @@ test('集成：群聊冷却跳过后不产生第二个决策，仍写入记忆',
     rmSync(dir, { recursive: true, force: true })
   }
 })
+test('集成：切换 active 人格后，下一轮 compose prompt 使用新 profile', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-persona-switch-'))
+  const scheduler = createFakeScheduler()
+  const capture = []
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 81 } } } }
+  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(capture) })
+  try {
+    cog.services.persona.ensure()
+    const created = cog.services.persona.create({ name: '切换后人格' })
+    cog.services.persona.edit({ profile: { personality: '切换后的性格', speakingStyle: '切换后的风格' } })
+    assert.equal(cog.services.persona.get().id, created.persona.id)
+    cog.observe(privateEvent(1, '你好'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(50)
+    assert.ok(sent.length >= 1)
+    assert.ok(capture.some((system) => system.includes('名字/自称：切换后人格')), 'compose system 应包含当前人格')
+    assert.ok(capture.some((system) => system.includes('切换后的性格')))
+    assert.ok(capture.some((system) => system.includes('切换后的风格')))
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('集成：撤回在无原文时不假装看见；有原文时 sawContent=true', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-recall-'))
   const scheduler = createFakeScheduler()

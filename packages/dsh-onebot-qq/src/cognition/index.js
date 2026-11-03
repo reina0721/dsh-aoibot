@@ -368,8 +368,14 @@ export function createCognition({
   function adjustEmotion(patch) { return state.services.emotion?.adjust?.(patch, 'ui') || null }
   function resetEmotion() { return state.services.emotion?.reset?.() || null }
   function personaState() { return state.services.persona?.get?.() || null }
-  function editPersona(patch) { return state.services.persona?.edit?.(patch) || null }
-  function resetPersona() { return state.services.persona?.reset?.() || null }
+  function personaList() { return state.services.persona?.list?.() || [] }
+  function activePersonaId() { return state.services.persona?.activeId?.() || '' }
+  function createPersona(patch) { return state.services.persona?.create?.(patch || {}) || null }
+  function duplicatePersona(personaId) { return state.services.persona?.duplicate?.(personaId) || null }
+  function switchPersona(personaId) { return state.services.persona?.activate?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' } }
+  function deletePersona(personaId) { return state.services.persona?.remove?.(personaId) || { ok: false, code: 'PERSONA_NOT_FOUND', message: '人格不存在' } }
+  function editPersona(patch, personaId = '') { return state.services.persona?.edit?.(patch, personaId) || null }
+  function resetPersona(personaId = '') { return state.services.persona?.reset?.(personaId) || null }
   function decisions(query = {}) { return state.services.policy?.history?.(query) || [] }
   function correctDecision(decisionId, observation) { return state.services.policy?.recordOutcome?.(decisionId, observation) || null }
   function policyStats() { return state.services.policy?.stats?.() || null }
@@ -454,6 +460,12 @@ export function createCognition({
     adjustEmotion,
     resetEmotion,
     personaState,
+    personaList,
+    activePersonaId,
+    createPersona,
+    duplicatePersona,
+    switchPersona,
+    deletePersona,
     editPersona,
     resetPersona,
     decisions,

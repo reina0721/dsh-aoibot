@@ -1793,6 +1793,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-persona-prompt{margin:0;padding:12px 14px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-sm);background:var(--ob-surface-sunken);color:var(--ob-ink);font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow:auto}
 .ob-persona-subtitle{margin:14px 0 6px;font-size:var(--ob-text-small);font-weight:var(--ob-weight-heading);color:var(--ob-ink)}
 .ob-persona-subtitle:first-child{margin-top:0}
+.ob-persona-library{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.ob-persona-select{width:auto;min-width:min(100%,240px);flex:0 1 280px}
+.ob-persona-create{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.ob-persona-create .ob-input{flex:1 1 260px;width:auto;min-width:0}
 .ob-diagnostic-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
 .ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
@@ -3296,8 +3300,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             Panel,
             {
               title: '人格',
-              description: '固定人设、说话风格与边界；也可从「认知 → 人格」进入。',
-              actions: h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: () => props.go('persona') }, '编辑人格'),
+              description: '固定人设、说话风格与边界；可保存多份并切换。',
+              actions: h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: () => props.go('persona') }, '人格库'),
             },
             cogPersona.profile && cogPersona.profile.displayName
               ? h('div', { className: 'ob-stack', style: { gap: '8px' } },
@@ -3305,6 +3309,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                     h(Badge, { tone: 'brand' }, cogPersona.profile.displayName),
                     cogPersona.profile.tagline ? h('span', { className: 'ob-muted' }, cogPersona.profile.tagline) : null,
                     h(Badge, { tone: 'muted' }, 'v' + String(cogPersona.version || 1)),
+                    h(Badge, { tone: 'muted' }, String(Number(cogPersona.personaCount) || 1) + ' 份人格'),
                   ),
                   h('p', { className: 'ob-field-help' }, cogPersona.profile.personality || cogPersona.profile.speakingStyle || '还没有填写文本人设；点击「编辑人格」开始。'),
                 )
@@ -5910,6 +5915,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
     function PersonaTab(props) {
       const [persona, setPersona] = useState(null)
+      const [catalog, setCatalog] = useState([])
+      const [activeId, setActiveId] = useState('')
       const [draft, setDraft] = useState(null)
       const [lists, setLists] = useState({})
       const [error, setError] = useState('')
@@ -5919,6 +5926,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [advanced, setAdvanced] = useState(false)
       const [behavior, setBehavior] = useState(null)
       const [behaviorStatus, setBehaviorStatus] = useState('')
+      const [newOpen, setNewOpen] = useState(false)
+      const [newName, setNewName] = useState('')
+      const [personaBusy, setPersonaBusy] = useState('')
 
       const syncFromPersona = useCallback((next) => {
         setPersona(next)
@@ -5928,22 +5938,32 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         setDirty(false)
       }, [])
 
-      useEffect(() => {
-        let alive = true
-        ;(async () => {
-          try {
-            const parsed = parseApiResponse(await get('/cognition/persona'))
-            if (!alive) return
-            if (!parsed.ok) setError(parsed.message)
-            else syncFromPersona(parsed.data.persona)
-          } catch (err) {
-            if (alive) setError(String(err && err.message ? err.message : err))
-          } finally {
-            if (alive) setLoading(false)
-          }
-        })()
-        return () => { alive = false }
+      const applyPersonaPayload = useCallback((payload) => {
+        const next = payload && (payload.persona || (payload.result && payload.result.persona))
+        if (!next) return false
+        syncFromPersona(next)
+        if (Array.isArray(payload.personas)) setCatalog(payload.personas)
+        if (payload.activeId) setActiveId(String(payload.activeId))
+        else if (next.id) setActiveId(String(next.id))
+        return true
       }, [syncFromPersona])
+
+      const load = useCallback(async () => {
+        try {
+          const parsed = parseApiResponse(await get('/cognition/persona'))
+          if (!parsed.ok) setError(parsed.message)
+          else {
+            applyPersonaPayload(parsed.data)
+            setError('')
+          }
+        } catch (err) {
+          setError(String(err && err.message ? err.message : err))
+        } finally {
+          setLoading(false)
+        }
+      }, [applyPersonaPayload])
+
+      useEffect(() => { load() }, [load])
 
       const turnCfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition && props.configInfo.config.cognition.turn)
       useEffect(() => {
@@ -5965,6 +5985,73 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         setDirty(true)
       }
 
+      const discardGuard = () => !dirty || window.confirm('当前人格有未保存修改，继续会丢弃这些修改。确定继续？')
+
+      const switchTo = async (personaId) => {
+        if (!personaId || personaId === activeId || !discardGuard()) return
+        setPersonaBusy('switch')
+        try {
+          const result = await cogPost(props, '/cognition/persona/switch', { personaId })
+          if (result) {
+            applyPersonaPayload(result)
+            props.toast && props.toast('已切换人格', 'ok')
+          }
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
+      const createPersona = async () => {
+        if (!discardGuard()) return
+        setPersonaBusy('create')
+        try {
+          const result = await cogPost(props, '/cognition/persona/create', {
+            name: newName.trim(),
+            activate: true,
+          })
+          if (result) {
+            applyPersonaPayload(result)
+            setNewOpen(false)
+            setNewName('')
+            props.toast && props.toast('已创建并切换到新人格', 'ok')
+          }
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
+      const duplicatePersona = async () => {
+        if (!persona || !discardGuard()) return
+        setPersonaBusy('duplicate')
+        try {
+          const result = await cogPost(props, '/cognition/persona/create', {
+            copyFrom: persona.id,
+            activate: true,
+          })
+          if (result) {
+            applyPersonaPayload(result)
+            props.toast && props.toast('已复制并切换人格', 'ok')
+          }
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
+      const deletePersona = async () => {
+        if (!persona || catalog.length <= 1) return
+        if (!window.confirm('删除当前人格？该人格的文本人设、数值和编辑历史会一起删除；至少保留一份。')) return
+        setPersonaBusy('delete')
+        try {
+          const result = await cogPost(props, '/cognition/persona/delete', { personaId: persona.id })
+          if (result) {
+            applyPersonaPayload(result)
+            props.toast && props.toast('人格已删除', 'ok')
+          }
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
       const save = async () => {
         if (!persona || !draft || saving) return
         setSaving(true)
@@ -5975,6 +6062,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             boundaries: parsePersonaList(lists.boundaries),
           })
           const result = await cogPost(props, '/cognition/persona/edit', {
+            personaId: persona.id,
             profile,
             traits: persona.traits,
             style: persona.style,
@@ -5984,6 +6072,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           const next = result && (result.result && result.result.persona ? result.result.persona : result.persona)
           if (next) {
             syncFromPersona(next)
+            setCatalog((previous) => previous.map((item) => item.id === next.id
+              ? Object.assign({}, item, { displayName: next.profile?.displayName || '', version: next.version, active: item.id === activeId })
+              : item))
             props.toast && props.toast('人格已保存', 'ok')
           }
         } finally {
@@ -5992,12 +6083,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       }
 
       const reset = async () => {
-        if (!window.confirm('恢复默认人格？会清除人格历史并重置为配置初值。')) return
-        const result = await cogPost(props, '/cognition/persona/reset', {})
-        const next = result && result.persona
-        if (next) {
-          syncFromPersona(next)
-          props.toast && props.toast('人格已重置', 'ok')
+        if (!persona) return
+        if (!window.confirm('恢复当前人格的默认值？会清除该人格的编辑历史，不影响其他人格。')) return
+        const result = await cogPost(props, '/cognition/persona/reset', { personaId: persona.id })
+        if (result) {
+          applyPersonaPayload(result)
+          props.toast && props.toast('当前人格已重置', 'ok')
         }
       }
 
@@ -6043,6 +6134,41 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h(
         'div',
         { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, {
+          title: '人格库',
+          description: '可以保存多份人格并随时切换；每份的文本人设、数值、历史完全独立。切换后下一轮消息即使用新人格。',
+          actions: h('div', { className: 'ob-row' },
+            h(Badge, { tone: 'muted' }, '共 ' + String(catalog.length || 1) + ' 份'),
+          ),
+        },
+          h('div', { className: 'ob-row ob-persona-library' },
+            h('label', { className: 'ob-field-label', htmlFor: 'ob-persona-select' }, '当前人格'),
+            h('select', {
+              id: 'ob-persona-select',
+              className: 'ob-select ob-persona-select',
+              value: activeId || (persona && persona.id) || '',
+              disabled: Boolean(personaBusy) || catalog.length <= 1,
+              onChange: (event) => switchTo(event.target.value),
+            }, (catalog.length ? catalog : [{ id: persona && persona.id, displayName: displayName, version: persona && persona.version }]).map((item) => h(
+              'option', { key: item.id, value: item.id },
+              (item.displayName || '未命名人格') + (item.id === activeId ? '（当前）' : ''),
+            ))),
+            h(Btn, { small: true, kind: 'ghost', onClick: () => setNewOpen(!newOpen), disabled: personaBusy === 'switch' }, newOpen ? '收起' : '新建人格'),
+            h(Btn, { small: true, kind: 'ghost', busy: personaBusy === 'duplicate', onClick: duplicatePersona, disabled: !persona }, '复制当前'),
+            h(Btn, { small: true, kind: 'ghost', busy: personaBusy === 'delete', onClick: deletePersona, disabled: !persona || catalog.length <= 1 }, '删除当前'),
+          ),
+          h('p', { className: 'ob-field-help', style: { marginTop: '8px' } }, '切换后立即生效；未保存修改会先提示。'),
+          newOpen ? h('div', { className: 'ob-persona-create' },
+            h('input', {
+              className: 'ob-input', type: 'text', value: newName, maxLength: 40, placeholder: '新人格名字，例如：温柔版 / 吐槽版',
+              onChange: (event) => setNewName(event.target.value),
+              onKeyDown: (event) => { if (event.key === 'Enter') createPersona() },
+            }),
+            h(Btn, { small: true, kind: 'primary', busy: personaBusy === 'create', onClick: createPersona }, '创建'),
+            h(Btn, { small: true, kind: 'ghost', onClick: () => { setNewOpen(false); setNewName('') } }, '取消'),
+          ) : null,
+          h('p', { className: 'ob-field-help', style: { marginTop: '8px' } }, '提示：人格库只保存人格本身；群聊参与方式仍是全局配置，不随人格切换。'),
+        ),
         h(Panel, {
           title: '人格',
           description: '这些是长期、稳定的设定；保存后进入每次分析与回复的 prompt。群聊消息仍是不可信外部数据。',
