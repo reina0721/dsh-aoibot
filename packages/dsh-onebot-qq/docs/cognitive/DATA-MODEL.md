@@ -1,0 +1,79 @@
+# 认知数据模型（DATA-MODEL）
+
+> 存储：SQLite（WAL、foreign_keys、FTS5）+ 原始事件 JSONL；旧环境 JSON fallback。  
+> 所有表包含 `created_at`/`updated_at`（epoch ms）与 `version`（乐观并发，必要时）；内容字段统一 UTF-8 文本/JSON。
+
+## 1. 标识与时间
+
+- ID：`crypto.randomUUID()`；原始事件另有平台 `external_id` + `dedupe_key=platform:message_id`。
+- 时间：`now()` 可注入；测试使用 FakeClock；所有时间戳为 UTC epoch ms，展示时用用户/面板时区。
+- 作用域：`scope_type in ('global','group','private','topic')` + `scope_id`；`visibility`（normal/private/secret）+ `sensitivity`。
+- 版本：`schema_version` 存 `meta`；实体 `version` 用于 CAS；`state_transitions` 记录关键变化。
+
+## 2. 表
+
+| 表 | 关键列 | 说明 |
+|---|---|---|
+| `meta` | key, value | schema_version、bot_id、created_at |
+| `raw_events` | id, platform, external_id, kind, chat_type, chat_id, sender_id, message_id, payload_json, received_at, accepted, dedupe_key | 过滤前原始事件；append-only；JSONL 镜像 |
+| `turns` | id, chat_type, chat_id, sender_id, message_ids_json, text, status(open/ready/closed/cancelled), started_at, soft_deadline, hard_deadline, close_reason, decision_id, generation_started_at | 聚合轮次；重启恢复 |
+| `persons` | id, display_name, first_seen, last_seen, status(active/merged/deleted) | 内部人物实体 |
+| `identities` | id, person_id, platform, platform_user_id, scope_type, scope_id, nickname, card, confidence, status, first_seen, last_seen | 身份证据，非真实人物 |
+| `groups` | id, platform, platform_group_id, title, first_seen, last_seen | 群实体 |
+| `group_members` | group_id, person_id, role, joined_at, last_seen, confidence | 群内角色 |
+| `person_facets` | id, person_id, facet, value_json, evidence_kind(fact/self_report/observation/inference/hypothesis), scope_type, scope_id, confidence, source_kind, source_ref, status(active/outdated/disputed/deleted), version, observed_at | 分层画像 |
+| `relationships` | id, person_id, scope_type, scope_id, affinity, familiarity, trust, intimacy, respect, wariness, conflict, comfort, initiative, stability, version, updated_at | 多维有向关系 |
+| `relationship_events` | id, person_id, scope_type, scope_id, field, before, after, reason, evidence_json, created_at | 关系历史 |
+| `persona_state` | id=1, traits_json, values_json, style_json, locked_json, updated_at, version | Bot 长期人格（单例） |
+| `persona_history` | id, traits_json, values_json, style_json, reason, created_at | 慢演化历史 |
+| `emotions` | id=1, valence, arousal, dominance, stress, fatigue, mood_valence, discrete_json, appraisal_json, updated_at | 当前情绪（单例） |
+| `emotion_events` | id, delta_json, appraisal_json, source, created_at | 情绪事件流 |
+| `memories` | id, type(episodic/semantic/emotional/social/procedural/self), scope_type, scope_id, person_id, chat_id, content, summary, salience, importance, confidence, valence, arousal, source_event_ids_json, stability, last_accessed, access_count, status(active/inactive/archived/deleted), version | 统一记忆；类型区分 |
+| `memory_links` | id, from_id, to_id, relation, weight, confidence, source, created_at | 关联网络；双向查询 |
+| `memories_fts` | memory_id, fts_text | FTS5；中文单字+二元组 |
+| `beliefs` | id, subject, proposition, probability, evidence_json, status(fact/hypothesis/disputed/outdated), scope_type, scope_id, created_at, updated_at | 信念/推测 |
+| `knowledge_claims` | id, concept, claim, definition, evidence_json, confidence, reliability, status(active/disputed/outdated), valid_from, valid_to, created_at, updated_at | 学习/语义知识 |
+| `unknowns` | id, unknown_type, surface, context, person_id, chat_id, known_part, missing_part, hypothesis, confidence, priority, status(open/learning/resolved/deferred/failed), occurrences, created_at, updated_at | 知识缺口 |
+| `learning_tasks` | id, unknown_id, plan_json, status(pending/running/done/failed/cancelled), attempts, next_run_at, budget_tokens, error, created_at, updated_at | 学习队列 |
+| `learning_evidence` | id, task_id, source_id, url, title, fetched_at, excerpt, content_hash, reliability, stance, created_at | 证据 |
+| `skills` | id, name, base_mastery, effective_mastery, confidence, uses, successes, failures, last_used, decay_tau, transfer_json, updated_at | 技能状态 |
+| `skill_events` | id, skill_id, delta, reason, outcome_id, created_at | 技能历史 |
+| `policies` | id, action, context_bucket, alpha, beta, trials, reward_sum, updated_at | 上下文 bandit |
+| `decisions` | id, turn_id, action, context_json, candidates_json, features_json, expected_utility, confidence, status(pending/sent/skipped/failed), created_at | 策略选择 |
+| `outcomes` | id, decision_id, observed_json, reward, attribution_confidence, created_at | 结果与归因 |
+| `state_transitions` | id, entity, entity_id, field, before_json, after_json, reason, trace_id, created_at | 变化审计 |
+| `traces` | id, turn_id, stage, summary_json, tokens, latency_ms, error, created_at | 管线 trace（脱敏） |
+| `metrics` | id, name, value, labels_json, at | 计数/直方/趋势 |
+| `proactive_intents` | id, target_person_id, chat_type, chat_id, reason, due_at, status, budget_key, created_at | 主动行为 |
+| `audit_log` | id, actor(ui/autonomous/system), action, entity, detail_json, created_at | 管理/删除/重置审计 |
+
+## 3. 关键接口
+
+```js
+// 存储层只暴露仓储；service 不得拼 SQL
+createStore({ dir, clock, log }) -> {
+  ready, close, tx(fn),
+  raw: { append(event), listRecent(chat, limit), markAccepted(id) },
+  turns: { upsert(turn), getOpen(), close(id, patch), linkDecision(id, decisionId) },
+  persons, identities, groups, facets, relationships,
+  persona, emotion, memories, links, beliefs, claims,
+  unknowns, learning, skills, policies, decisions, outcomes,
+  transitions, traces, metrics, proactive, audit,
+  exportPerson(id), deletePerson(id), backup()
+}
+```
+
+## 4. 隐私与删除
+
+- `visibility`/`sensitivity` 在**写入时**校验；secret 永不进入 LLM。
+- 检索强制 `scope` 过滤：群聊无法读私聊；第三方私密设定默认不向其他人表达。
+- 显式删除：`deletePerson` 单事务级联删除 identities/facets/relationships/memory_links/memories(facets)/persona?（bot 人格不删）；learning 任务解除关联；保留脱敏 audit。
+- 模拟遗忘：`status=inactive` + retrieval weight 衰减，不删除 DB 行；UI 区分「遗忘」与「删除」。
+- 导出：人物/全局 JSON（含来源、时间、作用域），默认排除 secret；导出记 audit。
+- 保留：raw 180d、traces 30d、decisions 90d、metrics 365d（可配）；清理任务记录指标。
+
+## 5. 迁移与回滚
+
+- `PRAGMA user_version`；迁移按顺序原子执行；迁移前 `VACUUM INTO backups/cognition-vN-<ts>.sqlite`。
+- 失败：关闭写入、把错误暴露到 `/cognition/overview`，平台仍可运行；保留备份路径。
+- JSON fallback：同一仓储接口，文件 `cognition-state.json`；明确 `storage=json-fallback`。

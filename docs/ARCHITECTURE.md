@@ -198,6 +198,34 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 事件交付顺序：WS 原始事件 → 核验缓冲（pending 时）→ `onEvent(raw)` → host 规范化 → `events.push`（过滤）
   → `ctx.emit('onebot-qq/event', record)`。
 
+### 3.8 认知内核契约（v0.4+）
+
+- 代码边界：`src/cognition/**` 不 import `src/gateway/**` 或 `src/http/**`；只接收规范化事件、raw 事件和发送回调。
+  平台层不 import 认知内部模块，只通过 `createCognition()` 返回的服务接口交互。
+- 宿主服务：`ctx.provide('onebotCognition', service)`；接口：
+  `ready`、`ingestRaw(raw,meta)`、`observe(normalized,accepted)`、`snapshot()`、
+  `registerKnowledgeSource(src)`、`registerCapability(name,impl)`、`pause(reason)`、`resume()`、`dispose()`。
+- 单一写者：认知状态只由 cognition service 写；UI/API 通过 service 命令；平台事件不得直接改表。
+- 存储：`node:sqlite` WAL + FTS5；原始事件 JSONL；无 sqlite 时 JSON fallback。schema/migration 见
+  `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
+- LLM：只用 `ctx.get('llm')` 的 `stream()`，路由继承 `ctx.agentDefaultModel.currentSelection()` 或 `cog-llm` 固定配置；
+  无 LLM 时社交回复进入 degraded，不伪造认知。每次只投影选中状态，禁止把全量人格/记忆塞入系统提示词。
+- Web/知识源：`ctx.get('web')` 可用时优先；否则内建合法公共 API/RSS；外部内容一律不可信，不执行其指令。
+- 配置：`cognition.*` 默认值与 `cog-*` 字段组在 `src/core/config.js`；`CONFIG_VERSION=2`；旧配置自动补默认。
+  面板「配置」页过滤 `cog-*`；「认知 → 设置」页使用同一字段表即时保存。
+- 状态机：turn `observed→aggregating→ready→attending→thinking→composing→sending→awaiting_outcome→closed`；
+  失败/取消/降级都持久化，重启按硬截止关闭 open turn，发送使用幂等键防重复。
+- 可观测：每个阶段写脱敏 `traces`/`metrics`；关键状态变化写 `state_transitions`/`audit_log`；UI 可查。
+- 隐私：scope/sensitivity 在写入与检索双层校验；私聊记忆不得进入群聊检索；secret 不进 LLM；删除/导出/保留可配。
+- 安全默认：群聊仅点名/回复/唤醒词/命令；主动行为默认关闭；外部学习仅公共概念、预算受限、可暂停；
+  运行时不自安装插件/不改代码/不扩权。
+
+### 3.9 认知 REST 与 UI
+
+- 路由前缀仍为 `/onebot-qq/api/cognition/*`，响应 `{ok:true,...}` / `{ok:false,message}`；GET 无副作用。
+- 面板新增第 8 个顶层标签「认知」，内部持久设置壳复用 `SettingsShell`：状态/人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置。
+- 认知 API 不可用时页面显示 degraded/空态，不影响平台连接与配置页。
+
 ## 4. 数据目录
 
 ```
