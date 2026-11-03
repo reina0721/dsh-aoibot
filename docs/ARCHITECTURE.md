@@ -212,7 +212,8 @@ export function normalizeEvent(raw, cfg) -> null | {
   `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
 - LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
   路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
-  DSH 一次性调用使用顶层 `system` + identity-free user `messages`，默认不发送 temperature；失败保留 provider
+  DSH 一次性调用使用顶层 `system` + identity-free user `messages`，并带稳定 `sessionId`
+  （OpenCode Go 的 `x-opencode-session`）；默认不发送 temperature；失败保留 provider
   message 并通过 `/cognition/llm/test` 自检。
   persona 记录含 12 维特质 + 6 维风格 + 文本 `profile`；可保存多份，`setting.persona.activeId` 指向当前激活项。
   文本 profile 进入 analysis/compose prompt（约 2000 字符上限），

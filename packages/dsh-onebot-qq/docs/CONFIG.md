@@ -203,7 +203,8 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 升级不会重置认知状态。
 
 **DSH 模型一次性调用**：`system` 走 `GenerateOptions.system`，`messages` 只放 identity-free user input；
-默认不向 DSH route 发送 `temperature`（`cognition.llm.dshTemperature` 才显式发送）。
+必须带稳定 `sessionId`（OpenCode Go 需要 `x-opencode-session`）；默认不向 DSH route 发送
+`temperature`（`cognition.llm.dshTemperature` 才显式发送）。
 `POST /cognition/llm/test` 返回真实 route、延迟、失败 attempts 与 provider message，用于区分
 “没有 API key / 模型不可用 / 参数不支持”。
 

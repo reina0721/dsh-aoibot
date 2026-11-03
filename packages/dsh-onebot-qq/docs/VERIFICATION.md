@@ -336,9 +336,14 @@ persona: self, displayName="", hasProfile=false
 **修复**：
 
 - DSH one-shot 改为顶层 `system` + 只含 user input 的 `messages`；
+- **必须带 `sessionId`**：desktop 真实日志暴露
+  `400 MissingSessionID: Request is missing x-opencode-session`；手工 one-shot 现在生成稳定 UUID 并传给
+  `llm.stream`，与 DSH agent loop 的行为对齐；
 - 默认不向 DSH route 发送 `temperature`；
 - provider finish error 保留真实 `failure.message`；
-- `POST /cognition/llm/test` 用于独立验证 route。
+- `POST /cognition/llm/test` 用于独立验证 route；
+- 修复「点插件白屏」：PersonaTab 引用 `importOpen/importBusy/modelTest` 时漏了 `useState`，导致
+  `ReferenceError: importOpen is not defined`；补齐状态后 probe 面板正常渲染。
 
 **真实 probe（真实 DSH + direct OpenCode route + mock OneBot）**：
 
@@ -348,8 +353,9 @@ persona: self, displayName="", hasProfile=false
   > 我是深作葵，原型来自《COPPELION》。这里是虚拟角色版本，由 DSH/QQ 负载运行，不是真人。先认识现在的你吧。
 - 群聊（all 模式、未 @）“今天的待办像山一样。”实际发送：
   > 嗯，先别急着搬整座山。今天最占你精力的是哪一件？挑出来，我们先处理这一小块。
-- 人格页新增「导入人格 JSON」「测试模型链路」控件；`client.js` 构建通过，API 导入/自检由 e2e 与 probe 覆盖。
-- pipeline：`sent=2`、`degraded=0`、`groupSkipped=0`、`lastTurn.outcome=sent`；
+- 人格页新增「导入人格 JSON」「测试模型链路」控件；`client.js` 构建通过，probe 面板渲染无 pageerror，
+  导入/自检 API 由 e2e 与 probe 覆盖。
+- `pipeline`：`sent=2`、`degraded=0`、`groupSkipped=0`、`lastTurn.outcome=sent`；
 
 **边界**：
 
@@ -472,6 +478,8 @@ persona: self, displayName="", hasProfile=false
 | 问题 | 修复 |
 |---|---|
 | DSH one-shot 把 system 伪造为 system-role Message，且强制 temperature | 改为顶层 `system` + identity-free user messages；默认不发 temperature |
+| DSH provider 返回 `MissingSessionID`（缺 `x-opencode-session`） | 手工 one-shot 生成稳定 UUID，作为 `GenerateOptions.sessionId` 传给 `llm.stream` |
+| 点插件白屏：`ReferenceError: importOpen is not defined` | PersonaTab 补齐 `importOpen/importBusy/modelTest/modelTestBusy` useState；probe 面板恢复渲染 |
 | 失败只记录 `LLM_PROVIDER_ERROR`，看不到 provider 原因 | 保留 `finish.reason.failure.message`；写日志/overview.lastFailure/`/llm/test` attempts |
 | 没有独立模型自检，无法区分“人格没效果”和“模型没通” | 新增 `POST /cognition/llm/test`，UI 人格页按钮；真实显示 route、延迟或错误 |
 | 外部人格无法导入 | 新增 `persona-import@1`、UI 文件导入、Aoi 转换脚本 |

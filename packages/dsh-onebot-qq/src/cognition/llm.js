@@ -3,6 +3,8 @@
 // - DSH 路由：保留原有 ctx.get('llm').stream() 行为；
 // - 直连路由：调用 src/model 的协议网关（OpenAI/Anthropic/Responses/Gemini/Ollama/中转站）；
 // - 只在语义分析与表达层投影长期状态，不复制长期记忆。
+import { randomUUID } from 'node:crypto'
+
 import { dayKey, estimateTokens, truncate } from './util.js'
 
 export function stripCodeFence(text) {
@@ -30,6 +32,8 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
   const cfg = () => getConfig()?.cognition || {}
   let serviceWarning = ''
   let lastFailure = null
+  // OpenCode Go 等 DSH provider 需要 x-opencode-session；手工 one-shot 也必须带稳定 sessionId。
+  const oneShotSessionId = randomUUID()
 
   function llmService() {
     try {
@@ -155,6 +159,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       ...(system ? { system: String(system) } : {}),
       ...(route.reasoningEffort ? { reasoningEffort: route.reasoningEffort } : {}),
       messages,
+      sessionId: route.sessionId || oneShotSessionId,
       maxTokens: budget,
       signal: controller.signal,
     }

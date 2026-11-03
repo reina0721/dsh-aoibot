@@ -6,7 +6,7 @@ LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH �
 并提供**完整的网页面板与持久化配置**。
 
 > 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
-> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**；v0.8 增加**人格级认知数据隔离与数据复制**；v0.9 修复**DSH 一次性模型调用**并增加**人格 JSON 导入、模型链路自检与蒸馏人格实测**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
+> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**；v0.8 增加**人格级认知数据隔离与数据复制**；v0.9 修复**DSH 一次性模型调用（system/sessionId/temperature）**并增加**人格 JSON 导入、模型链路自检与蒸馏人格实测**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
 > 连接、核验、事件规范化、消息收发保持稳定边界；人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在
 > `packages/dsh-onebot-qq/src/cognition/` 中实现，通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
 

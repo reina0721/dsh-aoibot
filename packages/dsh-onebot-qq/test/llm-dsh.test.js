@@ -51,6 +51,7 @@ test('DSH one-shot uses top-level system and identity-free user messages', async
   assert.equal(calls[0].messages[0].role, 'user')
   assert.equal(calls[0].messages[0].content[0].text, 'USER-INPUT')
   assert.equal(calls[0].temperature, undefined, 'DSH 默认不发送 temperature')
+  assert.ok(calls[0].sessionId, 'DSH 手工 one-shot 必须带 sessionId（OpenCode session header）')
 })
 
 test('DSH provider failure keeps failure message and exposes lastFailure', async () => {

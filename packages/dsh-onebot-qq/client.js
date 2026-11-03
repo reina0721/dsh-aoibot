@@ -5953,6 +5953,10 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [dataSource, setDataSource] = useState('')
       const [dataGroups, setDataGroups] = useState(PERSONA_DATA_GROUPS.map((group) => group.id))
       const [dataBusy, setDataBusy] = useState(false)
+      const [importOpen, setImportOpen] = useState(false)
+      const [importBusy, setImportBusy] = useState(false)
+      const [modelTest, setModelTest] = useState(null)
+      const [modelTestBusy, setModelTestBusy] = useState(false)
 
       const syncFromPersona = useCallback((next) => {
         setPersona(next)

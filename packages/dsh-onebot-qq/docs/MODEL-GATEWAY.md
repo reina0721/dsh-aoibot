@@ -181,7 +181,8 @@ cognition pipeline
 - `auto` 保持向后兼容；想让 bot 用自己的模型，选 `direct` 或 `chain`。
 - 每次尝试记录 provider/model/protocol/latency/error；最终失败返回 degraded，不伪造回复。
 - `llm.status()` 暴露 `dsh`、`direct`、`selected`、`models`、`lastFailure` 和预算，认知概览页展示。
-- DSH 一次性调用：`system` 放顶层字段，`messages` 只放 identity-free user input；默认不发送
+- DSH 一次性调用：`system` 放顶层字段，`messages` 只放 identity-free user input；必须带稳定
+  `sessionId`（OpenCode Go 需要 `x-opencode-session`）；默认不发送
   `temperature`，只有显式 `cognition.llm.dshTemperature` 才发送。provider 失败原因会保留到
   decisions/log/`lastFailure`，可用 `POST /cognition/llm/test` 单独验证。
 

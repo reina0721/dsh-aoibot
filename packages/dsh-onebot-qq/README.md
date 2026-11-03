@@ -33,7 +33,7 @@
   存储；切换人格即切换整套认知状态。旧数据一次性迁移到默认人格；人格页可把来源人格的指定数据组
   单向复制到当前人格（来源不变，复制后继续独立）。
 - **DSH 模型链路修复与人格导入（v0.9）**：DSH 一次性调用改为顶层 `system` + identity-free user
-  messages，失败会保留 provider 真实错误；新增 `/cognition/llm/test` 自检；人格页支持导入
+  messages，并带稳定 sessionId，失败会保留 provider 真实错误；新增 `/cognition/llm/test` 自检；人格页支持导入
   `persona-import@1` JSON，并附带 Aoi 蒸馏包本地转换脚本（公开仓库不转载外部人格原文）。
 - **统一模型协议网关（v0.5）**：统一 OpenAI Chat/Responses、Anthropic Messages、
   Gemini generateContent、Ollama Chat；内置 OpenCode Go、Command Code、OpenRouter、DeepSeek 等预设，
