@@ -1,0 +1,407 @@
+// 认知管线：turn → 人物/关系/情绪 → 记忆检索 → 分析 → 策略 → 回复 → 结果。
+//
+// 每一步都有 trace；LLM 不可用/失败时进入 degraded，不伪造回复。
+// dryRun 会完整决策但不发送，供验证/演练。
+
+import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
+import { analyzeTurn, composeReply } from './analysis.js'
+import { defaultScope } from './memory.js'
+
+export function createPipeline({
+  store, getConfig, clock, logger,
+  person, relationships, emotion, persona, memory, policy, llm,
+  knowledge = null, skills = null, gateway = null, turnAggregator = null,
+  beliefs = null, dryRun = null,
+} = {}) {
+  const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
+  let turnAggregatorRef = turnAggregator
+  const pending = new Map() // chatKey -> { decisionId, sentAt, action }
+  const cfg = () => getConfig()?.cognition || {}
+  const isDry = () => (dryRun == null ? Boolean(cfg().dryRun) : Boolean(dryRun))
+  const stats = { turns: 0, decisions: 0, sent: 0, dryRun: 0, degraded: 0, errors: 0, silenced: 0 }
+
+  function trace(turnId, stage, summary = {}, extra = {}) {
+    if (!cfg().debug?.trace) return
+    try {
+      store.put('trace', uid('trace'), {
+        turnId: turnId || '',
+        stage,
+        summary: String(summary?.text || ''),
+        data: summary?.data || {},
+        tokens: Number(extra.tokens || 0),
+        latencyMs: Number(extra.latencyMs || 0),
+        error: String(extra.error || ''),
+        createdAt: clock.now(),
+      })
+    } catch (error) {}
+  }
+
+  function metric(name, value = 1, labels = {}) {
+    try { store.put('metric', uid('metric'), { name, value, labels, at: clock.now() }) } catch (error) {}
+  }
+
+  function chatKey(turn) {
+    return `${turn?.chatType || 'unknown'}:${turn?.chatId || ''}`
+  }
+
+  function scopeOf(turn) {
+    return defaultScope(turn?.chatType, turn?.chatId)
+  }
+
+  function boundScope(turn) {
+    return { scopeType: scopeOf(turn).scopeType, scopeId: scopeOf(turn).scopeId }
+  }
+
+  function personFromTurn(turn) {
+    try {
+      const result = person.ensurePerson({
+        platform: 'onebot11',
+        platformUserId: turn.senderId,
+        nickname: turn.messages?.[0]?.sender?.nickname || turn.messages?.[0]?.nickname || '',
+        card: turn.messages?.[0]?.sender?.card || '',
+        scopeType: scopeOf(turn).scopeType,
+        scopeId: scopeOf(turn).scopeId,
+      })
+      return result
+    } catch (error) {
+      log.warn?.('人物识别失败：', error.message)
+      return null
+    }
+  }
+
+  function relationshipFor(turn, personRecord) {
+    if (!personRecord?.person?.id) return null
+    const scope = boundScope(turn)
+    const rel = relationships.getMerged(personRecord.person.id, scope)
+    return rel
+  }
+
+  function updatePersonFacets(turn, personRecord, analysis) {
+    if (!personRecord?.person?.id) return
+    const scope = scopeOf(turn)
+    try {
+      const text = String(turn.text || '')
+      if (text.length >= 4) {
+        person.addFacet({
+          personId: personRecord.person.id,
+          facet: 'language_style',
+          value: `${text.length <= 30 ? '短句/碎片' : '长句'}；${/[？?]/.test(text) ? '常用提问' : /[！!]/.test(text) ? '常用感叹' : '陈述为主'}`,
+          evidenceKind: 'observation',
+          scopeType: scope.scopeType,
+          scopeId: scope.scopeId,
+          confidence: 0.35,
+          sourceKind: 'turn',
+          sourceRef: turn.id,
+        })
+      }
+      const intent = analysis?.intent
+      if (intent && ['question', 'emotional', 'greeting'].includes(intent)) {
+        person.addFacet({
+          personId: personRecord.person.id,
+          facet: 'interaction_pattern',
+          value: `常出现「${intent}」类互动`,
+          evidenceKind: 'observation',
+          scopeType: scope.scopeType,
+          scopeId: scope.scopeId,
+          confidence: 0.3,
+          sourceKind: 'analysis',
+          sourceRef: turn.id,
+        })
+      }
+      const hour = new Date(clock.now()).getHours()
+      person.addFacet({
+        personId: personRecord.person.id,
+        facet: 'activity_pattern',
+        value: `${hour < 6 ? '深夜' : hour < 12 ? '上午' : hour < 18 ? '下午' : '晚间'}活跃`,
+        evidenceKind: 'observation',
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        confidence: 0.25,
+        sourceKind: 'turn',
+        sourceRef: turn.id,
+      })
+    } catch (error) {
+      log.debug?.('画像更新跳过：', error.message)
+    }
+  }
+
+  function appraisalFor(analysis, turn, relationship, emotionState) {
+    const a = analysis?.appraisal || {}
+    return {
+      desirability: clamp(Number(a.desirability ?? (turn.addressed ? 0.15 : 0)), -1, 1),
+      relevance: clamp(Number(a.relevance ?? (turn.addressed ? 0.8 : 0.4)), 0, 1),
+      intensity: clamp(Number(a.intensity ?? 0.45), 0, 1),
+      novelty: clamp(Number(a.novelty ?? 0.2), 0, 1),
+      control: clamp(Number(a.control ?? 0.5), 0, 1),
+      agency: ['self', 'other', 'none'].includes(a.agency) ? a.agency : 'other',
+      norm: clamp(Number(a.norm ?? 0), -1, 1),
+      threat: a.threat,
+      intent: analysis?.intent || 'chat',
+      source: 'analysis',
+      relationshipTrust: relationship?.trust,
+      currentValence: emotionState?.valence,
+    }
+  }
+
+  function relationshipEvidence(analysis, turn, emotionState) {
+    const a = analysis?.appraisal || {}
+    const desirability = Number(a.desirability ?? 0)
+    const addressed = turn?.addressed
+    return {
+      affinity: clamp(0.5 + desirability * 0.5, 0, 1),
+      trust: clamp(0.5 + desirability * 0.35, 0, 1),
+      familiarity: addressed ? 1 : 0.5,
+      intimacy: addressed ? 0.35 : 0.15,
+      comfort: clamp(0.55 + (Number(emotionState?.valence || 0) > 0 ? 0.08 : -0.04), 0, 1),
+      conflict: clamp(Math.max(0, -desirability) * 0.6, 0, 1),
+      wariness: clamp(Math.max(0, -desirability) * 0.35, 0, 1),
+      confidence: addressed ? 0.65 : 0.4,
+      contextFactor: turn?.chatType === 'private' ? 1 : 0.8,
+    }
+  }
+
+  function buildResult({ ok, decision, reply, analysis, degraded, error }) {
+    return {
+      ok: Boolean(ok),
+      decision: decision || null,
+      reply: reply || '',
+      analysis: analysis || null,
+      degraded: Boolean(degraded),
+      error: error || '',
+      at: clock.now(),
+    }
+  }
+
+  async function composeFor(decision, context) {
+    const c = cfg()
+    if (decision.action === 'silence' || decision.action === 'wait' || decision.action === 'recall_silence' || decision.action === 'recall_ignore') {
+      return { ok: true, text: '', skipped: true }
+    }
+    if (isDry()) return { ok: true, text: '', skipped: true, dryRun: true }
+    if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE' }
+    return composeReply({
+      turn: context.turn,
+      person: context.personRecord?.person,
+      relationship: context.relationship,
+      emotion: context.emotionState,
+      persona: context.personaState,
+      memories: context.memories,
+      decision,
+      analysis: context.analysis,
+      llm,
+      config: c,
+    })
+  }
+
+  async function sendDecision(decision, text, turn, opts = {}) {
+    if (!text || isDry()) {
+      policy.markSent(decision.id, { dryRun: isDry() })
+      if (isDry()) stats.dryRun += 1
+      return { ok: true, dryRun: isDry(), messageId: '' }
+    }
+    if (!gateway?.actions?.sendMessage) return { ok: false, error: 'GATEWAY_UNAVAILABLE' }
+    const segments = []
+    const replyTo = turn.messages?.at(-1)?.messageId
+    if (replyTo && !opts.noReplySegment) segments.push({ type: 'reply', data: { id: replyTo } })
+    segments.push({ type: 'text', data: { text } })
+    try {
+      const result = await gateway.actions.sendMessage({ chatType: turn.chatType, chatId: turn.chatId, message: segments })
+      const messageId = String(result?.message_id ?? result?.data?.message_id ?? result?.id ?? '')
+      policy.markSent(decision.id, { messageId })
+      turnAggregatorRef?.noteBotMessage?.(messageId)
+      stats.sent += 1
+      pending.set(chatKey(turn), { decisionId: decision.id, sentAt: clock.now(), action: decision.action, text })
+      try { ctxEmit('onebot-qq/cognition-sent', { decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId, action: decision.action }) } catch (error) {}
+      return { ok: true, messageId, result }
+    } catch (error) {
+      policy.markFailed(decision.id, error.message)
+      log.warn?.('发送认知回复失败：', error.message)
+      return { ok: false, error: error.message }
+    }
+  }
+
+  function ctxEmit() {}
+
+  function outcomeForIncoming(turn) {
+    const key = chatKey(turn)
+    const item = pending.get(key)
+    if (!item) return null
+    if (clock.now() - item.sentAt > 10 * 60 * 1000) { pending.delete(key); return null }
+    pending.delete(key)
+    const text = String(turn.text || '')
+    const observation = {
+      userContinued: Boolean(text),
+      explicitCorrection: /(不对|错了|不是|你理解错|别这么说|别乱说)/.test(text),
+      sentiment: /(谢谢|哈哈|好|喜欢|厉害)/.test(text) ? 0.4 : /(烦|滚|讨厌|闭嘴)/.test(text) ? -0.5 : 0,
+      positiveReaction: /(哈哈|笑死|好耶|喜欢)/.test(text) || undefined,
+      userIgnored: false,
+      attributionConfidence: 0.5,
+    }
+    try { policy.recordOutcome(item.decisionId, observation) } catch (error) { log.debug?.('outcome 记录失败：', error.message) }
+    try { skills?.applyOutcome?.(policy.history({ limit: 1 })[0], observation.positiveReaction || observation.sentiment > 0 ? true : observation.explicitCorrection ? false : null) } catch (error) {}
+    return observation
+  }
+
+  async function handleRecall(event = {}) {
+    const c = cfg()
+    if (!c.enabled || c.paused) return buildResult({ ok: false, error: 'cognition_paused' })
+    const notice = event.notice || {}
+    const personResult = person.ensurePerson({ platform: 'onebot11', platformUserId: String(notice.userId || ''), scopeType: notice.groupId ? 'group' : 'private', scopeId: String(notice.groupId || notice.userId || '') })
+    const personRecord = personResult
+    const chatType = notice.groupId ? 'group' : 'private'
+    const chatId = String(notice.groupId || notice.userId || '')
+    const scope = { scopeType: chatType, scopeId: chatId }
+    const rel = personRecord?.person?.id ? relationships.getMerged(personRecord.person.id, scope) : null
+    const emotionState = emotion.get()
+    const personaState = persona.get()
+    const sawContent = Boolean(event.sawContent)
+    const pseudoTurn = {
+      id: uid('turn'),
+      chatType,
+      chatId,
+      senderId: String(notice.userId || ''),
+      text: '[撤回了一条消息]',
+      messages: [],
+      messageIds: [String(notice.messageId || '')],
+      addressed: chatType === 'private',
+      completeness: 1,
+      closeReason: 'recall',
+      status: 'recall',
+    }
+    const decision = policy.decide({ turn: pseudoTurn, relationship: rel, emotion: emotionState, appraisal: { desirability: -0.1, relevance: 0.8, intensity: 0.5, intent: 'recall' }, persona: personaState, memories: [], recall: { messageId: String(notice.messageId || ''), sawContent } })
+    stats.decisions += 1
+    trace(pseudoTurn.id, 'recall_decision', { text: `${decision.action} saw=${sawContent}`, data: { action: decision.action } })
+    const composed = await composeFor(decision, { turn: pseudoTurn, personRecord, relationship: rel, emotionState, personaState, memories: [], analysis: { intent: 'recall', replyGoal: '处理撤回' }, sawContent })
+    if (!composed.ok) {
+      stats.degraded += 1
+      return buildResult({ ok: false, decision, degraded: true, error: composed.error })
+    }
+    if (composed.skipped || !composed.text) {
+      policy.markSent(decision.id, { dryRun: isDry() })
+      if (isDry()) stats.dryRun += 1
+      return buildResult({ ok: true, decision, reply: '', degraded: false })
+    }
+    const sent = await sendDecision(decision, composed.text, pseudoTurn)
+    return buildResult({ ok: sent.ok, decision, reply: composed.text, degraded: false, error: sent.error })
+  }
+
+  async function handleTurn(turn) {
+    if (!turn) return buildResult({ ok: false, error: 'no_turn' })
+    const c = cfg()
+    if (!c.enabled) return buildResult({ ok: false, error: 'cognition_disabled' })
+    if (c.paused) return buildResult({ ok: false, error: 'cognition_paused' })
+    const started = clock.now()
+    stats.turns += 1
+    trace(turn.id, 'turn_start', { text: truncate(turn.text, 200), data: { chatType: turn.chatType, addressed: turn.addressed, completeness: turn.completeness } })
+    const record = personFromTurn(turn)
+    const personRecord = record
+    const rel = relationshipFor(turn, personRecord)
+    const emotionState = emotion.get()
+    const personaState = persona.get()
+    const scope = boundScope(turn)
+    const memories = memory.retrieve({ query: turn.text, personId: personRecord?.person?.id || '', scope, emotion: emotionState, relationship: rel })
+    trace(turn.id, 'retrieved', { text: `${memories.length} memories`, data: { memoryIds: memories.map((item) => item.memory.id) } })
+    // 群聊默认只回应点名/回复/唤醒词；ambient 模式需显式开启。
+    if (turn.chatType === 'group' && !turn.addressed && (cfg().turn?.addressedOnlyGroups !== false) && !cfg().policy?.groupAmbient) {
+      memory.encodeTurn(turn, { personId: personRecord?.person?.id || '', emotion: emotionState, scope, source: 'ambient' })
+      return buildResult({ ok: true, decision: null, reply: '', degraded: false, error: 'group_ambient_skipped' })
+    }
+    const analysis = await analyzeTurn({
+      turn, person: personRecord?.person, relationship: rel, emotion: emotionState, memories, persona: personaState,
+      llm, config: c, logger: log,
+    })
+    trace(turn.id, 'analysis', { text: `${analysis.intent} conf=${analysis.confidence}` }, { tokens: analysis.tokens || 0 })
+    if (analysis.degraded) stats.degraded += 1
+    const appraisal = appraisalFor(analysis, turn, rel, emotionState)
+    emotion.appraise(appraisal, { source: 'turn', text: turn.text })
+    const evidence = relationshipEvidence(analysis, turn, emotionState)
+    relationships.update(personRecord?.person?.id, evidence, { scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'turn', source: 'analysis' })
+    updatePersonFacets(turn, personRecord, analysis)
+    const episodic = memory.encodeTurn(turn, { personId: personRecord?.person?.id || '', emotion: emotion.get(), scope, source: 'turn' })
+    trace(turn.id, 'memory_encoded', { text: episodic?.id || 'none' })
+    if (analysis.beliefCandidates?.length) {
+      for (const belief of analysis.beliefCandidates) {
+        try {
+          beliefs?.upsert?.({
+            subject: belief.subject || (personRecord?.person?.displayName || ''),
+            proposition: belief.proposition,
+            probability: Number.isFinite(belief.probability) ? belief.probability : 0.5,
+            evidenceWeight: turn.addressed ? 0.2 : 0.08,
+            evidence: { text: truncate(turn.text, 200), turnId: turn.id, messageIds: turn.messageIds },
+            status: ['fact', 'hypothesis', 'disputed', 'outdated'].includes(belief.status) ? belief.status : 'hypothesis',
+            scopeType: scope.scopeType,
+            scopeId: scope.scopeId,
+            source: 'analysis',
+          })
+        } catch (error) { log.debug?.('belief 写入失败：', error.message) }
+      }
+    }
+    let gaps = []
+    if (knowledge) {
+      try { gaps = knowledge.detectFromTurn({ turn, analysis, personId: personRecord?.person?.id || '', scope, config: c }) } catch (error) { log.debug?.('unknown 检测失败：', error.message) }
+    }
+    const skillMap = {}
+    for (const skill of skills?.list?.() || []) skillMap[skill.name] = skill.effectiveMastery
+    const decision = policy.decide({ turn, relationship: rel, emotion: emotion.get(), appraisal, unknown: gaps[0] || null, memories, persona: personaState, skills: skillMap })
+    stats.decisions += 1
+    trace(turn.id, 'decision', { text: decision.action, data: { candidates: decision.candidates?.slice(0, 5), utilities: decision.candidates?.slice(0, 5) } })
+    if (decision.action === 'silence' || decision.action === 'wait' || decision.action === 'recall_silence' || decision.action === 'recall_ignore') {
+      stats.silenced += 1
+      if (!isDry()) policy.markSent(decision.id, { dryRun: false })
+      trimWorking(turn, personRecord, analysis, decision)
+      metric('decision', 1, { action: decision.action })
+      return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
+    }
+    if (decision.action === 'learn') {
+      if (!isDry()) policy.markSent(decision.id, { dryRun: false })
+      return buildResult({ ok: true, decision, reply: '', degraded: false })
+    }
+    const composed = await composeFor(decision, { turn, personRecord, relationship: rel, emotionState: emotion.get(), personaState, memories, analysis })
+    if (!composed.ok) {
+      stats.degraded += 1
+      policy.markFailed(decision.id, composed.error)
+      trace(turn.id, 'compose_failed', { text: composed.error || 'compose failed', data: { message: composed.message || '', route: composed.route || null } })
+      log.warn?.('回复生成失败：', composed.error || composed.message || 'unknown')
+      return buildResult({ ok: false, decision, degraded: true, error: composed.error })
+    }
+    if (composed.skipped) {
+      if (!isDry()) policy.markSent(decision.id, { dryRun: false })
+      else { policy.markSent(decision.id, { dryRun: true }); stats.dryRun += 1 }
+      trimWorking(turn, personRecord, analysis, decision)
+      return buildResult({ ok: true, decision, reply: '', degraded: analysis.degraded })
+    }
+    const sent = await sendDecision(decision, composed.text, turn)
+    trace(turn.id, 'sent', { text: truncate(composed.text, 120) }, { latencyMs: clock.now() - started })
+    trimWorking(turn, personRecord, analysis, decision)
+    metric('decision', 1, { action: decision.action })
+    return buildResult({ ok: sent.ok, decision, reply: composed.text, degraded: analysis.degraded, error: sent.error })
+  }
+
+  function trimWorking(turn, personRecord, analysis, decision) {
+    memory.workingSet(chatKey(turn), {
+      turnId: turn.id,
+      personId: personRecord?.person?.id || '',
+      chatType: turn.chatType,
+      chatId: turn.chatId,
+      lastIntent: analysis?.intent || '',
+      lastDecision: decision?.action || '',
+      updatedAt: clock.now(),
+    })
+  }
+
+  /** 每次新的真人 turn 到达时，先观察上一条决策的结果。 */
+  function observeIncoming(turn) {
+    if (!turn) return null
+    return outcomeForIncoming(turn)
+  }
+
+  function statsSnapshot() {
+    return { ...stats, pending: pending.size }
+  }
+
+  function setTurnAggregator(aggregator) {
+    turnAggregatorRef = aggregator
+  }
+
+  return { handleTurn, handleRecall, observeIncoming, stats: statsSnapshot, trace, setTurnAggregator, _pending: pending }
+}

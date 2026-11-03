@@ -1766,6 +1766,32 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-kv-v{flex:1 1 200px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;margin:0;font-size:var(--ob-text-small);font-weight:var(--ob-weight-medium);color:var(--ob-ink);overflow-wrap:anywhere}
 
 /* ---------- 响应式 ---------- */
+.ob-cog-footer{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 4px 0;border-top:1px solid var(--ob-border);margin-top:12px}
+.ob-cog-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.ob-cog-search{flex:1 1 220px;max-width:420px;position:relative}
+.ob-cog-search .ob-input{padding-left:34px}
+.ob-cog-search > svg{position:absolute;left:10px;color:var(--ob-ink-dim);pointer-events:none}
+.ob-cog-meter{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ob-cog-meter-head{display:flex;justify-content:space-between;gap:8px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-meter{height:7px;border-radius:var(--ob-radius-pill);background:var(--ob-surface-inset);overflow:hidden}
+.ob-meter-fill{height:100%;border-radius:inherit;background:var(--ob-brand);transition:width var(--ob-dur-standard) var(--ob-ease)}
+.ob-cog-bars{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));margin-top:10px}
+.ob-cog-card{display:flex;flex-direction:column;gap:6px;min-width:0;padding:10px 12px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised)}
+.ob-cog-card:hover{border-color:var(--ob-border-strong)}
+.ob-cog-divider{height:1px;background:var(--ob-border);margin:10px 0}
+.ob-cog-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:4px 0;font-size:var(--ob-text-small)}
+.ob-cog-facet{display:flex;flex-direction:column;gap:4px;padding:8px 0;border-bottom:1px solid var(--ob-border)}
+.ob-cog-facet:last-child{border-bottom:0}
+.ob-cog-history{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--ob-border);font-size:var(--ob-text-small)}
+.ob-cog-history:last-child{border-bottom:0}
+.ob-cog-memory-text{font-size:var(--ob-text-small);line-height:1.65;color:var(--ob-ink);margin:0;overflow-wrap:anywhere}
+.ob-cog-detail{margin-top:4px;padding-top:6px;border-top:1px dashed var(--ob-border)}
+.ob-cog-sliders{display:grid;gap:10px 18px;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));margin-top:8px}
+.ob-cog-slider{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ob-cog-slider-head{display:flex;justify-content:space-between;gap:8px;font-size:var(--ob-text-micro);color:var(--ob-ink-muted)}
+.ob-cog-slider input[type="range"]{width:100%;accent-color:var(--ob-brand);cursor:pointer}
+.ob-cog-person-select{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
+.ob-cog-person-select:focus-visible{outline:2px solid var(--ob-brand);outline-offset:2px;border-radius:var(--ob-radius-control)}
 @media (max-width:960px){
   .ob-split{grid-template-columns:minmax(0,1fr)}
   .ob-settings{grid-template-columns:minmax(0,1fr)}
@@ -2401,6 +2427,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       pause: ['M8 5v14', 'M16 5v14'],
       bell: ['M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
       plug: ['M9 2v6', 'M15 2v6', 'M7 8h10v5a5 5 0 0 1-10 0z', 'M12 18v4'],
+      brain: ['M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-1 5 3 3 0 0 0 2 5h2a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z', 'M15 4a3 3 0 0 1 3 3v1a3 3 0 0 1 1 5 3 3 0 0 1-2 5h-2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', 'M9 9H7', 'M15 9h2', 'M9 14H7', 'M15 14h2'],
+      heart: ['M12 21S3 14.5 3 8.5A4.5 4.5 0 0 1 12 6a4.5 4.5 0 0 1 9 2.5C21 14.5 12 21 12 21z'],
+      book: ['M4 4h7v16H4z', 'M13 4h7v16h-7z', 'M11 4v16'],
+      target: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z', 'M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z'],
+      chart: ['M4 20V10', 'M10 20V4', 'M16 20v-7', 'M22 20H2'],
+      memory: ['M6 4h12v16H6z', 'M9 8h6', 'M9 12h6', 'M9 16h4'],
     }
 
     function Icon(props) {
@@ -2980,6 +3012,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'settings', label: '系统设置', icon: 'palette' },
+      { id: 'cognition', label: '认知', icon: 'brain' },
       { id: 'logs', label: '日志', icon: 'logs' },
       { id: 'about', label: '关于', icon: 'about' },
     ]
@@ -3890,7 +3923,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const configInfo = props.configInfo
       const draft = props.draft
       const groups = useMemo(
-        () => buildFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui'),
+        () => buildFieldSpecs(configInfo && configInfo.groups).filter((group) => group.id !== 'ui' && !String(group.id).startsWith('cog-')),
         [configInfo],
       )
       const [active, setActive] = useState('')
@@ -4665,6 +4698,613 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
     // =====================================================================
+    // 标签页：认知（人格/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置）
+    // 复用持久设置壳；页面只读 API，写操作走 cognition 服务，不直接改配置。
+    // =====================================================================
+
+    const COG_SECTIONS = [
+      { id: 'overview', label: '状态', icon: 'brain' },
+      { id: 'persona', label: '人格', icon: 'sparkles' },
+      { id: 'persons', label: '人物', icon: 'users' },
+      { id: 'relationships', label: '关系', icon: 'link' },
+      { id: 'memories', label: '记忆', icon: 'memory' },
+      { id: 'emotion', label: '情绪', icon: 'heart' },
+      { id: 'policy', label: '策略', icon: 'target' },
+      { id: 'learning', label: '学习', icon: 'book' },
+      { id: 'skills', label: '技能', icon: 'chart' },
+      { id: 'meta', label: '元认知', icon: 'chart' },
+      { id: 'settings', label: '设置', icon: 'sliders' },
+    ]
+
+    function CogPct(value) {
+      const n = Number(value)
+      return Number.isFinite(n) ? Math.round(clamp01(n) * 100) + '%' : '—'
+    }
+
+    function CogBar(props) {
+      const value = clamp01(Number(props.value) || 0)
+      return h(
+        'div',
+        { className: 'ob-cog-meter', 'aria-label': (props.label || '') + ' ' + CogPct(value) },
+        h('div', { className: 'ob-cog-meter-head' }, h('span', null, props.label || ''), h('span', { className: 'ob-muted' }, props.text || CogPct(value))),
+        h('div', { className: 'ob-meter' }, h('div', { className: 'ob-meter-fill', style: { width: (value * 100).toFixed(1) + '%' } })),
+      )
+    }
+
+    function CogTag(props) {
+      return h(Badge, { tone: props.tone || 'muted' }, props.children || props.label)
+    }
+
+    function CogToolbar(props) {
+      return h('div', { className: 'ob-row ob-cog-toolbar' }, props.children)
+    }
+
+    function CogLoading(props) {
+      return h('div', { className: 'ob-stack', style: { gap: '8px' } }, [0, 1, 2].map((index) => h(Skeleton, { key: index, variant: 'text', width: index % 2 ? '72%' : '94%' })))
+    }
+
+    function CogSearch(props) {
+      return h(
+        'span',
+        { className: 'ob-input-wrap ob-cog-search' },
+        h(Icon, { name: 'search', size: 15 }),
+        h('input', {
+          className: 'ob-input',
+          type: 'search',
+          value: props.value || '',
+          placeholder: props.placeholder || '搜索',
+          'aria-label': props.placeholder || '搜索',
+          onChange: (event) => props.onChange(event.target.value),
+          onKeyDown: (event) => { if (event.key === 'Enter' && props.onSubmit) props.onSubmit() },
+        }),
+      )
+    }
+
+    function CogEmpty(props) {
+      return h(EmptyState, { compact: true, title: props.title || '暂无数据', description: props.description || '', icon: props.icon || 'inbox' })
+    }
+
+    function useCognitionOverview(props) {
+      const [data, setData] = useState(null)
+      const [error, setError] = useState('')
+      const [loading, setLoading] = useState(true)
+      const aliveRef = useRef(true)
+      const load = useCallback(async () => {
+        try {
+          const parsed = parseApiResponse(await get('/cognition/overview'))
+          if (!aliveRef.current) return
+          if (!parsed.ok) setError(parsed.message)
+          else { setData(parsed.data); setError('') }
+        } catch (err) {
+          if (aliveRef.current) setError(String(err && err.message ? err.message : err))
+        } finally {
+          if (aliveRef.current) setLoading(false)
+        }
+      }, [])
+      useEffect(() => {
+        aliveRef.current = true
+        load()
+        const timer = setInterval(load, 5000)
+        return () => { aliveRef.current = false; clearInterval(timer) }
+      }, [load])
+      return { data, error, loading, reload: load }
+    }
+
+    function useCogApi(props, path, { auto = true } = {}) {
+      const [data, setData] = useState(null)
+      const [error, setError] = useState('')
+      const [loading, setLoading] = useState(Boolean(auto))
+      const aliveRef = useRef(true)
+      const load = useCallback(async () => {
+        setLoading(true)
+        try {
+          const parsed = parseApiResponse(await get(path))
+          if (!aliveRef.current) return
+          if (!parsed.ok) setError(parsed.message)
+          else { setData(parsed.data); setError('') }
+        } catch (err) {
+          if (aliveRef.current) setError(String(err && err.message ? err.message : err))
+        } finally {
+          if (aliveRef.current) setLoading(false)
+        }
+      }, [path])
+      useEffect(() => {
+        aliveRef.current = true
+        if (auto) load()
+        return () => { aliveRef.current = false }
+      }, [auto, load])
+      return { data, error, loading, reload: load }
+    }
+
+    async function cogPost(props, path, body) {
+      try {
+        const parsed = parseApiResponse(await post(path, body || {}))
+        if (!parsed.ok) {
+          props.toast(parsed.message || '操作失败', 'err')
+          return null
+        }
+        return parsed.data
+      } catch (err) {
+        props.toast('操作失败：' + String(err && err.message ? err.message : err), 'err')
+        return null
+      }
+    }
+
+    function CognitionTab(props) {
+      const [section, setSection] = useState('overview')
+      const overview = useCognitionOverview(props)
+      const data = overview.data || {}
+      const cfg = safeObject(props.configInfo && props.configInfo.config && props.configInfo.config.cognition)
+      const footer = h(
+        'div',
+        { className: 'ob-cog-footer' },
+        h(CogTag, { tone: data.ready ? 'ok' : 'err' }, data.ready ? '内核就绪' : '内核不可用'),
+        data.paused ? h(CogTag, { tone: 'warn' }, '已暂停') : null,
+        cfg.dryRun ? h(CogTag, { tone: 'info' }, '演练模式') : null,
+        data.llm && data.llm.available ? h(CogTag, { tone: 'ok' }, 'LLM ' + (data.llm.route ? data.llm.route.provider + '/' + data.llm.route.model : '已连接')) : h(CogTag, { tone: 'warn' }, 'LLM 不可用'),
+        h('span', { className: 'ob-muted ob-small' }, '数据目录：' + String(data.dbFile || '—')),
+      )
+      let page = null
+      if (section === 'overview') page = h(CogOverview, { ...props, data, error: overview.error, loading: overview.loading, reload: overview.reload })
+      else if (section === 'persona') page = h(CogPersona, props)
+      else if (section === 'persons') page = h(CogPersons, { ...props, data })
+      else if (section === 'relationships') page = h(CogRelationships, props)
+      else if (section === 'memories') page = h(CogMemories, props)
+      else if (section === 'emotion') page = h(CogEmotion, props)
+      else if (section === 'policy') page = h(CogPolicy, props)
+      else if (section === 'learning') page = h(CogLearning, props)
+      else if (section === 'skills') page = h(CogSkills, props)
+      else if (section === 'meta') page = h(CogMeta, props)
+      else page = h(CogSettings, props)
+      return h(
+        SettingsShell,
+        {
+          label: '认知分类',
+          items: COG_SECTIONS,
+          active: section,
+          onSelect: setSection,
+          footer,
+        },
+        page,
+      )
+    }
+
+    function CogOverview(props) {
+      const data = props.data || {}
+      const counts = safeObject(data.counts)
+      const persona = safeObject(data.persona)
+      const emotion = safeObject(data.emotion)
+      const metrics = safeObject(data.metrics)
+      const llm = safeObject(data.llm)
+      const decisions = safeArray(data.recentDecisions)
+      const unknowns = safeArray(data.recentUnknowns)
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '16px' } },
+        props.error ? h(Banner, { tone: 'err', message: '认知 API 不可用：' + props.error, actions: h(Btn, { small: true, kind: 'ghost', onClick: props.reload }, '重试') }) : null,
+        h(
+          'div',
+          { className: 'ob-stat-grid' },
+          h(StatTile, { label: '人物', value: Number(counts.person || 0), hint: '长期人物实体', icon: 'users', tone: 'brand' }),
+          h(StatTile, { label: '关系', value: Number(counts.relationship || 0), hint: '多维有向作用域', icon: 'link', tone: 'brand' }),
+          h(StatTile, { label: '记忆', value: Number(counts.memory || 0), hint: '情景/语义/程序', icon: 'memory', tone: 'brand' }),
+          h(StatTile, { label: '未知缺口', value: Number(counts.unknown || 0), hint: '学习队列的输入', icon: 'alert', tone: 'warn' }),
+          h(StatTile, { label: '决策', value: Number(counts.decision || 0), hint: '策略可追溯', icon: 'target', tone: 'brand' }),
+          h(StatTile, { label: '技能', value: Number(counts.skill || 0), hint: '有效熟练度独立变化', icon: 'chart', tone: 'brand' }),
+        ),
+        h(
+          'div',
+          { className: 'ob-grid two' },
+          h(
+            Panel,
+            { title: '当前状态', description: '模拟情绪与人格摘要；不声称主观体验。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: props.reload }, '刷新') },
+            h(
+              'div',
+              { className: 'ob-stack', style: { gap: '12px' } },
+              h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, '人格 v' + String(persona.version || 1)), persona.values ? safeArray(persona.values).slice(0, 4).map((value, index) => h(CogTag, { key: index, tone: 'muted' }, value)) : null),
+              h(CogBar, { label: '开放/好奇', value: persona.openness }),
+              h(CogBar, { label: '幽默', value: persona.humor }),
+              h(CogBar, { label: '谨慎', value: persona.caution }),
+              h('div', { className: 'ob-cog-divider' }),
+              h('div', { className: 'ob-row' }, h(CogTag, { tone: emotion.valence >= 0 ? 'ok' : 'warn' }, '效价 ' + (Number(emotion.valence || 0).toFixed(2))), h(CogTag, { tone: 'muted' }, '唤醒 ' + Number(emotion.arousal || 0).toFixed(2)), h(CogTag, { tone: 'muted' }, '压力 ' + Number(emotion.stress || 0).toFixed(2))),
+              h(CogBar, { label: '心境', value: (Number(emotion.mood || 0) + 1) / 2, text: Number(emotion.mood || 0).toFixed(2) }),
+              safeArray(emotion.top).length ? h('p', { className: 'ob-field-help' }, '显著情绪：' + emotion.top.map((item) => item.emotion + ' ' + Math.round(Number(item.intensity || 0) * 100) + '%').join(' · ')) : h('p', { className: 'ob-field-help' }, '当前无明显离散情绪峰值'),
+            ),
+          ),
+          h(
+            Panel,
+            { title: '模型与预算', description: 'LLM 只做语义分析与生成，不保存长期状态。' },
+            h(
+              'div',
+              { className: 'ob-stack', style: { gap: '8px' } },
+              h(KV, { rows: [
+                ['服务', llm.available ? '可用' : '不可用'],
+                ['路由', llm.route ? String(llm.route.provider) + ' / ' + String(llm.route.model) : '—'],
+                ['今日 token', String(Number(llm.usageToday || 0)) + ' / ' + String(Number(llm.budget || 0))],
+                ['预算剩余', String(Number(llm.budgetLeft || 0))],
+                ['检索模式', 'lexical + association'],
+              ] }),
+              llm.serviceWarning ? h('p', { className: 'ob-field-help' }, '诊断：' + llm.serviceWarning) : null,
+            ),
+          ),
+        ),
+        h(
+          'div',
+          { className: 'ob-grid two' },
+          h(
+            Panel,
+            { title: '最近决策', description: '候选动作、置信度与实际结果分离记录。' },
+            decisions.length ? h('ul', { className: 'ob-list' }, decisions.slice(0, 8).map((item) =>
+              h('li', { key: item.id, className: 'ob-list-item' },
+                h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'target', size: 15 })),
+                h('span', { className: 'ob-list-body' },
+                  h('span', { className: 'ob-list-title' }, String(item.action || '—') + ' · ' + String(item.status || '—')),
+                  h('span', { className: 'ob-list-sub' }, String(item.reason || item.contextKey || '')),
+                ),
+                h(Badge, { tone: item.status === 'sent' ? 'ok' : item.status === 'failed' ? 'err' : 'muted' }, String(item.status || '')),
+              ),
+            )) : h(CogEmpty, { title: '还没有决策', description: '收到消息并聚合后会在这里出现；演练模式也可观察。' }),
+          ),
+          h(
+            Panel,
+            { title: '未解决未知', description: '低置信/新概念/知识冲突会先记录，不编造。' },
+            unknowns.length ? h('ul', { className: 'ob-list' }, unknowns.slice(0, 8).map((item) =>
+              h('li', { key: item.id, className: 'ob-list-item' },
+                h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'alert', size: 15 })),
+                h('span', { className: 'ob-list-body' },
+                  h('span', { className: 'ob-list-title' }, String(item.surface || '')),
+                  h('span', { className: 'ob-list-sub' }, String(item.unknownType || '') + ' · ' + String(item.status || '')),
+                ),
+              ),
+            )) : h(CogEmpty, { title: '暂无未知缺口', icon: 'check' }),
+          ),
+        ),
+        h(
+          Panel,
+          { title: '控制', description: '暂停只停止认知决策；平台连接与原始日志保留。' },
+          h(
+            'div',
+            { className: 'ob-row' },
+            h(Btn, { small: true, kind: props.data?.paused ? 'primary' : 'ghost', icon: props.data?.paused ? 'play' : 'pause', onClick: async () => { const result = await cogPost(props, '/cognition/pause', { paused: !props.data?.paused }); if (result) { props.toast(result.paused ? '认知已暂停' : '认知已恢复', 'ok'); props.reload() } } }, props.data?.paused ? '恢复认知' : '暂停认知'),
+            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: props.reload }, '刷新'),
+            h('span', { className: 'ob-small ob-muted' }, '深度学习任务可在「学习」页手动运行或重试。'),
+          ),
+        ),
+      )
+    }
+
+    function CogPersona(props) {
+      const [persona, setPersona] = useState(null)
+      const [error, setError] = useState('')
+      const [saving, setSaving] = useState(false)
+      useEffect(() => {
+        let alive = true
+        ;(async () => {
+          const parsed = parseApiResponse(await get('/cognition/persona'))
+          if (!alive) return
+          if (parsed.ok) setPersona(parsed.data.persona); else setError(parsed.message)
+        })().catch((err) => { if (alive) setError(String(err.message || err)) })
+        return () => { alive = false }
+      }, [])
+      const traits = safeObject(persona && persona.traits)
+      const style = safeObject(persona && persona.style)
+      const keys = [
+        ['extraversion', '外向'], ['openness', '开放/好奇'], ['agreeableness', '宜人'], ['conscientiousness', '尽责'], ['emotionalSensitivity', '情绪敏感'], ['humor', '幽默'],
+        ['socialInitiative', '社交主动'], ['caution', '谨慎'], ['expressiveness', '表达欲'], ['conflictApproach', '冲突倾向'], ['riskTolerance', '风险偏好'], ['consistency', '行为一致性'],
+      ]
+      const save = async (nextTraits, nextStyle) => {
+        setSaving(true)
+        const result = await cogPost(props, '/cognition/persona/edit', { traits: nextTraits || traits, style: nextStyle || style, reason: 'ui' })
+        if (result) props.toast('人格已更新', 'ok')
+        if (result && result.persona) setPersona(result.persona)
+        setSaving(false)
+      }
+      if (!persona) return error ? h(Banner, { tone: 'err', message: error }) : h(CogLoading)
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '稳定人格', description: '长期行为倾向；单次互动不改变。修改后立即持久化；锁定项不参与慢演化。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: saving, onClick: () => save(traits, style) }, '保存') },
+          h('div', { className: 'ob-cog-sliders' }, keys.map(([key, label]) => h(
+            'label',
+            { key, className: 'ob-cog-slider' },
+            h('span', { className: 'ob-cog-slider-head' }, h('span', null, label), h('span', { className: 'ob-muted' }, Number(traits[key] || 0).toFixed(2))),
+            h('input', { type: 'range', min: 0.1, max: 0.9, step: 0.05, value: Number(traits[key] || 0.5), 'aria-label': label, onChange: (event) => { const value = Number(event.target.value); const next = Object.assign({}, traits, { [key]: value }); setPersona(Object.assign({}, persona, { traits: next })); save(next, style) } }),
+          ))),
+        ),
+        h(Panel, { title: '表达风格', description: '风格参数只作为生成约束；不写死模板。' },
+          h('div', { className: 'ob-cog-sliders' }, [['formality', '正式度'], ['verbosity', '话痨度'], ['emojiRate', 'emoji 倾向'], ['teasingBound', '调侃边界'], ['warmth', '温暖度']].map(([key, label]) => h(
+            'label',
+            { key, className: 'ob-cog-slider' },
+            h('span', { className: 'ob-cog-slider-head' }, h('span', null, label), h('span', { className: 'ob-muted' }, Number(style[key] || 0).toFixed(2))),
+            h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: Number(style[key] || 0), 'aria-label': label, onChange: (event) => { const value = Number(event.target.value); const next = Object.assign({}, style, { [key]: value }); setPersona(Object.assign({}, persona, { style: next })); save(traits, next) } }),
+          ))),
+        ),
+        h(Panel, { title: '价值边界', description: '这些是行为边界，不是可被情绪/关系覆盖的硬安全规则。' },
+          h('div', { className: 'ob-row' }, safeArray(persona.values).map((value, index) => h(CogTag, { key: index, tone: 'brand' }, value))),
+          h('div', { className: 'ob-row', style: { marginTop: '10px' } },
+            h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!window.confirm('恢复默认人格？会清除人格历史并重置为配置初值。')) return; const result = await cogPost(props, '/cognition/persona/reset', {}); if (result) { props.toast('人格已重置', 'ok'); setPersona(result.persona) } } }, '重置人格'),
+          ),
+        ),
+        h(Panel, { title: '演化历史', description: '只记录缓慢演化与人工编辑；可追溯原因。' },
+          safeArray(persona.history).slice(-10).reverse().map((item, index) => h('div', { key: index, className: 'ob-cog-history' }, h(CogTag, { tone: 'muted' }, String(new Date(item.at || Date.now()).toLocaleString())), h('span', { className: 'ob-small' }, String(item.reason || 'evolution') + (safeArray(item.changes).length ? ' · ' + item.changes.map((change) => change.key).join(', ') : '')))),
+          (!Array.isArray(persona.history) || !persona.history.length) ? h(CogEmpty, { compact: true, title: '还没有演化记录' }) : null,
+        ),
+      )
+    }
+
+    function CogPersons(props) {
+      const [query, setQuery] = useState('')
+      const [selected, setSelected] = useState('')
+      const list = useCogApi(props, '/cognition/persons?limit=100')
+      const detail = useCogApi(
+        props,
+        selected ? '/cognition/person?personId=' + encodeURIComponent(selected) : '',
+        { auto: Boolean(selected) },
+      )
+      const persons = safeArray(list.data && list.data.items)
+      const filtered = query ? persons.filter((item) => String(item.displayName || '').toLowerCase().includes(query.toLowerCase())) : persons
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '人物', description: '平台身份 ≠ 真实人物；画像每项带来源、置信度与作用域。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: list.reload }, '刷新') },
+          h(CogToolbar, null, h(CogSearch, { value: query, onChange: setQuery, placeholder: '搜索昵称/别名' })),
+          list.error ? h(Banner, { tone: 'err', message: list.error }) : null,
+          list.loading ? h(CogLoading) : filtered.length ? h('ul', { className: 'ob-list' }, filtered.map((person) =>
+            h('li', { key: person.id, className: cx('ob-list-item', selected === person.id && 'on') },
+              h('button', { type: 'button', className: 'ob-cog-person-select', onClick: () => setSelected(person.id) },
+                h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'users', size: 15 })),
+                h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, String(person.displayName || '未命名')), h('span', { className: 'ob-list-sub' }, 'facet ' + String(person.facetCount || 0) + ' · 交互 ' + String(person.interactions || 0))),
+                h(Icon, { name: 'chevron', size: 14 }),
+              ),
+            ),
+          )) : h(CogEmpty, { title: '还没有人物', description: '收到第一条 QQ 消息后会创建长期人物实体。' }),
+        ),
+        selected ? h(Panel, {
+          title: '人物详情',
+          description: '事实/自述/观察/推断/假设分开；可删除单条画像或整个人物数据。',
+          actions: h('div', { className: 'ob-row' },
+            h(Btn, { small: true, kind: 'ghost', icon: 'copy', onClick: async () => { const parsed = parseApiResponse(await get('/cognition/export/person?personId=' + encodeURIComponent(selected))); if (!parsed.ok) { props.toast(parsed.message, 'err'); return } const blob = new Blob([JSON.stringify(parsed.data.data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'cognition-person.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } }, '导出'),
+            h(Btn, { small: true, kind: 'danger', icon: 'trash', onClick: async () => { if (!window.confirm('删除该人物的画像/关系/记忆？此操作不可撤销。')) return; const result = await cogPost(props, '/cognition/person/delete', { personId: selected }); if (result) { props.toast('人物数据已删除', 'ok'); setSelected(''); list.reload() } } }, '删除'),
+          ),
+        },
+          detail.loading ? h(CogLoading) : detail.data ? h('div', { className: 'ob-stack', style: { gap: '12px' } },
+            h(KV, { rows: [['名称', String(detail.data.person?.displayName || '')], ['首次出现', String(new Date(detail.data.person?.firstSeen || Date.now()).toLocaleString())], ['身份数', String(safeArray(detail.data.identities).length)], ['画像项', String(safeArray(detail.data.facets).length)]] }),
+            h('div', { className: 'ob-stack', style: { gap: '6px' } }, safeArray(detail.data.identities).map((identity, index) => h('div', { key: index, className: 'ob-cog-line' }, h(CogTag, { tone: 'muted' }, String(identity.platform || 'onebot')), h('span', null, String(identity.nickname || identity.platformUserId || '')), h('span', { className: 'ob-muted ob-small' }, 'confidence ' + Number(identity.confidence || 0).toFixed(2))))),
+            h('div', { className: 'ob-cog-divider' }),
+            safeArray(detail.data.facets).length ? safeArray(detail.data.facets).map((facet) => h('div', { key: facet.id, className: 'ob-cog-facet' },
+              h('div', { className: 'ob-row' }, h(CogTag, { tone: facet.evidenceKind === 'fact' ? 'ok' : facet.status === 'disputed' ? 'warn' : 'muted' }, facet.evidenceKind || facet.status), h(CogTag, { tone: 'muted' }, facet.facet), h('span', { className: 'ob-small ob-muted' }, facet.scopeType + (facet.scopeId ? ':' + facet.scopeId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(facet.confidence || 0).toFixed(2))),
+              h('p', { className: 'ob-small' }, String(facet.value || '')),
+              h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'trash', onClick: async () => { const result = await cogPost(props, '/cognition/person/delete-facet', { personId: selected, facetId: facet.id }); if (result) { props.toast('画像项已删除', 'ok'); detail.reload() } } }, '删除此项')),
+            )) : h(CogEmpty, { compact: true, title: '暂无画像项', description: '只有完整轮次才会更新长期画像。' }),
+          ) : h(Banner, { tone: 'err', message: detail.error || '人物不存在' }),
+        ) : h(CogEmpty, { title: '选择一个人物', description: '左侧列表来自认知库；私聊/群聊作用域不会互相泄漏。', icon: 'users' }),
+      )
+    }
+
+    function CogRelationships(props) {
+      const rel = useCogApi(props, '/cognition/relationships')
+      const items = safeArray(rel.data && rel.data.items)
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '社会关系', description: '多维、有向、情境化；不是单一好感度。历史可追溯。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: rel.reload }, '刷新') },
+          rel.error ? h(Banner, { tone: 'err', message: rel.error }) : null,
+          rel.loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '10px' } }, items.map((item) =>
+            h('div', { key: item.id, className: 'ob-cog-card' },
+              h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')), safeArray(item.summary).map((tag, index) => h(CogTag, { key: index, tone: 'muted' }, tag))), h('span', { className: 'ob-small ob-muted' }, '交互 ' + String(item.interactions || 0))),
+              h('div', { className: 'ob-cog-bars' }, [['affinity', '好感'], ['trust', '信任'], ['familiarity', '熟悉'], ['intimacy', '亲密'], ['conflict', '冲突'], ['wariness', '戒备']].map(([key, label]) => h(CogBar, { key, label, value: (Number(item.dimensions?.[key] || 0) + 1) / 2, text: Number(item.dimensions?.[key] || 0).toFixed(2) }))),
+            ),
+          )) : h(CogEmpty, { title: '还没有关系', description: '人物第一次互动后创建全局+当前场景关系。', icon: 'link' }),
+        ),
+      )
+    }
+
+    function CogMemories(props) {
+      const [query, setQuery] = useState('')
+      const [type, setType] = useState('')
+      const [result, setResult] = useState(null)
+      const [loading, setLoading] = useState(false)
+      const [expanded, setExpanded] = useState('')
+      const search = useCallback(async (q = query, t = type) => {
+        setLoading(true)
+        const parsed = parseApiResponse(await get('/cognition/memories?query=' + encodeURIComponent(q || '') + '&type=' + encodeURIComponent(t || '') + '&limit=80'))
+        setLoading(false)
+        if (!parsed.ok) { props.toast(parsed.message, 'err'); return }
+        setResult(parsed.data)
+      }, [query, type, props])
+      useEffect(() => { search('', '') }, [])
+      const items = safeArray(result && result.items)
+      const act = async (item, action) => {
+        if (action === 'delete' && !window.confirm('彻底删除这条记忆？删除后不可恢复；「遗忘」只是降低检索权重。')) return
+        const response = await cogPost(props, '/cognition/memory/action', { id: item.id, action })
+        if (response) { props.toast(action === 'forget' ? '已遗忘（可重新激活）' : action === 'delete' ? '记忆已删除' : '记忆已激活', 'ok'); search() }
+      }
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '记忆网络', description: '情景/语义/情绪/社交/程序记忆；检索按相关性、新近性、重要性、情绪与关联加权；遗忘≠删除。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => search() }, '刷新') },
+          h(CogToolbar, null,
+            h(CogSearch, { value: query, onChange: setQuery, onSubmit: () => search(), placeholder: '搜索记忆内容' }),
+            h('select', { className: 'ob-select', value: type, onChange: (event) => { setType(event.target.value); search(query, event.target.value) }, 'aria-label': '记忆类型' },
+              h('option', { value: '' }, '全部类型'),
+              ['episodic', 'semantic', 'emotional', 'social', 'procedural', 'self'].map((value) => h('option', { key: value, value }, value)),
+            ),
+            h(Btn, { small: true, kind: 'ghost', icon: 'search', onClick: () => search() }, '检索'),
+          ),
+          loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, items.map((item) =>
+            h('div', { key: item.id, className: 'ob-cog-card' },
+              h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: item.type === 'semantic' ? 'brand' : 'muted' }, String(item.type || 'memory')), h(CogTag, { tone: 'muted' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')), h('span', { className: 'ob-small ob-muted' }, String(item.status || 'active'))), h('span', { className: 'ob-small ob-muted' }, '重要 ' + Number(item.importance || 0).toFixed(2) + ' · 访问 ' + String(item.accessCount || 0))),
+              h('p', { className: 'ob-cog-memory-text' }, String(item.summary || item.content || '')),
+              h('div', { className: 'ob-row' },
+                h(Btn, { small: true, kind: 'ghost', onClick: () => setExpanded(expanded === item.id ? '' : item.id) }, expanded === item.id ? '收起' : '详情'),
+                expanded === item.id ? h(Btn, { small: true, kind: 'ghost', onClick: () => act(item, 'activate') }, '激活') : null,
+                expanded === item.id ? h(Btn, { small: true, kind: 'ghost', onClick: () => act(item, 'forget') }, '遗忘') : null,
+                expanded === item.id ? h(Btn, { small: true, kind: 'danger', onClick: () => act(item, 'delete') }, '删除') : null,
+              ),
+              expanded === item.id ? h('div', { className: 'ob-cog-detail' }, h(KV, { rows: [['ID', item.id], ['创建', String(new Date(item.createdAt || Date.now()).toLocaleString())], ['来源', String((item.sourceEventIds || []).length) + ' 个事件'], ['置信', Number(item.confidence || 0).toFixed(2)], ['效价/唤醒', Number(item.valence || 0).toFixed(2) + ' / ' + Number(item.arousal || 0).toFixed(2)]] })) : null,
+            ),
+          )) : h(CogEmpty, { title: '没有匹配记忆', description: '记忆在完整轮次结束后写入；试试清空搜索或改变类型。', icon: 'memory' }),
+        ),
+      )
+    }
+
+    function CogEmotion(props) {
+      const emo = useCogApi(props, '/cognition/emotion')
+      const emotion = safeObject(emo.data && emo.data.emotion)
+      const visible = safeObject(emo.data && emo.data.visible)
+      const discrete = safeObject(emotion.discrete)
+      const top = Object.entries(discrete).filter(([, value]) => Number(value) > 0.05).sort((a, b) => Number(b[1]) - Number(a[1]))
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '模拟情绪', description: 'OCC 评价 → PAD + 离散情绪；有惯性/衰减/调节。不是生物情绪或主观体验声明。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: emo.reload }, '刷新'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!window.confirm('重置情绪状态？')) return; const result = await cogPost(props, '/cognition/emotion/reset', {}); if (result) { props.toast('情绪已重置', 'ok'); emo.reload() } } }, '重置')) },
+          emo.error ? h(Banner, { tone: 'err', message: emo.error }) : null,
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: '效价', value: Number(emotion.valence || 0).toFixed(2), hint: '内部状态', icon: 'heart', tone: Number(emotion.valence || 0) >= 0 ? 'ok' : 'warn' }),
+            h(StatTile, { label: '唤醒', value: Number(emotion.arousal || 0).toFixed(2), hint: '0–1', icon: 'bolt', tone: 'brand' }),
+            h(StatTile, { label: '压力', value: Number(emotion.stress || 0).toFixed(2), hint: '影响有效技能', icon: 'alert', tone: 'warn' }),
+            h(StatTile, { label: '心境', value: Number(emotion.moodValence || 0).toFixed(2), hint: '慢变量', icon: 'sun', tone: 'brand' }),
+          ),
+          h('div', { className: 'ob-cog-bars' },
+            h(CogBar, { label: '内部效价', value: (Number(emotion.valence || 0) + 1) / 2, text: Number(emotion.valence || 0).toFixed(2) }),
+            h(CogBar, { label: '可见效价（调节后）', value: (Number(visible.valence || 0) + 1) / 2, text: Number(visible.valence || 0).toFixed(2) }),
+            h(CogBar, { label: '唤醒', value: Number(emotion.arousal || 0) }),
+            h(CogBar, { label: '压力', value: Number(emotion.stress || 0) }),
+            h(CogBar, { label: '疲劳', value: Number(emotion.fatigue || 0) }),
+          ),
+          h('div', { className: 'ob-cog-divider' }),
+          h('div', { className: 'ob-row' }, top.length ? top.map(([key, value]) => h(CogTag, { key, tone: 'brand' }, key + ' ' + Math.round(Number(value) * 100) + '%')) : h('span', { className: 'ob-small ob-muted' }, '当前没有显著离散情绪')),
+          emotion.appraisal ? h('p', { className: 'ob-field-help' }, '最近评价：' + JSON.stringify(emotion.appraisal)) : null,
+        ),
+      )
+    }
+
+    function CogPolicy(props) {
+      const list = useCogApi(props, '/cognition/decisions?limit=100')
+      const stats = safeObject(list.data && list.data.stats)
+      const items = safeArray(list.data && list.data.items)
+      const label = { reply: '回复', reply_short: '简短回复', clarify: '澄清', comfort: '关心', tease: '调侃', serious: '严肃', change_topic: '换话题', wait: '等待', silence: '沉默', learn: '学习', recall_tease: '撤回调侃', recall_concern: '撤回关心', recall_probe: '撤回试探', recall_silence: '假装没注意', recall_ignore: '忽略' }
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '策略与结果', description: '决策记录候选/效用/置信度；结果单独观察与归因；单次反馈不永久改变策略。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: list.reload }, '刷新') },
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: '决策', value: Number(stats.total || 0), icon: 'target', tone: 'brand' }),
+            h(StatTile, { label: '已发送', value: Number(stats.sent || 0), icon: 'send', tone: 'ok' }),
+            h(StatTile, { label: '沉默', value: Number(stats.silent || 0), hint: '一等动作', icon: 'pause', tone: 'muted' }),
+            h(StatTile, { label: '平均结果', value: Number(stats.averageReward || 0).toFixed(2), icon: 'chart', tone: 'brand' }),
+            h(StatTile, { label: 'Brier', value: dataMetric(stats, 'brier'), hint: '越低越好', icon: 'target', tone: 'brand' }),
+          ),
+          list.error ? h(Banner, { tone: 'err', message: list.error }) : null,
+          list.loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, items.map((item) =>
+            h('div', { key: item.id, className: 'ob-cog-card' },
+              h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: item.action === 'silence' || item.action === 'wait' ? 'muted' : 'brand' }, label[item.action] || item.action), h(CogTag, { tone: 'muted' }, String(item.chatType || '') + (item.chatId ? ':' + item.chatId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(item.confidence || 0).toFixed(2))), h(Badge, { tone: item.status === 'sent' ? 'ok' : item.status === 'failed' ? 'err' : 'muted' }, String(item.status || ''))),
+              h('p', { className: 'ob-field-help', style: { margin: '2px 0 0' } }, String(item.reason || '')),
+              h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, observation: { positiveReaction: true, attributionConfidence: 0.6 } }); if (result) { props.toast('已记录正向结果', 'ok'); list.reload() } } }, '标记正向'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/decision/correct', { decisionId: item.id, observation: { explicitCorrection: true, attributionConfidence: 0.7 } }); if (result) { props.toast('已记录负向结果', 'ok'); list.reload() } } }, '标记负向')),
+            ),
+          )) : h(CogEmpty, { title: '还没有决策', description: '聚合后的完整轮次会生成决策；沉默也会记录。', icon: 'target' }),
+        ),
+        h(Panel, { title: '学习到的策略', description: '按上下文 bucket 的 Beta 后验；可整体重置。' },
+          h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!window.confirm('清空策略学习结果？历史决策保留。')) return; const result = await cogPost(props, '/cognition/policy/reset', {}); if (result) { props.toast('策略学习已重置', 'ok'); list.reload() } } }, '重置策略学习')),
+          safeArray(stats.policies).length ? safeArray(stats.policies).slice(0, 12).map((item, index) => h('div', { key: index, className: 'ob-cog-line' }, h(CogTag, { tone: 'muted' }, String(item.action || '')), h('span', { className: 'ob-small' }, String(item.contextKey || '')), h('span', { className: 'ob-muted ob-small' }, 'α ' + Number(item.alpha || 0).toFixed(1) + ' / β ' + Number(item.beta || 0).toFixed(1) + ' · trials ' + String(item.trials || 0)))) : h(CogEmpty, { compact: true, title: '还没有策略后验', description: '获得结果反馈后会逐渐形成。' }),
+        ),
+      )
+    }
+
+    function dataMetric(stats, key) {
+      const value = Number(stats && stats[key])
+      return Number.isFinite(value) ? value.toFixed(2) : '—'
+    }
+
+    function CogLearning(props) {
+      const unknowns = useCogApi(props, '/cognition/unknowns?limit=100')
+      const tasks = useCogApi(props, '/cognition/learning/tasks?limit=100')
+      const claims = useCogApi(props, '/cognition/claims?limit=100')
+      const run = async () => { const result = await cogPost(props, '/cognition/learning/run', { max: 1 }); if (result) { props.toast('已运行学习任务', 'ok'); tasks.reload(); unknowns.reload(); claims.reload() } }
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '未知与学习', description: '未知检测不等于真正学习；外部资料多源验证后才形成带引用的 claim。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => { unknowns.reload(); tasks.reload(); claims.reload() } }, '刷新'), h(Btn, { small: true, kind: 'primary', icon: 'play', onClick: run }, '运行待处理')) },
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: '未知缺口', value: safeArray(unknowns.data && unknowns.data.items).length, icon: 'alert', tone: 'warn' }),
+            h(StatTile, { label: '学习任务', value: safeArray(tasks.data && tasks.data.items).length, icon: 'book', tone: 'brand' }),
+            h(StatTile, { label: '知识 claims', value: safeArray(claims.data && claims.data.items).length, icon: 'check', tone: 'ok' }),
+          ),
+          h(Panel, { title: '未知列表', description: '没有证据时保持未知；不把猜测写成事实。' },
+            safeArray(unknowns.data && unknowns.data.items).length ? h('ul', { className: 'ob-list' }, safeArray(unknowns.data.items).slice(0, 20).map((item) => h('li', { key: item.id, className: 'ob-list-item' }, h('span', { className: 'ob-list-avatar' }, h(Icon, { name: 'alert', size: 15 })), h('span', { className: 'ob-list-body' }, h('span', { className: 'ob-list-title' }, String(item.surface || '')), h('span', { className: 'ob-list-sub' }, String(item.unknownType || '') + ' · ' + String(item.status || '') + ' · 出现 ' + String(item.occurrences || 1))), h(CogTag, { tone: item.status === 'resolved' ? 'ok' : 'warn' }, String(item.status || ''))))) : h(CogEmpty, { title: '暂无未知', description: '低置信/新概念会出现。', icon: 'check' }),
+          ),
+          h(Panel, { title: '学习任务', description: '默认只检测未知；自动外部检索需在设置中显式开启。' },
+            safeArray(tasks.data && tasks.data.items).length ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, safeArray(tasks.data.items).slice(0, 20).map((task) => h('div', { key: task.id, className: 'ob-cog-card' }, h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(task.surface || '')), h(CogTag, { tone: 'muted' }, String(task.status || ''))), h('span', { className: 'ob-small ob-muted' }, 'attempts ' + String(task.attempts || 0))), h('p', { className: 'ob-field-help', style: { margin: 0 } }, safeArray(task.plan).join(' ') || ''), h('div', { className: 'ob-row' }, task.status === 'pending' ? h(Btn, { small: true, kind: 'ghost', onClick: run }, '运行') : null, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/retry', { taskId: task.id }); if (result) { props.toast('已重试', 'ok'); tasks.reload() } } }, '重试'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/learning/task/cancel', { taskId: task.id }); if (result) { props.toast('已取消', 'ok'); tasks.reload() } } }, '取消'))))) : h(CogEmpty, { title: '暂无学习任务', description: '开启自动研究或手动从未知创建任务。', icon: 'book' }),
+          ),
+          h(Panel, { title: '知识 claims', description: '带来源、置信度与时效；冲突状态保留 disputed，不强行合并。' },
+            safeArray(claims.data && claims.data.items).length ? safeArray(claims.data.items).slice(0, 20).map((claim) => h('div', { key: claim.id, className: 'ob-cog-card' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: claim.status === 'disputed' ? 'warn' : 'ok' }, String(claim.concept || '')), h(CogTag, { tone: 'muted' }, String(claim.status || '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(claim.confidence || 0).toFixed(2) + ' · 来源 ' + String(claim.sourceCount || 0))), h('p', { className: 'ob-small' }, String(claim.claim || '')), safeArray(claim.citations).length ? h('p', { className: 'ob-field-help' }, '引用：' + safeArray(claim.citations).map((citation) => citation.title || citation.url).join(' · ')) : null)) : h(CogEmpty, { title: '暂无 claims', description: '学习任务产生多源证据后才会写入。', icon: 'book' }),
+          ),
+        ),
+      )
+    }
+
+    function CogSkills(props) {
+      const list = useCogApi(props, '/cognition/skills')
+      const items = safeArray(list.data && list.data.items)
+      return h(Panel, { title: '技能', description: '独立于人格/情绪/关系；成功/失败/不用/压力都会改变有效熟练度。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: list.reload }, '刷新') },
+        list.error ? h(Banner, { tone: 'err', message: list.error }) : null,
+        items.length ? h('div', { className: 'ob-stack', style: { gap: '10px' } }, items.map((skill) => h('div', { key: skill.id, className: 'ob-cog-card' }, h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(skill.label || skill.name)), h('span', { className: 'ob-small ob-muted' }, 'base ' + Number(skill.baseMastery || 0).toFixed(2))), h('span', { className: 'ob-small ob-muted' }, '使用 ' + String(skill.uses || 0) + ' · 成功 ' + String(skill.successes || 0) + ' · 失败 ' + String(skill.failures || 0))), h(CogBar, { label: '有效熟练度', value: Number(skill.effectiveMastery || 0) }), h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/skill/use', { name: skill.name, success: true }); if (result) { props.toast('已记录成功使用', 'ok'); list.reload() } } }, '记录成功'), h(Btn, { small: true, kind: 'ghost', onClick: async () => { const result = await cogPost(props, '/cognition/skill/use', { name: skill.name, success: false }); if (result) { props.toast('已记录失败', 'ok'); list.reload() } } }, '记录失败'))))) : h(CogEmpty, { title: '技能初始化中', icon: 'chart' }),
+      )
+    }
+
+    function CogMeta(props) {
+      const metrics = useCogApi(props, '/cognition/metrics')
+      const insights = useCogApi(props, '/cognition/insights?limit=20')
+      const m = safeObject(metrics.data && metrics.data.metrics)
+      const items = safeArray(insights.data && insights.data.items)
+      const gaps = safeArray(m.capabilityGaps)
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, { title: '自我评估', description: '校准、策略趋势、记忆/技能/学习健康；反思只产生 bounded insight，不修改代码或权限。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: metrics.reload }, '刷新'), h(Btn, { small: true, kind: 'primary', icon: 'sparkles', onClick: async () => { const result = await cogPost(props, '/cognition/insights/generate', {}); if (result) { props.toast('已生成洞察', 'ok'); insights.reload() } } }, '生成洞察')) },
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: '决策', value: Number(m.decisions || 0), icon: 'target', tone: 'brand' }),
+            h(StatTile, { label: '已观察结果', value: Number(m.observed || 0), icon: 'chart', tone: 'brand' }),
+            h(StatTile, { label: '平均结果', value: Number(m.averageReward || 0).toFixed(2), icon: 'chart', tone: 'brand' }),
+            h(StatTile, { label: 'Brier', value: m.brier == null ? '—' : Number(m.brier).toFixed(2), hint: '越低越校准', icon: 'target', tone: 'brand' }),
+            h(StatTile, { label: '沉默率', value: m.silenceRate == null ? '—' : Math.round(Number(m.silenceRate) * 100) + '%', icon: 'pause', tone: 'muted' }),
+            h(StatTile, { label: '未知缺口', value: Number(m.unknowns?.open || 0), icon: 'alert', tone: 'warn' }),
+          ),
+          h('div', { className: 'ob-cog-bars' },
+            h(CogBar, { label: '记忆活跃', value: Number(m.memories?.active || 0) / Math.max(1, Number(m.memories?.total || 1)), text: String(m.memories?.active || 0) + '/' + String(m.memories?.total || 0) }),
+            h(CogBar, { label: '技能平均', value: Number(m.skills?.average || 0) }),
+          ),
+          gaps.length ? h('div', { className: 'ob-row' }, gaps.map((gap, index) => h(CogTag, { key: index, tone: 'warn' }, gap.type + ' × ' + gap.count + ' → ' + gap.suggestion))) : null,
+        ),
+        h(Panel, { title: '近期洞察', description: '只记录结论与指标快照，可追溯；不是自我修改。' },
+          items.length ? items.map((item, index) => h('div', { key: item.id || index, className: 'ob-cog-card' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'muted' }, String(new Date(item.createdAt || Date.now()).toLocaleString()))), safeArray(item.insights).map((insight, idx) => h('p', { key: idx, className: 'ob-small', style: { margin: '3px 0' } }, '· ' + String(insight))))) : h(CogEmpty, { title: '还没有洞察', description: '运行一段时间或积累结果后生成。', icon: 'sparkles' }),
+        ),
+      )
+    }
+
+    function CogSettings(props) {
+      const groups = useMemo(() => safeArray(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
+      const [active, setActive] = useState(groups[0] ? groups[0].id : 'cog-core')
+      const current = groups.find((group) => group.id === active) || groups[0]
+      if (!groups.length) return h(CogEmpty, { title: '认知设置不可用', description: '服务端未返回 cog-* 字段组；请检查插件版本。' })
+      return h(SettingsShell, {
+        label: '认知设置分类',
+        items: groups.map((group) => ({ id: group.id, label: group.title, icon: configGroupIcon ? configGroupIcon(group.id) : 'sliders' })),
+        active,
+        onSelect: setActive,
+        footer: props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
+      },
+        h(Panel, { title: current.title, description: current.description }, safeArray(current.fields).map((field) =>
+          h(FieldRow, {
+            key: field.path,
+            spec: field,
+            value: getByPath(props.draft || {}, field.path),
+            onChange: (value) => { props.saveUiPatch({ [field.path]: value }) },
+          }),
+        )),
+      )
+    }
+    // =====================================================================
     // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
 
@@ -4715,6 +5355,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             eyebrow: 'SYSTEM SETTINGS',
             title: '系统设置',
             description: '面板外观与动效偏好，以及 DSH 全局主题。分类切换只替换右侧内容，页头与导航保持不动。',
+          }
+        case 'cognition':
+          return {
+            eyebrow: 'COGNITIVE CORE',
+            title: '认知',
+            description: '人格、人物、关系、记忆、情绪、策略、学习与元认知。所有状态持久化、可追溯、可暂停/删除；LLM 只做语义投影，不持有长期状态。',
           }
         case 'about':
           return {
@@ -5107,6 +5753,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'settings') body = h(SettingsTab, tabProps)
+      else if (tab === 'cognition') body = h(CognitionTab, tabProps)
       else if (tab === 'logs') body = h(Logs, tabProps)
       else body = h(About, tabProps)
 
@@ -5244,6 +5891,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.ConfigTab = ConfigTab
     exports.SettingsTab = SettingsTab
     exports.SettingsShell = SettingsShell
+    exports.CognitionTab = CognitionTab
+    exports.COG_SECTIONS = COG_SECTIONS
     exports.Logs = Logs
     exports.About = About
     exports.UI_ACCENTS = UI_ACCENTS

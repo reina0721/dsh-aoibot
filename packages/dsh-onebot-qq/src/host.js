@@ -19,6 +19,7 @@ import { dataDir } from './core/store.js'
 import { createGatewayManager } from './gateway/manager.js'
 import { normalizeEvent } from './gateway/normalize.js'
 import { createRoutes } from './http/routes.js'
+import { createCognition } from './cognition/index.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PKG = (() => {
@@ -50,12 +51,33 @@ export function apply(ctx, rowConfig) {
 
   const events = createEventStore({ getConfig, log: eventLog })
 
-  /** WS 原始事件 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
+  let gatewayRef = null
+  const cognition = createCognition({
+    ctx,
+    getConfig,
+    gateway: {
+      get actions() {
+        return {
+          sendMessage: (...args) => {
+            if (!gatewayRef?.actions?.sendMessage) throw new Error('QQ 网关尚未就绪')
+            return gatewayRef.actions.sendMessage(...args)
+          },
+        }
+      },
+    },
+    logger,
+    dataRoot: dataDir('cognition'),
+  })
+
+  /** WS 原始事件 → raw 日志/认知 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
   function onEvent(raw) {
     try {
+      // 过滤前先交给认知：原始事件不能因为过滤规则丢失。
+      try { cognition.ingestRaw(raw) } catch (error) { log.warn('认知 raw 事件失败：', error.message) }
       const normalized = normalizeEvent(raw, getConfig())
       if (!normalized) return
       const pushed = events.push(normalized)
+      try { cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' }) } catch (error) { log.warn('认知 observe 失败：', error.message) }
       if (!pushed.accepted) {
         log.debug(`事件被过滤：${pushed.reason}`)
         return
@@ -81,6 +103,15 @@ export function apply(ctx, rowConfig) {
       } catch (error) {}
     },
   })
+  gatewayRef = gateway
+  cognition.gateway = gateway
+
+  // 对外暴露认知服务；宿主/其它插件可通过 ctx.get('onebotCognition') 读取。
+  try {
+    ctx.provide?.('onebotCognition', cognition)
+  } catch (error) {
+    log.warn('注册 onebotCognition 服务失败：', error.message)
+  }
 
   /** 保存配置并热应用（端点变化时 gateway 内部自动重连）。 */
   function setConfig(next) {
@@ -113,6 +144,7 @@ export function apply(ctx, rowConfig) {
     gateway,
     events,
     logger,
+    cognition,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -134,6 +166,9 @@ export function apply(ctx, rowConfig) {
     } catch (error) {}
     try {
       gateway.dispose()
+    } catch (error) {}
+    try {
+      cognition.dispose()
     } catch (error) {}
     try {
       events.dispose()
@@ -159,6 +194,7 @@ export function apply(ctx, rowConfig) {
     resetConfig,
     gateway,
     events,
+    cognition,
     logger,
     routes,
     dispose,

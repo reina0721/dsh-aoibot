@@ -186,7 +186,7 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   assert.ok(status.events && typeof status.events.received === 'number')
   assert.ok(status.logs && typeof status.logs.total === 'number')
   assert.ok(Array.isArray(status.recentEvents))
-  assert.equal(status.config.version, 1)
+  assert.equal(status.config.version, 2)
 
   // /config：config / defaults / groups 三件套，面板据此数据驱动渲染
   const configPayload = await getJson(fake, '/config')

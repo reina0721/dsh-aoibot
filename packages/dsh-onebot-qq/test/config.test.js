@@ -99,3 +99,51 @@ test('logger：logging.redact=true 脱敏，redact=false 时按原样记录', ()
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('cognition 配置：默认值、字段分组、非法枚举/数值回退与边界', () => {
+  const { config } = normalizeConfig({})
+  assert.equal(config.cognition.enabled, true)
+  assert.equal(config.cognition.paused, false)
+  assert.equal(config.cognition.llm.mode, 'auto')
+  assert.equal(config.cognition.memory.semanticIndex, 'lexical')
+  assert.equal(config.cognition.privacy.privateIsolation, true)
+  assert.equal(config.cognition.turn.addressedOnlyGroups, true)
+  assert.equal(config.cognition.policy.proactive, false)
+  assert.equal(config.cognition.learning.autoResearch, false)
+  assert.equal(config.cognition.persona.traits.openness, DEFAULTS.cognition.persona.traits.openness)
+  assert.ok(Array.isArray(config.cognition.persona.values))
+
+  const cognitionGroups = CONFIG_GROUPS.filter((group) => group.id.startsWith('cog-'))
+  assert.ok(cognitionGroups.length >= 8, 'cognition 配置应拆成多个字段组')
+  const paths = cognitionGroups.flatMap((group) => group.fields.map((field) => field.path))
+  assert.ok(paths.includes('cognition.llm.mode'))
+  assert.ok(paths.includes('cognition.turn.privateMaxMs'))
+  assert.ok(paths.includes('cognition.memory.retrievalTopK'))
+  assert.ok(paths.includes('cognition.privacy.rawRetentionDays'))
+
+  const bad = normalizeConfig({
+    cognition: {
+      enabled: 'yes',
+      dryRun: 1,
+      llm: { mode: 'magic', temperature: 9, analysisMaxTokens: 1, maxConcurrency: 99 },
+      turn: { privateMaxMs: 10, maxAggregateMessages: 999 },
+      persona: { traits: { openness: 2, humor: -1 } },
+      memory: { semanticIndex: 'vectors', retrievalTopK: 999 },
+      privacy: { privateIsolation: 'no', rawRetentionDays: -5 },
+    },
+  }).config.cognition
+  assert.equal(bad.enabled, DEFAULTS.cognition.enabled)
+  assert.equal(bad.dryRun, DEFAULTS.cognition.dryRun)
+  assert.equal(bad.llm.mode, 'auto')
+  assert.equal(bad.llm.temperature, 1.5)
+  assert.equal(bad.llm.analysisMaxTokens, 128)
+  assert.equal(bad.llm.maxConcurrency, 8)
+  assert.equal(bad.turn.privateMaxMs, 3000)
+  assert.equal(bad.turn.maxAggregateMessages, 50)
+  assert.equal(bad.persona.traits.openness, 0.9)
+  assert.equal(bad.persona.traits.humor, 0.1)
+  assert.equal(bad.memory.semanticIndex, 'lexical')
+  assert.equal(bad.memory.retrievalTopK, 30)
+  assert.equal(bad.privacy.privateIsolation, DEFAULTS.cognition.privacy.privateIsolation)
+  assert.equal(bad.privacy.rawRetentionDays, 0)
+})

@@ -68,7 +68,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -124,6 +124,140 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  // ---- 认知（M1：概览/暂停；后续里程碑扩展 persons/memories/policy/...）----
+  if (cognition) {
+    route('GET', '/cognition/overview', async () => ({ ok: true, version, ...(await cognition.overview()) }))
+    route('POST', '/cognition/pause', async (req) => {
+      const body = await readBody(req)
+      const paused = body?.paused !== false
+      if (paused) cognition.pause(String(body?.reason || ''))
+      else cognition.resume()
+      return { ok: true, ...cognition.snapshot() }
+    })
+    route('GET', '/cognition/persons', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.persons({ query: q.query || '', limit: toInt(q.limit, 50, 1, 200) }) }
+    })
+    route('GET', '/cognition/person', async (req) => {
+      const q = queryOf(req)
+      if (!q.personId) throw new Error('缺少 personId')
+      return { ok: true, ...cognition.personDetail(q.personId) }
+    })
+    route('POST', '/cognition/person/correct-facet', async (req) => {
+      const body = await readBody(req)
+      if (!body?.personId || !body?.facetId) throw new Error('缺少 personId/facetId')
+      return { ok: true, facet: cognition.correctFacet(body.personId, body.facetId, body.patch || {}) }
+    })
+    route('POST', '/cognition/person/delete-facet', async (req) => {
+      const body = await readBody(req)
+      if (!body?.personId || !body?.facetId) throw new Error('缺少 personId/facetId')
+      return { ok: true, facet: cognition.deleteFacet(body.personId, body.facetId) }
+    })
+    route('GET', '/cognition/relationships', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.relationshipsList({ scopeType: q.scopeType || undefined, scopeId: q.scopeId || undefined }), history: q.personId ? cognition.relationshipHistory(q.personId, { limit: toInt(q.limit, 30, 1, 200) }) : [] }
+    })
+    route('POST', '/cognition/relationship/adjust', async (req) => {
+      const body = await readBody(req)
+      if (!body?.personId) throw new Error('缺少 personId')
+      return { ok: true, relationship: cognition.adjustRelationship(body.personId, body.patch || {}) }
+    })
+    route('GET', '/cognition/memories', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.memories({ query: q.query || '', type: q.type || '', personId: q.personId || '', scopeType: q.scopeType || undefined, scopeId: q.scopeId || undefined, status: q.status || 'active', limit: toInt(q.limit, 50, 1, 200) }) }
+    })
+    route('GET', '/cognition/memory', async (req) => {
+      const q = queryOf(req)
+      if (!q.id) throw new Error('缺少 id')
+      return { ok: true, ...cognition.memoryDetail(q.id) }
+    })
+    route('POST', '/cognition/memory/action', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id || !body?.action) throw new Error('缺少 id/action')
+      return { ok: true, result: cognition.memoryAction(body.id, body.action) }
+    })
+    route('GET', '/cognition/emotion', async () => ({ ok: true, ...cognition.emotionState() }))
+    route('POST', '/cognition/emotion/adjust', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, emotion: cognition.adjustEmotion(body || {}) }
+    })
+    route('POST', '/cognition/emotion/reset', async () => ({ ok: true, emotion: cognition.resetEmotion() }))
+    route('GET', '/cognition/persona', async () => ({ ok: true, persona: cognition.personaState() }))
+    route('POST', '/cognition/persona/edit', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, result: cognition.editPersona(body || {}) }
+    })
+    route('POST', '/cognition/persona/reset', async () => ({ ok: true, persona: cognition.resetPersona() }))
+    route('GET', '/cognition/decisions', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.decisions({ limit: toInt(q.limit, 50, 1, 200) }), stats: cognition.policyStats() }
+    })
+    route('POST', '/cognition/decision/correct', async (req) => {
+      const body = await readBody(req)
+      if (!body?.decisionId) throw new Error('缺少 decisionId')
+      return { ok: true, outcome: cognition.correctDecision(body.decisionId, body.observation || {}) }
+    })
+    route('GET', '/cognition/policy/stats', async () => ({ ok: true, stats: cognition.policyStats() }))
+    route('POST', '/cognition/policy/reset', async () => ({ ok: true, ...cognition.resetPolicy() }))
+    route('GET', '/cognition/skills', async () => ({ ok: true, items: cognition.skillsList() }))
+    route('GET', '/cognition/beliefs', async () => ({ ok: true, items: cognition.beliefsList() }))
+    route('POST', '/cognition/belief/correct', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id) throw new Error('缺少 id')
+      return { ok: true, belief: cognition.correctBelief(String(body.id), body.patch || {}) }
+    })
+    route('GET', '/cognition/proactivity', async () => ({ ok: true, stats: cognition.proactivityStats() }))
+    route('POST', '/cognition/proactivity/run', async () => ({ ok: true, result: await cognition.runProactivity() }))
+    route('POST', '/cognition/skill/use', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, skill: cognition.skillUse(String(body?.name || ''), body?.success === true ? true : body?.success === false ? false : null) }
+    })
+    route('GET', '/cognition/unknowns', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.unknowns({ limit: toInt(q.limit, 50, 1, 200), status: q.status || undefined }) }
+    })
+    route('GET', '/cognition/learning/tasks', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.learningTasks({ limit: toInt(q.limit, 50, 1, 200), status: q.status || undefined }) }
+    })
+    route('GET', '/cognition/claims', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.claims({ limit: toInt(q.limit, 50, 1, 200) }) }
+    })
+    route('POST', '/cognition/learning/run', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, results: await cognition.runLearning({ max: body?.max || 1 }) }
+    })
+    route('POST', '/cognition/learning/task/retry', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, task: cognition.retryTask(String(body?.taskId || '')) }
+    })
+    route('POST', '/cognition/learning/task/cancel', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, task: cognition.cancelTask(String(body?.taskId || '')) }
+    })
+    route('GET', '/cognition/metrics', async () => ({ ok: true, metrics: cognition.metrics() }))
+    route('GET', '/cognition/insights', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.insights({ limit: toInt(q.limit, 20, 1, 100) }) }
+    })
+    route('POST', '/cognition/insights/generate', async () => ({ ok: true, insight: cognition.generateInsight() }))
+    route('GET', '/cognition/traces', async (req) => {
+      const q = queryOf(req)
+      return { ok: true, items: cognition.traces(q.turnId || '', { limit: toInt(q.limit, 100, 1, 500) }) }
+    })
+    route('GET', '/cognition/export/person', async (req) => {
+      const q = queryOf(req)
+      if (!q.personId) throw new Error('缺少 personId')
+      return { ok: true, data: cognition.exportPerson(q.personId) }
+    })
+    route('POST', '/cognition/person/delete', async (req) => {
+      const body = await readBody(req)
+      if (!body?.personId) throw new Error('缺少 personId')
+      return { ok: true, ...cognition.deletePerson(body.personId) }
+    })
+  }
 
   route('GET', '/config', async () => ({
     ok: true,
