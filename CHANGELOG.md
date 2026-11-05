@@ -7,5 +7,6 @@
 - 保留 OneBot API 路径与事件契约。
 - 建立分层文档、GitHub Release 安装包、校验文件和跨平台安装脚本。
 - 新增离线测试、文档检查和发布产物检查流程。
+- 兼容 Node 22.13 未编译 FTS5 的 SQLite：保留数据库与事务，检索使用词法匹配。
 
 历史功能与验证材料见 [归档](docs/archive/README.md)。

@@ -35,7 +35,6 @@ CREATE TABLE IF NOT EXISTS records (
 CREATE INDEX IF NOT EXISTS records_kind_created ON records(kind, created_at DESC);
 CREATE INDEX IF NOT EXISTS records_kind_person ON records(kind, person_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS records_scope ON records(scope_type, scope_id, created_at DESC);
-CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(kind UNINDEXED, id UNINDEXED, text, tokenize='unicode61');
 `
 
 function safeFile(file) {
@@ -72,9 +71,10 @@ function rowToRecord(row) {
 export function createStore({ file, log, clock = { now: Date.now } } = {}) {
   const now = () => Number(clock.now()) || nowMs()
   const dbFile = file || ':memory:'
-  const jsonFile = file ? file.replace(/\.sqlite$/, '.json') : ''
+  const jsonFile = file && file !== ':memory:' ? file.replace(/\.sqlite$/, '.json') : ''
   let mode = 'json'
   let db = null
+  let ftsEnabled = false
   let json = null
   let closed = false
   let txDepth = 0
@@ -93,6 +93,16 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
     if (dbFile !== ':memory:') mkdirSync(dirname(dbFile), { recursive: true })
     db = new DatabaseSync(dbFile)
     db.exec(SCHEMA)
+    // Some supported Node builds ship SQLite without FTS5. Keep SQLite storage
+    // and transactions; only lexical retrieval falls back to token overlap.
+    const hadFts = Boolean(db.prepare("SELECT name FROM sqlite_master WHERE name = 'fts'").get())
+    try {
+      db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(kind UNINDEXED, id UNINDEXED, text, tokenize='unicode61')")
+      ftsEnabled = true
+    } catch (error) {
+      if (!/no such module: fts5/i.test(error.message)) throw error
+      log?.warn?.('SQLite FTS5 不可用，保留 SQLite 存储并使用词法检索。')
+    }
     const version = Number(db.prepare('SELECT value FROM meta WHERE key = ?').get('schema_version')?.value || 0)
     if (version > SCHEMA_VERSION) throw new Error(`认知数据库版本 ${version} 高于当前支持的 ${SCHEMA_VERSION}`)
     if (version < SCHEMA_VERSION) {
@@ -100,6 +110,12 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
       db.prepare('INSERT OR REPLACE INTO meta(key, value) VALUES(?, ?)').run('created_at', String(now()))
     }
     mode = 'sqlite'
+    if (ftsEnabled && !hadFts) {
+      for (const row of db.prepare('SELECT kind,id,data FROM records').all()) {
+        const body = JSON.parse(row.data)
+        ftsUpsert(row.kind, row.id, body.ftsText || body.text || body.content || body.summary || '')
+      }
+    }
   } catch (error) {
     try { db?.close?.() } catch (e) {}
     db = null
@@ -212,6 +228,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
   function ftsUpsert(kind, id, text) {
     if (!text) return
     if (mode === 'sqlite') {
+      if (!ftsEnabled) return
       db.prepare('DELETE FROM fts WHERE kind = ? AND id = ?').run(kind, id)
       db.prepare('INSERT INTO fts(kind,id,text) VALUES(?,?,?)').run(kind, id, ftsText(text))
     } else {
@@ -220,7 +237,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
   }
 
   function ftsDelete(kind, id) {
-    if (mode === 'sqlite') db.prepare('DELETE FROM fts WHERE kind = ? AND id = ?').run(kind, id)
+    if (mode === 'sqlite') { if (ftsEnabled) db.prepare('DELETE FROM fts WHERE kind = ? AND id = ?').run(kind, id) }
     else delete json.fts[`${kind}:${id}`]
   }
 
@@ -232,7 +249,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
     if (!q) return []
     const tokens = [...new Set(ftsText(q).split(' ').filter(Boolean))]
     if (!tokens.length) return []
-    if (mode === 'sqlite') {
+    if (mode === 'sqlite' && ftsEnabled) {
       try {
         const expr = tokens.slice(0, 8).map((token) => `"${token.replace(/"/g, '""')}"`).join(' OR ')
         const rows = db.prepare('SELECT id, bm25(fts) AS score FROM fts WHERE fts MATCH ? AND kind = ? ORDER BY score LIMIT ?')
@@ -245,8 +262,16 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
     }
     const querySet = new Set(tokens)
     const scored = []
-    for (const [key, text] of Object.entries(json.fts)) {
-      const [entryKind, id] = key.split(':')
+    const entries = mode === 'sqlite'
+      ? db.prepare('SELECT id,data FROM records WHERE kind = ?').all(kind).map(row => {
+        const body = JSON.parse(row.data)
+        return { kind, id: row.id, text: ftsText(body.ftsText || body.text || body.content || body.summary || '') }
+      })
+      : Object.entries(json.fts).map(([key,text]) => {
+        const split = key.indexOf(':')
+        return { kind: key.slice(0,split), id: key.slice(split+1), text }
+      })
+    for (const { kind: entryKind, id, text } of entries) {
       if (entryKind !== kind) continue
       const textTokens = new Set(String(text || '').split(' ').filter(Boolean))
       let hits = 0
@@ -329,7 +354,7 @@ export function createStore({ file, log, clock = { now: Date.now } } = {}) {
   }
 
   function info() {
-    return { mode, file: mode === 'sqlite' ? dbFile : jsonFile, schemaVersion: SCHEMA_VERSION, stats: { ...stats } }
+    return { mode, ftsEnabled, file: mode === 'sqlite' ? dbFile : jsonFile, schemaVersion: SCHEMA_VERSION, stats: { ...stats } }
   }
 
   /** 清理保留期数据；调用方传入每个 kind 的保留毫秒数。 */

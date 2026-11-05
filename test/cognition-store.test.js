@@ -41,6 +41,20 @@ test('store：原始事件按 dedupeKey 去重并支持 accepted 更新', () => 
   assert.equal(store.get('raw_event', first.record.id).accepted, true)
 }))
 
+test('store: in-memory SQLite supports retrieval with or without FTS5', () => {
+  const store = createStore({ file: ':memory:' })
+  try {
+    assert.equal(store.mode, 'sqlite')
+    assert.equal(typeof store.info().ftsEnabled, 'boolean')
+    store.put('memory', 'with:colon', { text: '咖啡' })
+    assert.equal(store.search('memory', '咖啡')[0]?.id, 'with:colon')
+    store.put('memory', 'with:colon', { text: '下雨' })
+    assert.equal(store.search('memory', '咖啡').length, 0)
+    store.remove('memory', 'with:colon')
+    assert.equal(store.search('memory', '下雨').length, 0)
+  } finally { store.close() }
+})
+
 test('store：FTS 检索中文（单字/二元组）并支持删除', () => withStore((store) => {
   store.put('memory', 'm1', { text: '小明喜欢猫和咖啡', kind: 'episodic' })
   store.put('memory', 'm2', { text: '今天下雨了', kind: 'episodic' })

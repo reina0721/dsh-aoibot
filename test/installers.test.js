@@ -44,6 +44,8 @@ exit $LASTEXITCODE
 `);
       result=spawnSync('powershell',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',harness,...args],{env,encoding:'utf8'});
     } else {
+      // Use the runtime executing this test, including when launched via npx.
+      writeFileSync(join(bin,'node'),`#!/bin/sh\nexec '${process.execPath.replaceAll('\\','/').replaceAll("'", "'\\''")}' "$@"\n`,{mode:0o755});
       writeFileSync(join(bin,'curl'),`#!/bin/sh
 printf '%s\\n' "$*" >> "$INSTALL_LOG.urls"
 [ "$INSTALL_SCENARIO" != download-failed ] || exit 22
