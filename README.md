@@ -1,6 +1,16 @@
 # dsh-bot
 
+![dsh-bot 宣传插画：会话、人格与记忆的连接](https://raw.githubusercontent.com/reina0721/dsh-bot/main/docs/assets/promo/dsh-bot-hero.png)
+
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 QQ 接入、人格与认知服务的插件。通过 OneBot v11 连接 NapCat、SnowLuma、Lagrange.OneBot 或 LLOneBot，提供网页管理面板和本地持久化。
+
+## 实机演示
+
+下面是在真实 DSH `0.2.1-rc.3` 中运行 `dsh-bot v0.10.0` 的网页面板。账号、人格和消息为合成演示数据，QQ 链路使用仓库自带的模拟 OneBot 网关；不代表真实 QQ 登录或外部模型调用。
+
+![真实 DSH 面板：模拟网关已连接、账号核验通过、事件计数和人格概览](https://raw.githubusercontent.com/reina0721/dsh-bot/main/docs/assets/screenshots/overview-desktop.jpg)
+
+[查看演示环境、验证结果与复现步骤](docs/DEMO.md)。顶部横幅为 AI 宣传插画，实际界面以实机截图为准。
 
 ## 能力与要求
 
@@ -13,7 +23,7 @@
 
 ## 安装与下载
 
-以下 Release 入口在仓库改名并首次发布后可用。
+`v0.10.0` 已发布，可通过以下 GitHub 直链安装或下载。
 
 | 入口 | 下载 |
 | --- | --- |

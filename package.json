@@ -37,7 +37,9 @@
     "docs/research/*.md",
     "scripts/install.ps1",
     "scripts/install.sh",
-    "docs/archive/README.md"
+    "docs/archive/README.md",
+    "docs/DEMO.md",
+    "docs/assets/demo-evidence.json"
   ],
   "dsh": {
     "bundle": {

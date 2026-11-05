@@ -1,0 +1,58 @@
+{
+  "recordedAt": "2026-11-05T22:58:14.209Z",
+  "timezone": "America/New_York",
+  "sourceCommit": "b4e816bd6e2a4b00d5a54a7795bdeaae7f341ef0",
+  "pluginVersion": "0.10.0",
+  "dshVersion": "0.2.1-rc.3",
+  "profile": "dsh-bot-public-demo",
+  "dataSource": "bundled mock OneBot gateway and synthetic personas/messages",
+  "gateway": {
+    "state": "connected",
+    "loginCheck": "ok"
+  },
+  "cognition": {
+    "ready": true,
+    "mode": "sqlite",
+    "dryRun": true,
+    "counts": {
+      "person": 2,
+      "identity": 2,
+      "relationship": 4,
+      "memory": 2,
+      "unknown": 0,
+      "learning_task": 0,
+      "knowledge_claim": 0,
+      "decision": 0,
+      "outcome": 0,
+      "skill": 13,
+      "belief": 0,
+      "trace": 6,
+      "raw_event": 14
+    },
+    "stats": {
+      "raw": 14,
+      "observed": 14,
+      "accepted": 14,
+      "dropped": 0,
+      "turns": 2
+    }
+  },
+  "modelProvidersConfigured": 0,
+  "externalModelValidation": false,
+  "realQQValidation": false,
+  "ui": {
+    "screenshot": "screenshots/overview-desktop.jpg",
+    "viewport": {
+      "width": 1440,
+      "height": 1000
+    },
+    "documentWidth": 1440,
+    "pageHorizontalOverflow": false,
+    "otherTabsCaptured": false,
+    "mobileCaptured": false
+  },
+  "limitations": [
+    "Native browser automation stopped because the active URL could not be verified reliably.",
+    "No private chats or API keys used in public evidence."
+  ]
+}

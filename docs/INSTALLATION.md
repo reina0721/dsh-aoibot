@@ -10,7 +10,7 @@
 dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.10.0/dsh-bot.tgz
 ```
 
-追踪最新稳定版时将 URL 换为 `https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz`。推荐固定版本以便重复安装。首次发布前这些地址不可用。
+追踪最新稳定版时将 URL 换为 `https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz`。推荐固定版本以便重复安装。v0.10.0 已发布，这些地址可直接使用。
 
 ## 一键安装脚本
 
