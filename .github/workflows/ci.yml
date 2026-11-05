@@ -1,0 +1,53 @@
+name: Validate and release
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: node -e 'if(process.env.GITHUB_REF_NAME !== "v" + require("./package.json").version)process.exit(1)'
+      - run: npm test
+      - run: npm run check:docs
+      - run: npm run pack:release
+      - run: npm run check:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-ubuntu-latest
+          path: dist
+      - name: Publish the validated artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          args=()
+          if [[ "$TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$TAG" dist/dsh-bot.tgz dist/dsh-bot.zip dist/SHA256SUMS --verify-tag --generate-notes "${args[@]}"

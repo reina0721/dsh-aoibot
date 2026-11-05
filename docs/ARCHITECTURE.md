@@ -1,7 +1,6 @@
-# dsh-onebot-qq · 架构与实现契约
+# dsh-bot · 架构与实现契约
 
-> 本文件是团队协作的**唯一接口契约**。实现者必须严格遵守模块边界与 API 形状；
-> 需要变更契约时先改本文件并在任务板说明。
+> 本文件描述当前模块边界与接口契约。接口变更需同步更新本文、测试及用户文档。
 
 ## 1. 目标
 
@@ -20,39 +19,39 @@ LLOneBot** 等 QQ 网关地址，提供：
 ## 2. 代码位置
 
 ```
-packages/dsh-onebot-qq/
-├── package.json          # bundle + dsh.client 清单（Lead 维护）
-├── cordis.patch.yml      # 插入 onebot-qq 行（Lead）
-├── client.js             # 浏览器半边：侧栏入口 + 整页面板（panel-dev）
-├── icon.svg / locale/*   # 展示元数据（Lead）
+dsh-bot/
+├── package.json          # bundle + dsh.client 清单
+├── cordis.patch.yml      # 插入 onebot-qq 行
+├── client.js             # 浏览器半边：侧栏入口 + 整页面板
+├── icon.svg / locale/*   # 展示元数据
 ├── src/
-│   ├── host.js           # 插件入口 apply(ctx, rowConfig)（Lead）
-│   ├── core/store.js     # 数据目录 / 原子 JSON 读写（Lead，移植自 aurabot MIT）
-│   ├── core/redact.js    # 密文脱敏（Lead，移植自 aurabot MIT）
-│   ├── core/logger.js    # 分级日志 + 环形缓冲（Lead，移植自 aurabot MIT）
-│   ├── core/config.js    # DEFAULTS / 读取 / 校验 / 保存（Lead）
-│   ├── core/events.js    # 规范化事件环形缓冲 + 统计（Lead）
-│   ├── onebot/client.js  # OneBot v11 客户端：HTTP+WS、重连、echo（Lead，移植自 aurabot MIT）
+│   ├── host.js           # 插件入口 apply(ctx, rowConfig)
+│   ├── core/store.js     # 数据目录 / 原子 JSON 读写（移植自 aurabot MIT）
+│   ├── core/redact.js    # 密文脱敏（移植自 aurabot MIT）
+│   ├── core/logger.js    # 分级日志 + 环形缓冲（移植自 aurabot MIT）
+│   ├── core/config.js    # DEFAULTS / 读取 / 校验 / 保存
+│   ├── core/events.js    # 规范化事件环形缓冲 + 统计
+│   ├── onebot/client.js  # OneBot v11 客户端：HTTP+WS、重连、echo（移植自 aurabot MIT）
 │   ├── gateway/
-│   │   ├── normalize.js  # 原始事件 → 规范化事件（gateway-dev）
-│   │   ├── manager.js    # 连接生命周期 / 账号核验 / 热应用配置（gateway-dev）
-│   │   ├── actions.js    # OneBot action 包装（gateway-dev）
-│   │   └── snowluma.js   # SnowLuma 安装检测 + 读 its OneBot 配置（gateway-dev）
-│   └── http/routes.js    # /onebot-qq/api/* REST 路由（Lead）
+│   │   ├── normalize.js  # 原始事件 → 规范化事件
+│   │   ├── manager.js    # 连接生命周期 / 账号核验 / 热应用配置
+│   │   ├── actions.js    # OneBot action 包装
+│   │   └── snowluma.js   # SnowLuma 安装检测 + 读 its OneBot 配置
+│   └── http/routes.js    # /onebot-qq/api/* REST 路由
 ├── test/
-│   ├── helpers/mock-onebot.js  # 假 OneBot v11 网关（verify-dev，移植自 aurabot MIT）
-│   ├── helpers/fake-dsh.js     # 最小假 DSH ctx（verify-dev）
-│   ├── e2e.test.js             # 宿主插件端到端（verify-dev）
+│   ├── helpers/mock-onebot.js  # 假 OneBot v11 网关（移植自 aurabot MIT）
+│   ├── helpers/fake-dsh.js     # 最小假 DSH ctx
+│   ├── e2e.test.js             # 宿主插件端到端
 │   └── *.test.js               # 单元测试（各模块 owner）
-├── scripts/verify-plugin.ps1   # 安装到临时 profile + 无头启动 + 探活（verify-dev）
-└── docs/…                      # USER-MANUAL / CONFIG / RESEARCH / VERIFICATION
+├── scripts/verify-plugin.ps1   # 安装到临时 profile + 无头启动 + 探活
+└── docs/…                      # 用户指南、开发契约、研究与历史归档
 ```
 
 ## 3. 关键契约
 
 ### 3.1 配置（src/core/config.js）
 
-- 配置文件：`$DSH_HOME/plugins-data/dsh-onebot-qq/config.json`（可用 `DSH_ONEBOT_QQ_DATA_DIR` 覆盖，测试用）。
+- 配置文件：`$DSH_HOME/plugins-data/dsh-bot/config.json`（可用 `DSH_BOT_DATA_DIR` 覆盖，测试用）。
 - `DEFAULTS` 必须包含**所有**可调参数（重连退避、超时、重试、事件过滤、缓冲容量、日志级别等）。
 - 读取时与 DEFAULTS 深合并；未知字段保留（向前兼容）；类型/取值非法时回退默认值并记录 warning。
 - `loadConfig()` / `saveConfig(next)` / `resetConfig()` / `normalizeConfig(raw)` / `publicConfig(cfg)`。
@@ -143,7 +142,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 
 ### 3.6 客户端面板（client.js）
 
-- 形式：`window.__ModuleLoader__.load({ id: 'dsh-onebot-qq', factory(require) {...} })`，
+- 形式：`window.__ModuleLoader__.load({ id: 'dsh-bot', factory(require) {...} })`，
   工厂返回 `{ inject:['slots','theme'], apply(ctx) }`；`id` 必须等于包名。`theme` 是客户端 ui-theme
   公开服务（`getTheme/setTheme` + `theme/change`），用于系统设置页切换 DSH 全局主题；`package.json`
   的 `dsh.client.inject` 必须与之一致。
@@ -152,7 +151,7 @@ export function normalizeEvent(raw, cfg) -> null | {
   - `ctx.slots.register({ name:'main', key:'onebot-qq' }, Panel)`
   - 通过 `ctx.slots.inject(...)` 注册（参考 aurabot `client/client.js` 末尾写法）。
 - 只经 `/onebot-qq/api/*` 读写宿主，不直接碰 QQ。
-- 样式/动效分为三层，均由**同一个** `<style>` 注入（`STYLE_ID = dsh-onebot-qq-panel-style`）：
+- 样式/动效分为三层，均由**同一个** `<style>` 注入（`STYLE_ID = dsh-bot-panel-style`）：
   - `TOKEN_CSS`：唯一允许十六进制色值的区块。显式声明 console-web 的浅色/暗色调色板、4 套强调色 +
     `inherit`（跟随 DSH 主题）、密度/字号/内容宽度/对比度映射、圆角/阴影/字重/动效时长变量；暗色通过
     `body[data-ds-dark-theme] .ob-root` 覆盖，强调色通过 `data-accent`、对比度通过 `data-contrast` 覆盖。
@@ -209,7 +208,7 @@ export function normalizeEvent(raw, cfg) -> null | {
   `pause(reason)`、`resume()`、`dispose()`。
 - 单一写者：认知状态只由 cognition service 写；UI/API 通过 service 命令；平台事件不得直接改表。
 - 存储：`node:sqlite` WAL + FTS5；原始事件 JSONL；无 sqlite 时 JSON fallback。schema/migration 见
-  `packages/dsh-onebot-qq/docs/cognitive/DATA-MODEL.md`。
+  `docs/cognitive/DATA-MODEL.md`。
 - LLM：DSH 路由仍用 `ctx.get('llm').stream()`；直连路由走 `src/model` 模型网关（OpenAI/Responses/Anthropic/Gemini/Ollama），
   路由继承 `agentDefaultModel`、固定配置或模型页 selected；无可用模型时社交回复进入 degraded，不伪造认知。
   DSH 一次性调用使用顶层 `system` + identity-free user `messages`，并带稳定 `sessionId`
@@ -256,12 +255,12 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 路由：`cognition.llm.mode = auto|dsh|fixed|direct|chain`；直连 selected + fallback，最后可回退 DSH；
   空文本、只有 reasoning、bad JSON 都不算成功。
 - REST：`/onebot-qq/api/models/*`；UI 第 6 个顶层标签「模型」；详细矩阵见
-  `packages/dsh-onebot-qq/docs/MODEL-GATEWAY.md`。
+  `docs/MODEL-GATEWAY.md`。
 
 ## 4. 数据目录
 
 ```
-~/.dsh/plugins-data/dsh-onebot-qq/
+~/.dsh/plugins-data/dsh-bot/
 ├── config.json          # 配置（version 2，含 cognition.*）
 ├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）

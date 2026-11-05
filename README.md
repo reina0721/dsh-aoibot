@@ -1,126 +1,68 @@
-# dsh-bot · DSH QQ 接入插件（OneBot v11）
+# dsh-bot
 
-本仓库当前交付 **`dsh-onebot-qq`**：为 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness)
-提供一个 **QQ 接入插件**。它通过 **OneBot v11** 协议连接 **NapCat / SnowLuma / Lagrange.OneBot /
-LLOneBot** 等 QQ 网关的正向 WebSocket + HTTP 地址，把 QQ 变成 DSH 可感知、可操作的外部通道，
-并提供**完整的网页面板与持久化配置**。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 QQ 接入、人格与认知服务的插件。通过 OneBot v11 连接 NapCat、SnowLuma、Lagrange.OneBot 或 LLOneBot，提供网页管理面板和本地持久化。
 
-> 这是更大目标（`goal-context.md`：具有长期记忆、人物画像、情绪/人格、技能演化的人工认知架构）。
-> v0.4 起本包同时提供**平台感知/执行接入层**与**内置认知内核**；v0.5 增加**统一模型协议网关**；v0.6 增加**人格工作台、群聊参与与运行诊断**；v0.7 增加**多人格库与人格切换**；v0.8 增加**人格级认知数据隔离与数据复制**；v0.9 修复**DSH 一次性模型调用（system/sessionId/temperature）**并增加**人格 JSON 导入、模型链路自检与蒸馏人格实测**（OpenAI/Responses/Anthropic/Gemini/Ollama + OpenCode Go/Command Code/OpenRouter）。
-> 连接、核验、事件规范化、消息收发保持稳定边界；人格、人物、关系、记忆、情绪、策略、学习、技能与元认知在
-> `packages/dsh-onebot-qq/src/cognition/` 中实现，通过 SQLite + 算法/服务持久化，而不是把所有东西塞进一个巨大 Prompt。
+## 能力与要求
 
-## 能力
+- QQ 连接、账号核验、事件接收、群聊与私聊消息发送。
+- 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
+- OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。
+- 连接、消息、人格、模型、认知、日志及系统设置面板。
 
-- **连接管理**：OneBot v11 正向 WS 收事件 + HTTP 调接口；自动重连（退避/抖动/超时/重试全部可配）；
-  只配 HTTP 时明确提示「无法实时收事件」；连上后按 `get_login_info` 核验登录账号
-  （`off` / `warn` / `enforce` 三种策略），核验期间事件先缓冲、通过后按序补发，不丢消息。
-- **事件规范化**：消息 / 通知 / 请求 / 元事件 → 统一结构（消息段、@、图片、引用、发送者、群/私聊），
-  「平台没给就不伪造」；过滤规则（忽略用户/群、事件类型、消息子类型、是否含机器人自己）全部走配置；
-  事件可选 JSONL 落盘；同时通过 `ctx.emit('onebot-qq/event', record)` 暴露给其它 DSH 插件。
-- **动作**：发私聊/群聊（字符串自动转文本消息段、支持消息段数组）、好友/群/群成员、撤回、查询消息、
-  原始 action 透传（默认关闭，需显式开启）。
-- **SnowLuma 只读适配**：自动探测安装目录、读取它自己的 `config/onebot*.json`（含 `onebot_<uin>.json`、
-  `mode: snapshot`）得到地址与 token；**不下载、不启动、不注入**（尊重其 EULA）。读不到时回退手填地址并说明原因。
-- **完整面板**：DSH Web 侧栏「QQ 连接」入口 + 整页面板，十个标签：概览 / 连接 / 消息 / 配置 / 人格 / 模型 / 系统设置 / 认知 / 日志 / 关于。
-  视觉与动效按 `console-web` 的设计体系（令牌 + 语义动效配方）重做：eyebrow 页头、软底 + surface 卡片、
-  软阴影/大圆角、soft Tabs + 滑块、StatTile/MiniBars、骨架屏、presence 反馈、trickle 进度、状态脉冲与数字滚动。
-  新增的「系统设置」参考 console-web preferences：DSH 全局主题（浅色/深色/跟随系统）、强调色、对比度、
-  密度、字号、内容宽度、动效模式与页面切换动画；分类切换只替换右侧内容、不整页滑动，修改即时保存。
-  「认知」标签提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置 11 个子页，
-  可暂停/演练、查看决策与未知、删除/导出人物数据，全部走服务层命令。
-  「人格」顶层工作台用自然语言编辑名字、身份、背景、性格、说话风格、喜好/边界和示例，
-  可预览注入 prompt 并决定群聊参与方式（仅@/概率/所有消息）；支持保存多份人格并随时切换，
-  记忆/人物/关系/情绪/策略/技能等认知数据也按人格隔离，并可把指定数据组复制给另一人格。
-  「模型」标签提供统一协议网关：OpenAI Chat/Responses、Anthropic、Gemini、Ollama，
-  以及 OpenCode Go、Command Code、OpenRouter 预设；可配 base URL/认证/headers/模型，
-  支持流式、模型发现、连通测试、直连/DSH 路由与 fallback；密钥只在本地，API 只回传后四位。
-  配置页 100% 由服务端字段表驱动（新增配置项不需要改 UI），支持保存/撤销/恢复默认/Ctrl+S、
-  dirty 提示、toast、加载/空态/错误重试；`reduced`/`off` 与系统 `prefers-reduced-motion` 双重降级，
-  浅/深色（`body[data-ds-dark-theme]`）与 190–390px 窄宽均已验证。
-- **不写死参数**：所有可调算法参数集中在 `src/core/config.js` 的 `DEFAULTS`，首次运行写出
-  `$DSH_HOME/plugins-data/dsh-onebot-qq/config.json`，面板可改，热应用（连接相关改动自动重连）。
+需要 DSH >=0.2.0 <0.3.0、Node.js >=22.13.0，以及已登录的 OneBot v11 网关。运行时无额外第三方依赖。能力边界见[实现状态](docs/cognitive/IMPLEMENTATION-STATUS.md)，长期目标见[项目愿景](docs/research/VISION.md)。
 
-## 安装
+## 安装与下载
+
+以下 Release 入口在仓库改名并首次发布后可用。
+
+| 入口 | 下载 |
+| --- | --- |
+| 最新稳定版 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz) · [解压包 zip](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.zip) |
+| 固定版本 0.10.0 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/download/v0.10.0/dsh-bot.tgz) |
+| 完整版本与校验文件 | [GitHub Releases](https://github.com/reina0721/dsh-bot/releases) |
+| 开发源码 | [main.zip](https://github.com/reina0721/dsh-bot/archive/refs/heads/main.zip) |
+
+将 desktop 换成实际使用的 DSH profile：
+
+```sh
+dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.10.0/dsh-bot.tgz
+```
+
+也可下载并查看安装脚本后执行：
 
 ```powershell
-$dsh = "C:\Users\Run\AppData\Local\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd"
-
-# 1) 链接进某个 profile（推荐先用临时 profile 验证；desktop 是当前 GUI 的 profile）
-& $dsh plugin --profile desktop add "C:\rin\coder\rin721\dsh-bot\packages\dsh-onebot-qq"
-
-# 2) 重启 / 刷新 DSH 后，侧栏出现「QQ 连接」
+Invoke-WebRequest https://raw.githubusercontent.com/reina0721/dsh-bot/main/scripts/install.ps1 -OutFile install.ps1
+.\install.ps1 -Profile desktop -Version 0.10.0
 ```
 
-也可以在 DSH 的插件管理里以本地 bundle 安装 `packages/dsh-onebot-qq`。详细步骤、NapCat / SnowLuma
-开网关方式、面板用法与 FAQ 见 [`packages/dsh-onebot-qq/docs/USER-MANUAL.md`](packages/dsh-onebot-qq/docs/USER-MANUAL.md)。
-
-## 快速开始
-
-1. 在 QQ 网关（NapCat / SnowLuma 等）里开启「正向 WebSocket 服务端」（常见默认端口 `3001`）和
-   「HTTP 服务端」（常见默认端口 `3000`），设置 access token；
-2. DSH 侧栏打开「QQ 连接」→「连接」页填 `ws://127.0.0.1:3001`、`http://127.0.0.1:3000` 与 token，
-   填机器人 QQ 号（用于核验）→ 保存 → 连接；
-3. 「概览」看到 `已连接` 与 `核验通过` 即接入成功；「消息」页可直接发私聊/群消息并查看事件流。
-
-> 只想本机自测、没有真实网关？运行 `scripts/mock-gateway.mjs` 起一个假网关（默认 `6700`），
-> 填它的地址/token 即可走通全部面板与接口。
-
-## 仓库结构
-
-```
-dsh-bot/
-├── goal-context.md                     # 项目总纲（人工认知架构愿景与原则）
-├── docs/ARCHITECTURE.md                # 本插件与团队协作的接口契约
-└── packages/dsh-onebot-qq/             # 插件包（DSH bundle + client plugin）
-    ├── package.json                    # dsh.bundle.patch / dsh.client 清单
-    ├── cordis.patch.yml                # bundle 插入行
-    ├── client.js                       # 网页半边：侧栏入口 + 十标签整页面板（配置/人格/模型/系统设置/认知持久壳）
-    ├── src/host.js                     # 宿主半边入口（组装 gateway/events/models/routes）
-    ├── src/core/                       # 配置、持久化、日志、脱敏、事件缓冲
-    ├── src/gateway/                    # 连接生命周期、事件规范化、action、SnowLuma 只读适配
-    ├── src/onebot/client.js            # OneBot v11 WS/HTTP 客户端（重连/echo/握手超时）
-    ├── src/http/routes.js              # /onebot-qq/api/* REST（含 /cognition/*、/models/*）
-    ├── src/cognition/                  # 认知内核：turn/store/persona/emotion/person/relationships/memory/policy/learning/skills/meta/proactivity
-    ├── src/model/                      # 模型协议网关：OpenAI/Responses/Anthropic/Gemini/Ollama/中转预设
-    ├── test/                           # 146 个 node:test（含多人格/认知/模型协议/live 环境门控/e2e/UI）
-    ├── scripts/                        # 真实 DSH 验证 / 模型连通验证 / 独立 mock 网关
-    └── docs/                           # 用户手册、配置手册、模型协议、验证报告、截图
+```sh
+curl -fL https://raw.githubusercontent.com/reina0721/dsh-bot/main/scripts/install.sh -o install.sh
+sh install.sh --profile desktop --version 0.10.0
 ```
 
-## 验证
+脚本验证发布包 SHA-256，支持自定义 DSH 路径；不会自动重启 DSH。源码安装在仓库根目录执行 `dsh plugin --profile desktop add .`。详见[安装、升级与回退](docs/INSTALLATION.md)。旧版用户先阅读[迁移说明](docs/MIGRATION.md)。
 
-- `node --test packages/dsh-onebot-qq/test/*.test.js` → **146 个用例**（无 key 142 通过 + 4 live skip；有 OpenCode key 时 146/146）；
-- `packages/dsh-onebot-qq/scripts/verify-plugin.ps1` → 临时 profile 真实 DSH 安装/启动/REST/boot 图/认知 SQLite/模型 API
-  **RESULT: PASS**（可重复运行，自动清理）；
-- `packages/dsh-onebot-qq/scripts/verify-model-gateway.mjs` → 真实 OpenCode Go OpenAI/Anthropic/模型发现，
-  OpenRouter/Command Code 公开模型发现；key 只从 env 读取。
-- 真实 DSH + mock 网关 + Chrome headless：面板实际渲染、连接态核验、事件/发送/断开全链路 **16/16**；
-  认知真实数据流：人物/关系/记忆/决策产生、演练不发送、10 标签与 11 子页、360px 无横向溢出；
-  模型真实链路：OpenCode Go 直连分析+回复、10 标签、模型页无溢出；
-  另有 UI/动效/系统设置专项断言（`getAnimations()`：标签切换 180ms、reveal stagger、持久壳只换右内容、
-  DSH 主题切换、即时保存、对比度、reduced/off、暗色根背景、360px 无横向溢出）**48/48** 全部通过，
-  截图与证据见 [`packages/dsh-onebot-qq/docs/verification/`](packages/dsh-onebot-qq/docs/verification/)。
-  实际能力边界与未实现项见
-  [`IMPLEMENTATION-STATUS.md`](packages/dsh-onebot-qq/docs/cognitive/IMPLEMENTATION-STATUS.md)。
-- 完整证据、根因复盘（含一个 Cordis `Config` 槽位冲突导致的激活失败修复）与限制见
-  [`docs/VERIFICATION.md`](packages/dsh-onebot-qq/docs/VERIFICATION.md)。
+## 首次连接
 
-## 复用与许可
+1. 在 QQ 网关启用正向 WebSocket 与 HTTP 服务，设置 access token。
+2. 重启目标 DSH profile，在侧栏「QQ 连接」填写网关地址、token 和机器人 QQ 号。
+3. 保存并连接，确认「已连接」「核验通过」，再到消息页测试收发。
 
-本插件**不重复造轮子**：OneBot 客户端、存储/脱敏/日志、SnowLuma 只读解析、mock 网关、fake DSH、
-面板注册结构与 DSH 主题 token 用法复用/改写自成熟的 DSH 插件
-[`aureth-labs/dsh-aurabot-qq`](https://github.com/aureth-labs/dsh-aurabot-qq)（MIT）与
-[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（MIT）；本版面板的视觉令牌与语义动效
-参考用户自己的 `console-web` 前端基座（design-system tokens/motion foundation、surface 页面配方），
-在单文件插件里重新实现，不复制其源码、不引入其运行时依赖。
-运行时不引入任何第三方依赖（Node 内置 `fetch` / `WebSocket` + DSH 注入的 React）。
-版权与许可证全文见 [`packages/dsh-onebot-qq/THIRD_PARTY_NOTICES.md`](packages/dsh-onebot-qq/THIRD_PARTY_NOTICES.md)；
-本仓库以 MIT 许可发布（`packages/dsh-onebot-qq/LICENSE`）。
+配置默认存放于 `$DSH_HOME/plugins-data/dsh-bot/`，可用 DSH_BOT_DATA_DIR 覆盖。不要公开含密钥的配置文件。
 
-## 后续方向（不属于本插件）
+## 文档与开发
 
-接入层之上将按 `goal-context.md` 继续构建：消息防抖与会话轮次、人物画像与持久化关系、记忆
-（情景/语义/程序性）、情绪与人格状态、注意力与工作记忆、行为规划与反馈学习、技能习得与演化，
-以及供这些模块使用的可观测性与调试面板。本插件已经把这些能力需要的输入（规范化事件流、
-连接状态、消息发送动作）以稳定的接口与 DSH 事件形式提供出来。
+[文档首页](docs/README.md) · [用户手册](docs/USER-MANUAL.md) · [配置参考](docs/CONFIG.md) · [模型网关](docs/MODEL-GATEWAY.md) · [故障排查](docs/TROUBLESHOOTING.md) · [贡献指南](CONTRIBUTING.md) · [变更记录](CHANGELOG.md)
+
+```sh
+npm test
+npm run check:docs
+npm run pack:release
+npm run check:package
+```
+
+目录：src/ 为宿主实现，client.js 为网页面板，test/ 为测试，scripts/ 为开发与安装工具，docs/ 为用户、开发与研究文档。
+
+## 许可
+
+[MIT](LICENSE)。复用来源及版权声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

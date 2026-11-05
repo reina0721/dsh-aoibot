@@ -2,6 +2,7 @@
 .ctx/
 *.log
 node_modules/
+dist/
 
 # 测试与验证产物
 tmp/

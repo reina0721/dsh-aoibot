@@ -1,0 +1,85 @@
+{
+  "name": "dsh-bot",
+  "version": "0.10.0",
+  "description": "QQ integration, persistent personas and cognitive services for DeepSeek Harness, with a web management panel.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "./src/host.js",
+  "exports": {
+    ".": "./src/host.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "docs/README.md",
+    "docs/INSTALLATION.md",
+    "docs/MIGRATION.md",
+    "docs/USER-MANUAL.md",
+    "docs/CONFIG.md",
+    "docs/MODEL-GATEWAY.md",
+    "docs/TROUBLESHOOTING.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "docs/ARCHITECTURE.md",
+    "docs/RELEASING.md",
+    "docs/cognitive/*.md",
+    "docs/research/*.md",
+    "scripts/install.ps1",
+    "scripts/install.sh",
+    "docs/archive/README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "slots",
+        "theme"
+      ],
+      "external": [
+        "react"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-plugin.ps1",
+    "check:docs": "node scripts/check-docs.mjs",
+    "pack:release": "node scripts/build-release.mjs",
+    "check:package": "node scripts/check-package.mjs"
+  },
+  "engines": {
+    "node": ">=22.13.0",
+    "dsh": ">=0.2.0 <0.3.0"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "onebot",
+    "qq",
+    "napcat",
+    "snowluma"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reina0721/dsh-bot.git"
+  },
+  "homepage": "https://github.com/reina0721/dsh-bot#readme",
+  "bugs": {
+    "url": "https://github.com/reina0721/dsh-bot/issues"
+  }
+}
