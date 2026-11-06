@@ -1,6 +1,8 @@
 # 变更记录
 
-## 0.11.0（2026-11-06，待真机验收）
+## 0.11.0（2026-11-06，部分真机验收）
+
+- live `web` 已升级到本地 0.11.0 构建并完成部分真实 QQ smoke：健康/新增 API 200、真实私聊入站与回复、`/send` message_id、本地备份；主人命令/媒体/审批/typing/提醒投递等仍未验收。详见 [验收证据](docs/assets/live-acceptance-2026-11-06.json)。
 
 - M7-p：新增默认关闭的 `cognition.turn.groupRelevance={enabled:false,minScore:0.15}` 与 `cog-turn` 面板开关/阈值。仅群聊未点名消息，保留点名模式/概率/分钟上限/连续上限/冷却的优先顺序，再按已检索记忆最高 `signals.relevance`（缺失则有界词法重合）检查；阈值夹取 0–1，无记忆或低分走既有 `skipGroup`，仍写 ambient 记忆、记录 `low_relevance`，不进入分析/回复 LLM。点名与私聊绕过相关度、异常放行；关闭时无行为变化，无新增依赖或外部调用。仅词法记忆相关度，无 LLM 话题理解/接梗/语义打分；#20 仍 partial、remaining 47，#31/#42/#49/#50 不变。
 - M7-o：新增主人 `/steer 文本` 与 `runtime.steer(turn,text)`，active agent/当前 private 或 group 正整数安全数字 ID/非空 1–1000 Unicode 字符校验；复用或创建 Session，按 DSH UserMessage 交给 `agent.steer`，成功计入 stats.steers/lastAt。Session 解析串行防并发新建，插话不等待 compose 结束；缺方法 STEER_UNAVAILABLE，异常固定 STEER_FAILED，不回显原始异常/文本。命令经 owner/禁用列表/访问闸门，非主人私聊/群聊静默；普通回合仍只用 followup，不自动 steer、不写配置或直接调用模型。无新配置/依赖、typing/set_input_status 或插话面板/API；fake agent 离线测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial，remaining 47，#31/#42/#49/#50 不变。

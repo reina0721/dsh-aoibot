@@ -1,0 +1,50 @@
+{
+  "at": "2026-11-06T15:40:00Z",
+  "scope": "dsh-bot 0.11.0 live web profile — partial real smoke, not full M7 acceptance",
+  "live": {
+    "ok": true,
+    "version": "0.11.0",
+    "apiVersion": 1,
+    "state": "connected",
+    "uptimeMsAtCheck": 44272370
+  },
+  "routes": {
+    "media/status": 200,
+    "backup": 200,
+    "upgrade": 200,
+    "modules": 200,
+    "status": 200
+  },
+  "realQq": {
+    "platform": "onebot11",
+    "gateway": "connected",
+    "outbound": {
+      "ok": true,
+      "messageId": "535556004",
+      "target": "private owner chat"
+    },
+    "inbound": {
+      "observed": true,
+      "at": "2026-11-06T15:39:03Z",
+      "replyAt": "2026-11-06T15:39:26Z"
+    },
+    "note": "Inbound private message and assistant reply observed in /events; message bodies omitted."
+  },
+  "backup": {
+    "ok": true,
+    "id": "20261106T153925024Z-f43f618a",
+    "bytes": 17647661,
+    "files": 5
+  },
+  "notCovered": [
+    "owner command round-trip",
+    "media provider",
+    "file/media send",
+    "request approval",
+    "typing",
+    "reminder delivery",
+    "real B站/GitHub"
+  ],
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.0); GitHub release v0.11.0 published after smoke",
+  "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository."
+}

@@ -40,6 +40,7 @@
     "docs/PARITY-AUDIT.md",
     "docs/assets/m7-smoke.json",
     "docs/assets/live-profile-baseline.json",
+    "docs/assets/live-acceptance-2026-11-06.json",
     "docs/cognitive/*.md",
     "docs/research/*.md",
     "scripts/install.ps1",

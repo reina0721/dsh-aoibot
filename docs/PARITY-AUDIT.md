@@ -28,6 +28,10 @@ M7-i 更新 #15：默认启用 + redact 的本地出站文本密钥规则，可�
 
 2026-11-06 对当前运行的 DSH `web` profile 做了只读 `/onebot-qq/api/health` 检查：`ok=true`、`version=0.10.0`、`state=connected`。工作区 HEAD 为 `d2da394`，但 live 安装的商业包仍是 0.10.0，且缺少 `src/media/index.js` 等新文件；因此这不是 M7 新代码的实机验收。脱敏摘要见 [live-profile-baseline.json](assets/live-profile-baseline.json)。未发送 QQ 消息、未修改 live profile。
 
+## Live 0.11.0 部分真机验收
+
+2026-11-06 将本地 0.11.0 安装到 live `web` 后，真实 QQ 私聊入站/回复、`/send` 出站、备份创建与新增 API 已验证；未覆盖主人命令、媒体 provider、请求审批、typing、提醒投递等。脱敏摘要见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。这是**部分真机验收**，不改变 remaining 47 的结论。
+
 ## 临时 profile smoke 证据
 
 M7-d 更新 #30：通用 JSON/JSONL 经面板/API 导入当前人格记忆，本地处理、限额/作用域校验与幂等去重。#30 仍 partial；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证。#31/#44 保持 partial；#42/#49/#50 后续获用户豁免。

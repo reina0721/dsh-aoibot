@@ -44,31 +44,31 @@
 
 ## 安装与下载
 
-`v0.11.0` 为当前版本候选；GitHub Release 安装包需在标签推送后上传，完成前请使用源码安装。v0.10.0 仍可作为已发布回退版本。
+`v0.11.0` 已发布，可通过以下 GitHub 直链安装或下载；真实 QQ/媒体验收仅完成部分，见[发布检查表](docs/RELEASE.md)。
 
 | 入口 | 下载 |
 | --- | --- |
 | 最新稳定版 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.tgz) · [解压包 zip](https://github.com/reina0721/dsh-bot/releases/latest/download/dsh-bot.zip) |
-| 固定版本 0.10.0（已发布回退） | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/download/v0.10.0/dsh-bot.tgz) |
+| 固定版本 0.11.0 | [安装包 tgz](https://github.com/reina0721/dsh-bot/releases/download/v0.11.0/dsh-bot.tgz) |
 | 完整版本与校验文件 | [GitHub Releases](https://github.com/reina0721/dsh-bot/releases) |
 | 开发源码 | [main.zip](https://github.com/reina0721/dsh-bot/archive/refs/heads/main.zip) |
 
 将 desktop 换成实际使用的 DSH profile：
 
 ```sh
-dsh plugin --profile desktop add .   # 源码安装 0.11.0 候选
+dsh plugin --profile desktop add https://github.com/reina0721/dsh-bot/releases/download/v0.11.0/dsh-bot.tgz
 ```
 
 也可下载并查看安装脚本后执行：
 
 ```powershell
 Invoke-WebRequest https://raw.githubusercontent.com/reina0721/dsh-bot/main/scripts/install.ps1 -OutFile install.ps1
-.\install.ps1 -Profile desktop -Version latest
+.\install.ps1 -Profile desktop -Version 0.11.0
 ```
 
 ```sh
 curl -fL https://raw.githubusercontent.com/reina0721/dsh-bot/main/scripts/install.sh -o install.sh
-sh install.sh --profile desktop --version latest
+sh install.sh --profile desktop --version 0.11.0
 ```
 
 脚本验证发布包 SHA-256，支持自定义 DSH 路径；不会自动重启 DSH。源码安装在仓库根目录执行 `dsh plugin --profile desktop add .`。详见[安装、升级与回退](docs/INSTALLATION.md)。旧版用户先阅读[迁移说明](docs/MIGRATION.md)。

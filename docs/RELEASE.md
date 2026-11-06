@@ -54,13 +54,24 @@ git diff --check
 - 生图/改图完全闭环；RVC/抖音/桌宠虽已豁免但未实现；
 - 工作区迁移、模块市场、QQ空间、25 页级面板或 API 鉴权已实现。
 
-## 6. 版本与发布状态
+## 6. 真机验收状态（部分）
 
-- 标签：`v0.11.0`（推送后生效；GitHub Release 资产需另行上传）。
-- 线上 `web`：升级前为 `0.10.0`；升级与真实 smoke 记录单独追加到验收文档，未完成前不得写“已实机验收”。
-- 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 必须通过；未上传 GitHub Release 前，README 固定下载链接不代表 0.11.0 已可用。
+2026-11-06 已将 `v0.11.0` 本地构建安装到 live `web` profile 并完成**部分**真实 QQ smoke：
 
-## 7. 建议的下一步
+- live health `version=0.11.0`、`state=connected`；
+- 新增 `/media/status`、`/backup`、`/upgrade`、`/modules` 路由均返回 200；
+- 真实私聊入站消息与助手回复出现在 `/events`；通过 `/send` 实际发出消息，message_id `535556004`；
+- 通过 `/backup/create` 创建本地快照 `20261106T153925024Z-f43f618a`。
+
+**这不等于全量实机验收**：主人命令往返、媒体 provider、文件发送、请求审批、typing、提醒投递、B站/GitHub 等仍未覆盖。脱敏证据见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。验收文档只记录实际观察，不把 API 200 或一条消息当成全量能力证据。
+
+## 7. 版本与发布状态
+
+- 标签/Release：`v0.11.0` 已推送并由 GitHub Actions 发布 tgz/zip/SHA256SUMS（2026-11-06）。
+- 线上 `web`：已升级到本地 0.11.0 构建并完成部分真实 smoke；未完成主人命令/媒体 provider/审批/typing/提醒投递等验收，不得写“全量实机验收”。
+- 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 通过；GitHub Release 已上传。
+
+## 8. 建议的下一步
 
 1. 已批准 RVC/翻唱、抖音/小黑盒、桌宠豁免；继续闭环 47 项非 has/exempt。
 2. 完成向量检索与时间轴事件导入，或明确列为下一版本；
