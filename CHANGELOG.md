@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- M7-j：十种已知 QQ 通知（含名片/群名/头衔/精华/离线文件）校验后写入当前人格时间轴，确定性去重；好友/群 add/invite 请求按 flag 去重，只存 pending。新增主人 `/requests`（最多 10 条）、`/approve ID confirm`、`/reject ID confirm`，服务复核 owner/开关/状态，仅调用固定请求 action，成功记录处理元数据、失败安全报错；无自动审批。flag 不进入公共列表/回复/日志，备注和通知文本复用已知密钥脱敏/去控制字符与长度上限。同 ID 并发防重，完成写入固定原人格；请求纳入人格数据统计/复制/删除。两个新开关默认启用，配置可热关闭；离线 fake 网关测试，无新增依赖/外部调用/请求 API/审批面板/Agent 工具。#3/#15 仍 partial（真实 QQ 未验证、无统一审批/逐项权限或 PII 检测），#31/#42/#49/#50 不变，remaining 47。
+
 - M7-i：新增本地出站文本 leak guard，默认启用 + redact，可选 block；识别高置信度 OpenAI/GitHub/AWS AKIA/Bearer/PEM 私钥和至少 16 字符的 api_key/apiKey 值，重叠合并、100k UTF-16 单元上限（超限整体脱敏/阻止）。访问/限频后、dry-run/网关前检查，block 返回 LEAK_BLOCKED 与 leakBlocked 计数，成功脱敏返回 leakGuard=redacted；日志只有类别/次数，网关异常不回显。配置安全组可改，安全页只读开关/策略，没有扫描内容/密钥；新增离线规则/出站/配置与 mock 面板测试。无新依赖/外部调用/自动审批，无 PII/熵或媒体/文件扫描，可能误报/漏报，不重组跨段/跨消息；人工发送/raw action 等独立路径不覆盖。#15 仍 partial（缺统一审批/逐项权限），#31/#42/#49/#50 不变，remaining 47。
 
 - M7-h：通用旧档案导入新增 `kind=timeline`（默认仍为 memory），支持 events/timeline 等 JSON 数组包装与 JSONL；事件正文/标题/必填时间/作用域白名单规范化，独立 `timeline_event` 与确定性 `tle_` ID，幂等不覆盖。时间轴默认合并事件并支持 event 筛选，记忆页可选导入种类并显示结果种类；事件纳入人格数据统计/复制/删除。共用 cognition.import 限额，仅计数日志；新增离线服务、时间轴、面板与 API 回归。无新依赖、外部调用或 QQ 发送；#30 仍 partial（无 Aurabot 专用迁移、向量导入或真实旧档案样本），#31/#42/#49/#50 状态不变。

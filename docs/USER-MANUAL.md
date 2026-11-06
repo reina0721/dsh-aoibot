@@ -219,6 +219,9 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 | `/essence 消息ID` | 当前群消息设精华；需查明所属群 |
 | `/recall 消息ID [confirm]` | 当前群/主人私聊撤回，默认必须 confirm；需查明所属会话 |
 | `/file 相对路径` | 上传媒体根内文件到当前会话，例如 `/file inbound/report.pdf` |
+| `/requests` | 查看当前人格最多 10 条待处理好友/群请求，包含 ID、类型、QQ/群号和单行备注摘要 |
+| `/approve ID confirm` | 主人批准指定 pending 请求；必须完整复制列表 ID，并输入小写 confirm |
+| `/reject ID confirm` | 主人拒绝指定 pending 请求；同样必须输入小写 confirm |
 | `/help` | 命令帮助 |
 
 **管理/文件命令安全边界（M7-b）**：上述 `/profile` 至 `/file` 默认关闭，先在「配置 → QQ 管理命令」开启 `cognition.qqAdmin.enabled`。仅主人可用，动作和回复先检查当前会话的 `access.canSend`；群管只作用于当前群，机器人必须具备管理员/群主权限。昵称、名片、群名默认最多 100 字符（可调低，网关限制可能更严）。踢人始终要求小写字面量 `confirm`；撤回默认也要求，可通过 `requireConfirm=false` 取消撤回确认。精华/撤回无法用网关 `get_msg` 核实当前会话时拒绝，不能指定其他群。参数错误返回用法。
@@ -226,6 +229,12 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 `/file` 还需开启媒体总开关和 `media.files.enabled`；路径相对于 `media.dir`（留空用默认媒体目录），仅白名单扩展名/大小内普通文件；拒绝绝对路径、`..`、Windows 路径和符号链接逃逸。文件在网关进程可读路径下才可上传。未开放任意 action 透传或新增 Agent 工具。真实 QQ 管理、资料、文件动作未验证；修改昵称遭网关拒绝会明确显示 `UNSUPPORTED_SET_QQ_PROFILE`。先用测试群/账号受控验证。
 
 命令在轮次聚合的快速路径上处理，不进入分析/策略；`/quiet` `/active` `/model` 会写回配置并立即生效。
+
+**通知与请求（M7-j）**：默认启用 `cognition.notices.enabled`、`cognition.requests.enabled`，在配置页可关闭。已接受的进退群、管理员、禁言、名片、群名、头衔、精华、好友添加和离线文件通知会出现在当前人格时间轴「事件」中；不下载文件、不自动回应。原撤回/拍一拍/表态仍走原管线，未知事件忽略；暂停/拒收时不新增记录。
+
+好友申请、加群申请/邀请只进入当前人格待办，不自动批准或拒绝。用 `/requests` 查阅，再发送 `/approve req_列表中的完整ID confirm` 或 `/reject req_列表中的完整ID confirm`（把占位文本替换为实际 ID）。仅主人可操作，动作和回复受当前聊天访问控制；建议在主人私聊查看含 QQ 号/备注的列表。列表最多 10 条，处理后可继续查询；请求 ID 按 flag 去重，已处理的不能再次操作。成功才记录批准/拒绝；失败保持 pending，回复不包含网关原始错误、flag 或原始备注。网关超时后先核实实际处理状态再重试。确认要求不受 `cognition.qqAdmin.requireConfirm` 影响。
+
+备注会去控制字符、脱敏已知密钥和 flag，保存最多 500 Unicode 字符，命令仅显示最多 100 字符摘要；flag 只留在本地存储供网关使用。QQ 号/备注仍是隐私数据，没有 PII 检测。人格数据「请求」组可统计/复制/删除，复制待办不会触发审批；真实 QQ 请求在不同人格副本中仍是同一请求。没有审批面板或新增审批 API/Agent 工具；仅 fake 网关测试，真实 QQ 未验证。配置与边界见 [QQ 通知与请求](CONFIG.md#qq-通知与请求m7-j)。
 
 ### 3.4 回复分条、引用/@ 与群聊节奏
 

@@ -40,8 +40,15 @@ function adminText(value, field) {
   return result
 }
 
-function requireBoolean(value) {
-  if (typeof value !== 'boolean') throw new OneBotError('validate', { message: 'enable 必须是 boolean' })
+function requireBoolean(value, field = 'enable') {
+  if (typeof value !== 'boolean') throw new OneBotError('validate', { message: `${field} 必须是 boolean` })
+  return value
+}
+
+function requestText(value, field, max, required = false) {
+  if (typeof value !== 'string' || (required && !value.trim()) || (field === 'flag' ? value.length : Array.from(value).length) > max || /[\x00-\x1f\x7f-\x9f]/.test(value)) {
+    throw new OneBotError('validate', { message: `${field} 无效（最多 ${max} 字符，不能含控制字符）` })
+  }
   return value
 }
 
@@ -110,6 +117,17 @@ export function createActions({ call }) {
     sendPrivate,
     sendGroup,
     sendMessage,
+    setFriendAddRequest(flag, approve, remark = '') {
+      return call('set_friend_add_request', {
+        flag: requestText(flag, 'flag', 256, true), approve: requireBoolean(approve, 'approve'), remark: requestText(remark, 'remark', 100),
+      })
+    },
+    setGroupAddRequest(flag, subType, approve, reason = '') {
+      if (!['add', 'invite'].includes(subType)) throw new OneBotError('validate', { message: 'subType 必须为 add 或 invite' })
+      return call('set_group_add_request', {
+        flag: requestText(flag, 'flag', 256, true), sub_type: subType, approve: requireBoolean(approve, 'approve'), reason: requestText(reason, 'reason', 100),
+      })
+    },
     /** 上传群文件（OneBot v11 路径由网关进程读取）。 */
     uploadGroupFile(groupId, filePath, name, opts = {}) {
       return call('upload_group_file', {

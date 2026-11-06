@@ -465,3 +465,14 @@ OneBot 参数按 [OneBot v11 公开 API](https://github.com/botuniverse/onebot-1
 memory 保留同步 retrieve 的词法/FTS/关联与强化行为；retrieveAsync 先只读取 `max(3*limit,24)` 个词法候选（仍受现有 scope/person/300 行扫描/字符预算约束），按 query+31 候选分批求 cosine，零范数为 0。按 `(1-weight)*baseScore + weight*cosine` 重排并添加 `signals.embedding`，保留 memory 与原 signals，按 limit/字符预算选取，仅强化最终选中项一次。异常只记录固定 debug 文案，回退原 retrieve，不重复写入；等待中切换人格或候选已删除/编辑/强化则重新词法检索，避免恢复已删除记录或覆盖并发更新。pipeline handleTurn 与 proactivity tick 均 await retrieveAsync；主动任务当前空查询直接词法，UI/同步调用不变。
 
 只支持 OpenAI 兼容 embeddings 重排，不含本地模型、独立 reranker、持久化向量或向量数据库，也不是全库向量召回。fake fetch/假 embedder 的离线服务及集成测试通过，真实 provider 未验证，GAP #31 保持 partial。
+
+
+### 3.25 QQ 通知与主人请求审批（M7-j）
+
+`index.observe` 在 enabled/ready、暂停和 accepted 门控后，优先分流已有 recall/poke/reaction，再同步交给 `createNoticeService`。十种已知通知经 ID/子类型/时长校验、字段白名单与安全文本处理写入当前人格 `timeline_event`；`nte_` hash 使用上游 time/selfId/规范字段，不用 clock.now 参与身份，clock.now 只记录接收时间。标题/正文限 200/500 Unicode 字符，正文同时写 text 以复用既有时间轴聚合；不复制 notice comment/flag/raw、文件 URL，不下载文件。normalize 额外保留 cardOld/cardNew/name/title 供通知服务使用。未知/meta 不进入认知，已有三条专项路径保持独立。
+
+好友/群 add/invite 请求按 flag 的 SHA-256 截断 hash 生成 `req_`，在 scopedStore 写 `qq_request(status=pending,source=request)`；标准 friend 缺省子类型映射 add，群号仅群请求必填。flag 最多 256 UTF-16 单元且无控制字符，仅本地存储/固定网关 action 使用；comment 替换其中 flag、复用静态 redactText、去控制字符后限 500 Unicode 字符。公共投影只含业务字段与完成元数据，不返回 flag/raw；没有日志正文或原始网关异常。原事件缓冲/落盘边界不变，没有新增 PII 检测。
+
+commands 注入 requests 服务，三个内置命令不能被模块覆盖；命令先检查 owner/access/requests.enabled，`/requests` 只列最多 10 条单行摘要，`/approve`、`/reject` 始终校验完整 ID + 字面量 confirm，服务再次校验 owner/pending/boolean/文本。成功固定调用 `gateway.actions.setFriendAddRequest(flag,approve,remark)` 或 `setGroupAddRequest(flag,subType,approve,reason)`，写 approved/rejected 与 resolvedAt/resolvedBy；网关失败只返回静态错误，仍 pending。同 ID 进程内 inFlight 防重；await 前固定 persona kind，切换人格不把完成状态写入新人格。不是分布式 exactly-once：网关超时应人工核实，跨人格复制也不产生新真实请求。
+
+`cognition.notices.enabled`、`cognition.requests.enabled` 默认 true，经 DEFAULTS/normalize/配置字段保持热应用；关闭只停对应服务入口，不删除历史。PERSONA_DATA_GROUPS 和客户端增加 requests/请求（qq_request），支持统计/复制/删除。没有自动审批、通用审批/逐项权限、审批队列面板、新增请求 REST API 或 Agent 工具，真实 QQ 未验证；#3/#15 仍 partial。

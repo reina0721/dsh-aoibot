@@ -32,6 +32,7 @@ import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createCommandService } from './commands.js'
+import { createNoticeService } from './notices.js'
 import { createQqActions } from './qq-actions.js'
 import { createPurposeService } from './purpose.js'
 import { createConsolidationService } from './consolidation.js'
@@ -142,6 +143,7 @@ export function createCognition({
         dataRoot: pluginDataDir('runtime'),
       })
       state.services.qqActions = createQqActions({ gateway, getConfig, logger: log })
+      state.services.notices = createNoticeService({ store: state.scopedStore, getConfig, clock, logger: log, gateway })
       state.services.commands = createCommandService({
         getConfig,
         setConfig,
@@ -151,6 +153,7 @@ export function createCognition({
         memory: state.services.memory,
         runtime: state.services.runtime,
         qqActions: state.services.qqActions,
+        requests: state.services.notices,
         purpose: state.services.purpose,
         media,
         stickers,
@@ -346,6 +349,8 @@ export function createCognition({
         state.services.pipeline.handleReaction?.({ notice: normalized.notice })
         return
       }
+      if (normalized?.kind === 'notice') state.services.notices.handle({ ...normalized.notice, time: normalized.time, selfId: normalized.selfId })
+      if (normalized?.kind === 'request') state.services.notices.handleRequest(normalized.request)
       if (normalized?.kind === 'message') state.services.aggregator.ingest(normalized)
     } catch (error) {
       log.warn?.('认知事件处理失败：', error.message)

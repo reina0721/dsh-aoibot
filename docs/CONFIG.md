@@ -562,3 +562,21 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 | `cognition.qqAdmin.maxText` | integer | `100` | 1–100 Unicode 字符；昵称/名片/群名不能为空，不接受控制字符；网关可有更严限制 |
 
 仅主人命令，不挂新增 Agent 工具，不接受任意 action。群管仅当前群，机器人须有相应管理员/群主权限；`/profile` 仅主人私聊，网关拒绝 `set_qq_profile` 时返回 `UNSUPPORTED_SET_QQ_PROFILE`。精华/撤回先查询消息所属会话，缺少归属字段则拒绝。禁言为整数分钟 0–43200（0 解除）。`/file` 还要求 `media.enabled` 和 `media.files.enabled`，仅媒体根内相对路径，拒绝绝对路径、`..` 和符号链接逃逸；沿用扩展名/大小限制。真实 QQ 管理、资料和文件动作尚未验证。
+
+
+## QQ 通知与请求（M7-j）
+
+配置页「回复与出站」中保存后热应用（与原 `cognition.notice.patReply` 独立）：
+
+| 路径 | 类型 | 默认 | 范围/作用 |
+|---|---|---|---|
+| `cognition.notices.enabled` | boolean | `true` | 接受的已知通知记录到当前人格时间轴；关闭不影响原撤回/拍一拍/表态管线 |
+| `cognition.requests.enabled` | boolean | `true` | 接收好友/群请求为待办，允许主人列出及显式确认处理；关闭后不接收/列出/处理，不删除已有记录 |
+
+通知覆盖 `group_increase/group_decrease/group_admin/group_ban/group_card/group_name/group_title/essence/friend_add/offline_file`，只保留已验证 ID、子类型、时长、名片/群名/头衔和文件名等白名单字段；不保存通知 comment/flag、文件 URL 或 raw。标题最多 200、正文最多 500 Unicode 字符，控制字符移除、已知密钥模式脱敏；不下载离线文件。`nte_` ID 由上游时间、selfId 与规范字段生成，重复跳过；缺少时间时同字段通知会合并。未知通知/meta 不进入时间轴；仍受 cognition enabled、暂停和 accepted 门控。
+
+请求只接受 friend（缺省子类型按 add）、group add/invite；userId 必填，群请求必须有 groupId。flag 为非空字符串，最多 256 UTF-16 单元，无控制字符，作为私密网关凭据留在 `qq_request` 中，不进入列表/回复/日志。comment 先替换其中的 flag、按既有密钥规则脱敏并去控制字符，再限 500 Unicode 字符；列表不提供 flag。无 PII/熵检测，QQ ID/备注仍属于本地隐私数据；原事件日志/缓冲的保留策略不变。
+
+`/requests` 仅主人查看当前人格待办，最多 10 条；`/approve ID confirm`、`/reject ID confirm` 均始终要求小写字面量 confirm，不受 qqAdmin.requireConfirm 控制。身份与 access.canSend 先行，服务再次核对 owner/开关/pending/boolean；仅调用固定 `set_friend_add_request` 或 `set_group_add_request`，不挂 Agent 工具、不自动审批、不调用模型。服务 reason/remark 可为空，最多 100 Unicode 字符且无控制字符，命令暂不提供此参数。成功更新 approved/rejected、resolvedAt/resolvedBy；网关失败保留 pending，返回静态错误，不回显原始错误。请求按 flag 去重；当前进程同 ID 并发只调用一次。超时可能意味着网关已执行但未确认，人工核实后再重试。
+
+请求纳入人格数据组「请求」，支持统计/复制/删除；复制待办不会自动处理，跨人格副本也不代表新的真实请求。没有审批队列面板或新增请求 REST API，没有统一审批/逐项权限。只用 fake 网关离线验证，真实 QQ 事件/审批兼容性未验证，#3/#15 保持 partial。

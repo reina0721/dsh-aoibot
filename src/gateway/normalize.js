@@ -191,6 +191,10 @@ function normalizeNotice(raw) {
   put(notice, 'messageId', raw.message_id === undefined ? undefined : str(raw.message_id))
   put(notice, 'duration', raw.duration === undefined ? undefined : numberOr(raw.duration))
   put(notice, 'file', raw.file && typeof raw.file === 'object' ? raw.file : undefined)
+  put(notice, 'cardOld', raw.card_old)
+  put(notice, 'cardNew', raw.card_new)
+  put(notice, 'name', raw.group_name ?? raw.name)
+  put(notice, 'title', raw.title)
   put(notice, 'comment', raw.comment)
   put(notice, 'flag', raw.flag)
   return notice

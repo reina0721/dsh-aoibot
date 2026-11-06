@@ -4,9 +4,11 @@
 // 命令回复也走 outbound，因此受访问控制与频率上限约束。
 
 import { isOwner } from '../core/access.js'
+import { redactText } from '../core/leak-guard.js'
 
 const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
+const COMMANDS = [...REQUEST_COMMANDS, 'help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -54,6 +56,8 @@ const HELP_TEXT = [
   '/essence 消息ID | /recall 消息ID [confirm] — 当前会话消息',
   '/file 相对路径 — 上传媒体目录内文件',
   '上述 QQ 管理/文件命令默认关闭，仅主人；踢人始终 confirm，撤回默认 confirm。',
+  '/requests — 查看待处理好友/群请求（最多 10 条）',
+  '/approve ID confirm | /reject ID confirm — 主人确认处理请求',
   '/help — 本帮助',
 ].join('\n')
 
@@ -69,7 +73,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -300,6 +304,27 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         log.warn?.(`外部命令 /${parsed.name} 失败：`, error?.message || error)
         return send(turn, `命令 /${parsed.name} 执行失败。`)
       }
+    }
+
+    if (REQUEST_COMMANDS.includes(parsed.name)) {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (currentConfig().cognition?.requests?.enabled === false) return send(turn, '请求处理未启用（cognition.requests.enabled）。')
+      if (!requests) return send(turn, '请求服务不可用。')
+      const usage = () => send(turn, parsed.name === 'requests' ? '用法：/requests' : `用法：/${parsed.name} ID confirm（需要字面量 confirm 确认）`)
+      if (parsed.name === 'requests') {
+        if (parsed.args) return usage()
+        try {
+          const rows = requests.list({ status: 'pending', limit: 10 }).slice(0, 10)
+          if (!rows.length) return send(turn, '暂无待处理请求。')
+          return send(turn, ['待处理请求：', ...rows.map((row) => `${oneLine(row.id, 100)} · ${oneLine(row.type, 10)}/${oneLine(row.subType, 10)} · QQ ${oneLine(row.userId, 20)}${row.groupId ? ` · 群 ${oneLine(row.groupId, 20)}` : ''} · ${oneLine(redactText(String(row.comment || '')), 100)}`)].join('\n'))
+        } catch { return send(turn, '请求列表读取失败。') }
+      }
+      const parts = parsed.args.split(/\s+/)
+      if (parts.length !== 2 || !/^req_[a-f0-9]{32}$/.test(parts[0]) || parts[1] !== 'confirm') return usage()
+      try {
+        const row = await requests.resolve(parts[0], { approve: parsed.name === 'approve', operatorId: turn.senderId })
+        return send(turn, `请求 ${parts[0]} 已${row.status === 'approved' ? '批准' : '拒绝'}。`)
+      } catch { return send(turn, '请求处理失败：请检查 ID、待办状态及网关状态与权限。') }
     }
 
     if (ADMIN_COMMANDS.includes(parsed.name)) return handleAdmin(turn, parsed)

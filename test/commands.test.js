@@ -73,6 +73,7 @@ function harness(overrides = {}, services = {}) {
     runtime,
     qqActions: services.qqActions || qqActions,
     purpose,
+    requests: services.requests,
     media: services.media,
     stickers: services.stickers,
     bilibili: services.bilibili,
@@ -462,5 +463,63 @@ test('image commands: provider/send failures return a short safe error', async (
     const result = await h.service.handle(turn(cmd))
     assert.ok(result.reply.includes('图片操作失败'))
     assert.ok(!result.reply.includes('secret') && !result.reply.includes('raw gateway'))
+  }
+})
+
+test('request commands: owner lists at most ten pending public summaries and confirms approve/reject', async () => {
+  const calls = []
+  const id = 'req_' + 'a'.repeat(32)
+  const requests = {
+    list(options) {
+      calls.push(['list', options])
+      return Array.from({ length: 12 }, (_, i) => ({ id, type: 'group', subType: 'invite', userId: '10002', groupId: '20001', comment: `comment-${i}\nline ` + 'sk-' + 's'.repeat(30), flag: 'private-flag' }))
+    },
+    async resolve(requestId, options) { calls.push(['resolve', requestId, options]); return { status: options.approve ? 'approved' : 'rejected', flag: 'private-flag', comment: 'raw-comment' } },
+  }
+  const { service } = harness({}, { requests })
+  const result = await service.handle(turn('/requests'))
+  assert.deepEqual(calls[0], ['list', { status: 'pending', limit: 10 }])
+  assert.match(result.reply, /group\/invite.*QQ 10002.*群 20001.*comment-0 line/)
+  assert.doesNotMatch(result.reply, /comment-10|comment-11|sk-ssss|private-flag/)
+  assert.equal(result.reply.split('\n').length, 11)
+  assert.match((await service.handle(turn(`/approve ${id} confirm`))).reply, /已批准/)
+  assert.deepEqual(calls.at(-1), ['resolve', id, { approve: true, operatorId: '10001' }])
+  assert.match((await service.handle(turn(`/reject ${id} confirm`))).reply, /已拒绝/)
+  assert.deepEqual(calls.at(-1), ['resolve', id, { approve: false, operatorId: '10001' }])
+  const help = (await service.handle(turn('/help'))).reply
+  for (const name of ['/requests', '/approve', '/reject']) assert.ok(help.includes(name))
+})
+
+test('request commands: owner/access/enabled checks and exact confirm guard every side effect', async () => {
+  const calls = []
+  const requests = { list: (...args) => { calls.push(args); return [] }, resolve: async (...args) => { calls.push(args) } }
+  const id = 'req_' + 'b'.repeat(32)
+  const commands = ['/requests', `/approve ${id} confirm`, `/reject ${id} confirm`]
+  for (const command of commands) {
+    const nonOwner = harness({}, { requests })
+    assert.deepEqual(await nonOwner.service.handle(turn(command, { senderId: '10002' })), { handled: true, reply: '' })
+    assert.equal(nonOwner.sent.length, 0)
+    const denied = harness({}, { requests, allowSend: false })
+    assert.equal((await denied.service.handle(turn(command))).error, 'ACCESS_DENIED')
+    assert.equal(denied.sent.length, 0)
+    assert.match((await harness({ cognition: { requests: { enabled: false } } }, { requests }).service.handle(turn(command))).reply, /未启用/)
+  }
+  const { service } = harness({}, { requests })
+  for (const name of ['approve', 'reject']) {
+    for (const args of ['', id, `${id} CONFIRM`, `${id} yes`, `${id} confirm extra`, 'bad-id confirm', 'x'.repeat(101) + ' confirm']) assert.match((await service.handle(turn(`/${name} ${args}`))).reply, /用法|确认/)
+  }
+  assert.match((await service.handle(turn('/requests extra'))).reply, /用法/)
+  assert.equal(calls.length, 0)
+})
+
+test('request commands: empty/missing services and failures return safe replies without raw comments or flags', async () => {
+  assert.match((await harness({}, { requests: { list: () => [] } }).service.handle(turn('/requests'))).reply, /暂无/)
+  assert.match((await harness().service.handle(turn('/requests'))).reply, /不可用/)
+  const fail = () => { throw new Error('private-flag raw-comment secret') }
+  const { service } = harness({}, { requests: { list: fail, resolve: fail } })
+  for (const command of ['/requests', '/approve req_' + 'a'.repeat(32) + ' confirm', '/reject req_' + 'a'.repeat(32) + ' confirm']) {
+    const { reply } = await service.handle(turn(command))
+    assert.match(reply, /失败/)
+    assert.doesNotMatch(reply, /private-flag|raw-comment|secret/)
   }
 })

@@ -49,7 +49,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 1 | OneBot v11 正向 WS + HTTP | 有 | 有；三种鉴权、握手超时、重连退避、账号核验缓冲 | **有** | — |
 | 2 | SnowLuma 检测/读取 | 检测、启停、只注入机器人号 | 只读 `detectInstall`/`readOneBotEndpoint` | 部分（受限是许可要求） | M7：许可边界复核（维持只读） |
-| 3 | QQ 事件面 | 撤回/禁言/进退群/管理员/精华/名片/头衔/群名/加好友/拍一拍/表态/请求 | message/notice/request/meta 基础 + 撤回 | 部分 | M2 |
+| 3 | QQ 事件面 | 撤回/禁言/进退群/管理员/精华/名片/头衔/群名/加好友/拍一拍/表态/请求 | M7-j 十种已知通知校验/去重写人格时间轴（含群名/头衔/离线文件）；好友/群请求只存待办，主人确认处理；原撤回/拍一拍/表态保留 | 部分（M7-j） | M2：真实 QQ 兼容性、未知/扩展通知与 meta 认知未验证或未覆盖 |
 | 4 | 消息段与富媒体解析 | 合并转发展开、临时会话、群文件、待办、相册、骰子/猜拳、位置/名片、分享/音乐 | 文本/图片/表情/引用/forward 元数据；合并转发可展开；其余未解析 | 部分（M2-b） | M4 |
 | 5 | 原始事件落盘与脱敏 | 有 | 有（JSONL + SQLite + redact） | **有** | — |
 
@@ -71,7 +71,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
 | 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b：管理/文件命令独立默认关；仅主人/当前群或主人私聊；踢人始终 confirm，撤回默认 confirm；回复前 access.canSend；媒体根 realpath 校验 | 部分（M7-b） | M2 剩余/M5：无逐项 action 权限矩阵/统一审批；新动作不挂 Agent |
-| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；只读安全状态，无匹配值日志 | 部分（M7-i） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
+| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；M7-j 主人请求列表与 approve/reject 字面量 confirm，固定 action、无 flag/原始错误日志 | 部分（M7-j） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 豁免（用户批准） | 2026-11-06 用户批准：仅远端 API 鉴权；保留本机-only/CSRF 行为（见 §8.1） |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
 | 18 | 统一出站闸门 | 执行层兜底 | `cognition/outbound.js`：访问 → 限频 → leak guard → dryRun → 发送；pipeline/proactivity 统一 | **有**（M1-a） | — |
@@ -377,3 +377,12 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 `src/core/leak-guard.js` 的纯函数与 `createLeakGuard` 默认启用 + redact，可选 block；本地识别 OpenAI/GitHub/AWS AKIA/Bearer/PEM 私钥/至少 16 字符的 api_key/apiKey 值，只返回脱敏文本和类别/次数。单次及消息 text 合计超过 100,000 UTF-16 单元时整体脱敏/阻止；重叠合并、截断 PEM 防护、无匹配值错误或日志。outbound 在访问/限频后、dry-run/网关前检查；block 返回 LEAK_BLOCKED 并计 leakBlocked，脱敏成功仅带 leakGuard=redacted。dry-run 仍扫描且不发送；原始网关异常不传播。安全页只读展示开关/策略，没有扫描内容/密钥。
 
 仅离线合成密钥、fake 网关、配置与 mock 面板证据，无真实 QQ/浏览器验证；无自动审批或外部调用。逐段扫描不重组跨段/跨消息密钥，无 PII/熵检测，可能误报/漏报；非文本段原样保留，不扫描媒体/base64/文件，媒体服务及面板手动发送/raw action 等独立路径不覆盖。缺统一审批/逐项权限，#15 保持 partial；#31/#42/#49/#50 行不变，remaining 仍 47。
+
+
+### M7-j QQ 通知与主人请求审批（#3/#15 仍 partial）
+
+十种已知通知写入当前人格 timeline_event：进退群、管理员、禁言、名片、群名、头衔、精华、好友添加和离线文件；只保留校验后的白名单字段，确定性去重、标题/正文 200/500 Unicode 上限，不下载文件。原撤回/拍一拍/表态继续走已有管线；接受/暂停/配置门控后才写入，未知通知与 meta 不进入认知。
+
+好友请求缺省子类型映射 add，群 add/invite 按 flag 去重存 pending；flag 仅本地凭据存储/固定网关 action 使用，不进入公共列表、回复或日志。备注去控制字符、脱敏 flag/既有密钥模式、限 500 字符；主人 `/requests` 最多 10 条摘要，`/approve ID confirm`、`/reject ID confirm` 固定字面量确认且先检查 access，服务复核 owner/开关/pending/boolean。成功记录处理元数据，失败静态错误且 pending；进程内同 ID 并发防重、await 固定原人格写入。请求新增 requests 人格数据组，支持统计/复制/删除。无自动审批、审批队列面板、新请求 REST API 或新增 Agent 工具。
+
+证据：[notices.test.js](../../test/notices.test.js)、[commands.test.js](../../test/commands.test.js)、[actions.test.js](../../test/actions.test.js)、[集成测试](../../test/cognition-integration.test.js)，全部为离线合成事件/fake 网关；真实 QQ 事件字段/审批动作未验证。没有通用审批/逐项权限或 PII/熵/媒体文件检测；QQ ID/备注仍是隐私，原事件日志策略不变，网关超时需人工核实、跨人格副本不代表新真实请求。#3/#15 保持 partial；#31/#42/#49/#50 行逐字不变，remaining 仍 47。

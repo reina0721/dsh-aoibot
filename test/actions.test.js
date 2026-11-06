@@ -136,3 +136,37 @@ test('admin actions: fixed OneBot names/params, boolean false and duration zero 
   for (const id of ['x', 0, 2147483648, -2147483649]) assert.throws(() => api.setEssence(id), /ID/)
   assert.equal(calls.length, 9)
 })
+
+test('request actions: fixed OneBot names/params preserve opaque flags, booleans and defaults', async () => {
+  const { calls, call } = createRecorder()
+  const api = createActions({ call })
+  await api.setFriendAddRequest('opaque flag', true)
+  await api.setFriendAddRequest('opaque flag', false, '备注')
+  await api.setGroupAddRequest('group flag', 'invite', false, '拒绝原因')
+  await api.setGroupAddRequest('group flag', 'add', true)
+  assert.deepEqual(calls.map(({ action, params }) => [action, params]), [
+    ['set_friend_add_request', { flag: 'opaque flag', approve: true, remark: '' }],
+    ['set_friend_add_request', { flag: 'opaque flag', approve: false, remark: '备注' }],
+    ['set_group_add_request', { flag: 'group flag', sub_type: 'invite', approve: false, reason: '拒绝原因' }],
+    ['set_group_add_request', { flag: 'group flag', sub_type: 'add', approve: true, reason: '' }],
+  ])
+})
+
+test('request actions: invalid flags, booleans, subtype and bounded optional text never call gateway', () => {
+  const { calls, call } = createRecorder()
+  const api = createActions({ call })
+  for (const flag of ['', ' ', 'x'.repeat(257), 'bad\nflag', 'bad\x00flag', 'bad\x85flag', 123, null, {}]) {
+    assert.throws(() => api.setFriendAddRequest(flag, true), /flag/)
+    assert.throws(() => api.setGroupAddRequest(flag, 'add', false), /flag/)
+  }
+  for (const approve of [undefined, null, 0, 1, 'false', 'true']) {
+    assert.throws(() => api.setFriendAddRequest('flag', approve), /boolean/)
+    assert.throws(() => api.setGroupAddRequest('flag', 'add', approve), /boolean/)
+  }
+  for (const subType of ['', 'unknown', null]) assert.throws(() => api.setGroupAddRequest('flag', subType, true), /subType/)
+  for (const text of ['x'.repeat(101), 'bad\ntext', 'bad\x85text', 123, null]) {
+    assert.throws(() => api.setFriendAddRequest('flag', true, text), /remark/)
+    assert.throws(() => api.setGroupAddRequest('flag', 'invite', false, text), /reason/)
+  }
+  assert.equal(calls.length, 0)
+})

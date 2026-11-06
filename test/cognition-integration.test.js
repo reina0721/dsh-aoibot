@@ -562,3 +562,38 @@ test('integration: pipeline awaits configured embeddings rerank; default stays o
   }
   fetchMock.mock.restore()
 })
+
+test('集成：accepted notice/request 分流、去重、暂停与拒收门控；默认不触发网关动作', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-notices-it-'))
+  const scheduler = createFakeScheduler()
+  const calls = []
+  const cog = makeCog({ dir, scheduler, gateway: { actions: {
+    sendMessage: async (...args) => calls.push(args),
+    setFriendAddRequest: async (...args) => calls.push(args),
+    setGroupAddRequest: async (...args) => calls.push(args),
+  } } })
+  try {
+    assert.equal(await cog.ready, true)
+    const notice = { kind: 'notice', time: 123, selfId: '999', notice: { type: 'group_title', groupId: '20001', userId: '10002', title: '新头衔' } }
+    const request = { kind: 'request', request: { type: 'friend', userId: '10002', flag: 'opaque', comment: '你好' } }
+    cog.observe(notice, { accepted: false })
+    cog.observe(request, { accepted: false })
+    assert.equal(cog.timeline({ types: ['event'] }).length, 0)
+    assert.equal(cog.store.count('persona_self:qq_request'), 0)
+    cog.pause()
+    cog.observe(notice)
+    cog.observe(request)
+    assert.equal(cog.timeline({ types: ['event'] }).length, 0)
+    assert.equal(cog.store.count('persona_self:qq_request'), 0)
+    cog.resume()
+    for (let i = 0; i < 2; i++) { cog.observe(notice); cog.observe(request) }
+    assert.equal(cog.timeline({ types: ['event'] }).length, 1)
+    assert.match(cog.timeline({ types: ['event'] })[0].detail, /新头衔/)
+    assert.equal(cog.store.count('persona_self:qq_request'), 1)
+    assert.equal(cog.store.list('persona_self:qq_request')[0].status, 'pending')
+    cog.observe({ kind: 'notice', notice: { type: 'unknown' } })
+    await flush()
+    assert.deepEqual(calls, [])
+    assert.equal(cog.store.count('turn'), 0)
+  } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
+})

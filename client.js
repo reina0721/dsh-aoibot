@@ -6158,6 +6158,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     const PERSONA_DATA_GROUPS = [
       { id: 'memory', label: '记忆' },
       { id: 'timeline', label: '时间轴事件' },
+      { id: 'requests', label: '请求' },
       { id: 'people', label: '人物画像' },
       { id: 'relationships', label: '关系' },
       { id: 'emotion', label: '情绪' },

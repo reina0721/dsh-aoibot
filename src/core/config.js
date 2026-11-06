@@ -187,6 +187,8 @@ export const DEFAULTS = {
       quote: true,
       atSender: false,
     },
+    notices: { enabled: true },
+    requests: { enabled: true },
     qqAdmin: { enabled: false, requireConfirm: true, maxText: 100 },
     notice: {
       patReply: true,
@@ -730,6 +732,8 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.reply.delayMs', label: '分条间隔', type: 'number', default: 600, min: 0, max: 5000, step: 100, unit: 'ms' },
       { path: 'cognition.reply.quote', label: '回复时引用原消息', type: 'switch', default: true },
       { path: 'cognition.reply.atSender', label: '群聊回复时 @ 对方', type: 'switch', default: false, help: '默认关闭，避免每条回复都带 @；与引用同时开启时可能显得重叠。' },
+      { path: 'cognition.notices.enabled', label: '记录 QQ 通知到时间轴', type: 'switch', default: true },
+      { path: 'cognition.requests.enabled', label: '接收请求与主人确认处理', type: 'switch', default: true, help: '只存待办；/approve 或 /reject 始终需要 confirm，不自动审批。' },
       { path: 'cognition.notice.patReply', label: '被拍一拍时回应', type: 'switch', default: true, help: '别人拍机器人时回一句短话；每个用户有冷却。' },
       { path: 'cognition.notice.patCooldownMs', label: '拍一拍回应冷却', type: 'number', default: 60000, min: 0, max: 600000, step: 1000, unit: 'ms' },
     ],
@@ -1233,6 +1237,8 @@ function normalizeCognition(raw, rawCognition = {}) {
     dryRun: pickBool(src.dryRun, d.dryRun),
     locale: pickEnum(src.locale, d.locale, ['zh-CN']),
     timezone: pickString(src.timezone, '', { max: 64 }),
+    notices: { enabled: pickBool(src.notices?.enabled, d.notices.enabled) },
+    requests: { enabled: pickBool(src.requests?.enabled, d.requests.enabled) },
     qqAdmin: {
       enabled: pickBool(src.qqAdmin?.enabled, d.qqAdmin.enabled),
       requireConfirm: pickBool(src.qqAdmin?.requireConfirm, d.qqAdmin.requireConfirm),
