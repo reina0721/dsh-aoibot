@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- M5-a：新增仅限本地的模块内核：manifest 与权限门控、动态加载/热重载/启停、错误隔离、模块命令/规范化事件/1 MiB JSON 存储、只读认知接缝、统一 outbound 文本发送、REST API 与「模块」面板；模块需由操作员复制到数据目录，不含上传、远程下载、依赖安装、沙箱或 marketplace。
 - M4-a：新增默认关闭的媒体基础层：受大小/扩展名限制的图片、语音、文件入站下载，OpenAI 兼容 Vision/ASR/TTS，base64 图片/语音发送、OneBot 群/私聊文件上传，以及 `/media/status|test|tts` API；不含媒体面板、表情包市场、RVC 或生图。
 - M4-b：新增本地表情包库（PNG/JPG/JPEG/GIF/WebP、5 MiB/张、200 张、SHA-256 去重、人工标签）、安全的上传/列表/按 ID 取图 API、媒体面板，以及主人命令 `/tts` `/say` `/sticker`；仍不含自动收集/语境选图、商城、RVC、生图或 Agent 媒体工具。
 - 安装 Archify 视觉层（`@tt-a1i/archify-dsh@1.0.0`，内含 Archify 3.0.1）到当前 `web` profile；新增 `docs/ARCHIFY.md` 记录版本、验证、限制与回滚。

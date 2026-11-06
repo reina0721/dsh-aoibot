@@ -6,6 +6,7 @@
 import { isOwner } from '../core/access.js'
 
 const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker']
+const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
   const raw = String(text || '').trim()
@@ -58,6 +59,19 @@ const HELP_TEXT = [
  */
 export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, media = null, stickers = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
+  const externalCommands = new Map()
+
+  function registerCommand(name, handler, { ownerOnly = true } = {}) {
+    const normalized = String(name || '').toLowerCase()
+    if (!EXTERNAL_COMMAND_RE.test(normalized)) throw new Error('命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$')
+    if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
+    if (COMMANDS.includes(normalized) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
+    const registration = { handler, ownerOnly: ownerOnly !== false }
+    externalCommands.set(normalized, registration)
+    return () => {
+      if (externalCommands.get(normalized) === registration) externalCommands.delete(normalized)
+    }
+  }
 
   function currentConfig() {
     try { return getConfig() || {} } catch (error) { return {} }
@@ -194,16 +208,35 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (!turn || typeof turn.text !== 'string') return { handled: false }
     const parsed = parseCommand(turn.text)
     if (!parsed) return { handled: false }
-    if (!COMMANDS.includes(parsed.name)) {
+    const external = externalCommands.get(parsed.name)
+    if (!COMMANDS.includes(parsed.name) && !external) {
       if (!ownerCheck(turn)) return { handled: true, reply: '' }
       return send(turn, '未知命令。发送 /help 查看可用命令。')
     }
-    if (!ownerCheck(turn)) {
+    const owner = ownerCheck(turn)
+    if ((!external || external.ownerOnly) && !owner) {
       log.debug?.('非主人命令已忽略：', `${turn.chatType}:${turn.chatId}/${turn.senderId}`)
       return { handled: true, reply: '' }
     }
 
-    if (parsed.name === 'help') return send(turn, HELP_TEXT)
+    if (external) {
+      try {
+        const result = await external.handler({ turn, parsed, args: parsed.args })
+        const reply = typeof result === 'string' ? result : result?.reply
+        return send(turn, reply || '')
+      } catch (error) {
+        log.warn?.(`外部命令 /${parsed.name} 失败：`, error?.message || error)
+        return send(turn, `命令 /${parsed.name} 执行失败。`)
+      }
+    }
+
+    if (parsed.name === 'help') {
+      const names = [...externalCommands.entries()]
+        .filter(([, item]) => owner || !item.ownerOnly)
+        .map(([name]) => `/${name}`)
+        .sort()
+      return send(turn, HELP_TEXT + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
+    }
     if (parsed.name === 'status') return send(turn, await statusText(turn))
 
     if (parsed.name === 'say') {
@@ -354,5 +387,5 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     return send(turn, '未知命令。发送 /help 查看可用命令。')
   }
 
-  return { handle, parse: parseCommand, help: HELP_TEXT, oneLine }
+  return { handle, parse: parseCommand, help: HELP_TEXT, oneLine, registerCommand }
 }

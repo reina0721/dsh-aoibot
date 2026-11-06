@@ -69,7 +69,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, access = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, access = null, modules = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -141,6 +141,20 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  if (modules) {
+    route('GET', '/modules', async () => ({ ok: true, items: modules.list() }))
+    route('POST', '/modules/reload', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id) throw new Error('缺少 id')
+      return { ok: true, item: await modules.reload(String(body.id)) }
+    })
+    route('POST', '/modules/toggle', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id || typeof body.enabled !== 'boolean') throw new Error('需要 id 与 enabled(boolean)')
+      return { ok: true, item: await modules.setEnabled(String(body.id), body.enabled) }
+    })
+  }
 
   if (media) {
     route('GET', '/media/status', async () => ({ ok: true, ...media.status(), stickers: stickers ? await stickers.status() : null }))

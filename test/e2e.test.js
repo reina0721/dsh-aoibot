@@ -2,7 +2,7 @@
 // 用内存 OneBot v11 假网关（test/helpers/mock-onebot.js）模拟 NapCat / SnowLuma。
 //
 // 覆盖：
-//   1. 启动即注册 REST 路由：/health、/status、/config 的形状与默认值；
+//   1. 启动即注册 REST 路由：/health、/status、/config、/modules 的形状与默认值；
 //   2. 配置保存热应用、恢复默认、非法值回退 + issues；
 //   3. POST /connect → WS 连接 + get_login_info 账号核验（loginCheck='ok'）；
 //   4. 账号不一致：warn 只告警不断线；enforce 断开并 paused；
@@ -337,6 +337,10 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   assert.ok(status.logs && typeof status.logs.total === 'number')
   assert.ok(Array.isArray(status.recentEvents))
   assert.equal(status.config.version, 2)
+
+  // /modules：未安装本地模块时返回空列表，不暴露数据目录路径
+  const modules = await getJson(fake, '/modules')
+  assert.deepEqual(modules.items, [])
 
   // /config：config / defaults / groups 三件套，面板据此数据驱动渲染
   const configPayload = await getJson(fake, '/config')

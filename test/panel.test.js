@@ -116,7 +116,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'media', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'media', 'modules', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
   )
 })
 
@@ -224,7 +224,7 @@ test('全部标签页：无数据与有数据都能渲染（不依赖真实网�
     retryPrefSave: noop,
     prefStatus: { saving: false, error: '', savedAt: 0 },
   }
-  const tabNames = ['Overview', 'Connect', 'Messages', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
+  const tabNames = ['Overview', 'Connect', 'Messages', 'MediaPage', 'ModulesPage', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
   for (const name of tabNames) {
     assert.equal(typeof panel[name], 'function', name + ' 应该导出')
     assert.doesNotThrow(() => panel[name](baseProps), name + ' 空数据应可渲染')

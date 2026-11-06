@@ -3053,6 +3053,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'media', label: '媒体', icon: 'sparkles' },
+      { id: 'modules', label: '模块', icon: 'layout' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'persona', label: '人格', icon: 'sparkles' },
       { id: 'models', label: '模型', icon: 'bolt' },
@@ -6708,6 +6709,74 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function ModulesPage(props) {
+      const [items, setItems] = useState([])
+      const [loading, setLoading] = useState(true)
+      const [error, setError] = useState('')
+      const [busy, setBusy] = useState('')
+
+      const refresh = useCallback(async () => {
+        setLoading(true)
+        setError('')
+        const result = safeObject(await get('/modules'))
+        if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
+        else setItems(safeArray(result.items))
+        setLoading(false)
+      }, [])
+
+      useEffect(() => { refresh() }, [refresh])
+
+      const action = async (item, kind) => {
+        const key = String(item.id) + ':' + kind
+        setBusy(key)
+        const result = safeObject(await post(kind === 'reload' ? '/modules/reload' : '/modules/toggle', kind === 'reload' ? { id: item.id } : { id: item.id, enabled: !item.enabled }))
+        setBusy('')
+        if (result.ok === false) {
+          const message = String(result.message || '模块操作失败')
+          setError(message)
+          props.toast?.(message, 'err')
+          return
+        }
+        props.toast?.(kind === 'reload' ? '模块已重载' : (item.enabled ? '模块已停用' : '模块已启用'), 'ok')
+        await refresh()
+      }
+
+      if (loading && !items.length) return h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 }))
+      return h(
+        'div',
+        { className: 'ob-stack' },
+        error ? h(Banner, { tone: 'err', message: error, actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: refresh }, '重试')] }) : null,
+        items.length
+          ? h('div', { className: 'ob-grid two' }, items.map((item) => {
+              const permissions = safeArray(item.permissions)
+              const tone = item.status === 'loaded' ? 'ok' : item.status === 'error' ? 'err' : 'muted'
+              return h(Panel, {
+                key: item.id,
+                title: String(item.name || item.id),
+                description: String(item.description || item.id),
+                actions: h('div', { className: 'ob-row' },
+                  h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: busy || !item.enabled, onClick: () => action(item, 'reload') }, '重载'),
+                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: busy, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+                ),
+              },
+                h('div', { className: 'ob-row' },
+                  h(Badge, { tone }, String(item.status || 'unknown')),
+                  item.version ? h(Badge, { tone: 'muted' }, 'v' + String(item.version)) : null,
+                  h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
+                ),
+                permissions.length ? h('div', { className: 'ob-row', style: { marginTop: '12px' } }, permissions.map((permission) => h(Badge, { key: permission, tone: 'muted' }, permission))) : h('p', { className: 'ob-muted ob-small', style: { marginTop: '12px' } }, '未申请权限'),
+                item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
+              )
+            }))
+          : h(Panel, null, h(EmptyState, {
+              icon: 'layout',
+              title: '还没有本地模块',
+              description: '模块由操作员安装到 <dataDir>/modules。复制模块目录后在这里刷新或重载；不提供上传、远程安装或 marketplace。',
+              action: h('a', { className: 'ob-btn secondary', href: 'https://github.com/reina0721/dsh-bot/blob/main/docs/MODULES.md', target: '_blank', rel: 'noreferrer' }, '查看模块文档'),
+            })),
+      )
+    }
+
     // =====================================================================
     // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
@@ -6747,6 +6816,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             eyebrow: 'MEDIA LIBRARY',
             title: '媒体',
             description: '查看图片理解、语音转写与合成状态，测试 TTS，并管理可按标签随机发送的本地表情包库。',
+          }
+        case 'modules':
+          return {
+            eyebrow: 'LOCAL MODULES',
+            title: '模块',
+            description: '管理操作员放入本地数据目录的 JavaScript 模块。模块是任意本地代码；此页只支持查看、启停和热重载。',
           }
         case 'config':
           return {
@@ -7175,6 +7250,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'media') body = h(MediaPage, tabProps)
+      else if (tab === 'modules') body = h(ModulesPage, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'persona') body = h(PersonaTab, tabProps)
       else if (tab === 'models') body = h(ModelTab, tabProps)
@@ -7312,6 +7388,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.Connect = Connect
     exports.Messages = Messages
     exports.MediaPage = MediaPage
+    exports.ModulesPage = ModulesPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。

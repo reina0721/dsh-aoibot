@@ -112,6 +112,36 @@ test('commands：/help 与 /status 回复', async () => {
   assert.equal(sent.length, 2)
 })
 
+test('commands：外部命令分发、帮助、重复检查与 dispose', async () => {
+  const { service } = harness()
+  let received = null
+  const dispose = service.registerCommand('echo', ({ turn: value, parsed, args }) => {
+    received = { value, parsed, args }
+    return { reply: 'echo:' + args }
+  })
+  assert.throws(() => service.registerCommand('echo', () => ''), /已注册/)
+  assert.throws(() => service.registerCommand('status', () => ''), /已注册/)
+  assert.throws(() => service.registerCommand('Bad.Name', () => ''), /命令名/)
+  const result = await service.handle(turn('/echo hello'))
+  assert.equal(result.reply, 'echo:hello')
+  assert.equal(received.args, 'hello')
+  assert.equal(received.parsed.name, 'echo')
+  assert.match((await service.handle(turn('/help'))).reply, /模块命令：\/echo/)
+  dispose()
+  assert.doesNotThrow(() => service.registerCommand('echo', () => 'again'))
+})
+
+test('commands：外部命令 ownerOnly 默认开启，可显式开放，异常变短回复', async () => {
+  const { service, sent } = harness()
+  service.registerCommand('privatecmd', () => 'secret')
+  service.registerCommand('publiccmd', ({ args }) => args || 'public', { ownerOnly: false })
+  service.registerCommand('broken', () => { throw new Error('sensitive detail') }, { ownerOnly: false })
+  assert.deepEqual(await service.handle(turn('/privatecmd', { senderId: '10002' })), { handled: true, reply: '' })
+  assert.equal((await service.handle(turn('/publiccmd hi', { senderId: '10002' }))).reply, 'hi')
+  assert.match((await service.handle(turn('/broken', { senderId: '10002' }))).reply, /执行失败/)
+  assert.doesNotMatch(sent.at(-1).segments[0].data.text, /sensitive/)
+})
+
 test('commands：/quiet 与 /active 持久化群聊模式与主动开关', async () => {
   const { service, getConfig } = harness()
   const quiet = await service.handle(turn('/quiet'))

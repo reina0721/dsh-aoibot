@@ -27,6 +27,7 @@
     "docs/MIGRATION.md",
     "docs/USER-MANUAL.md",
     "docs/CONFIG.md",
+    "docs/MODULES.md",
     "docs/MODEL-GATEWAY.md",
     "docs/TROUBLESHOOTING.md",
     "CONTRIBUTING.md",
@@ -41,7 +42,8 @@
     "scripts/install.sh",
     "docs/archive/README.md",
     "docs/DEMO.md",
-    "docs/assets/demo-evidence.json"
+    "docs/assets/demo-evidence.json",
+    "examples/modules"
   ],
   "dsh": {
     "bundle": {

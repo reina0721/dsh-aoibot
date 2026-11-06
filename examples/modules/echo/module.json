@@ -1,0 +1,8 @@
+{
+  "id": "echo",
+  "name": "Echo example",
+  "version": "1.0.0",
+  "description": "Minimal local command, event, and storage example.",
+  "entry": "index.js",
+  "permissions": ["commands", "events", "storage"]
+}

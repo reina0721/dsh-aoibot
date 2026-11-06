@@ -242,7 +242,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.9 认知 REST 与 UI
 
 - 路由前缀仍为 `/onebot-qq/api/cognition/*`，响应 `{ok:true,...}` / `{ok:false,message}`；GET 无副作用。
-- 面板第 10 个顶层标签「人格」是文本人设 + 群聊参与工作台；第 8 个「认知」仍提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置，
+- 面板第 7 个顶层标签「人格」是文本人设 + 群聊参与工作台；第 10 个「认知」仍提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置，
   以及同源的数值人格编辑入口。概览和认知状态页显示最近 turn 的 outcome/reason 诊断。
 - 认知 API 不可用时页面显示 degraded/空态，不影响平台连接与配置页。
 
@@ -257,7 +257,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 认证：bearer / x-api-key / 自定义 header / none；禁止跨源重定向转发认证头；错误/日志/trace 脱敏。
 - 路由：`cognition.llm.mode = auto|dsh|fixed|direct|chain`；直连 selected + fallback，最后可回退 DSH；
   空文本、只有 reasoning、bad JSON 都不算成功。
-- REST：`/onebot-qq/api/models/*`；UI 第 6 个顶层标签「模型」；详细矩阵见
+- REST：`/onebot-qq/api/models/*`；UI 第 8 个顶层标签「模型」；详细矩阵见
   `docs/MODEL-GATEWAY.md`。
 
 ### 3.11 访问控制与统一出站
@@ -340,9 +340,19 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - TTS 调 OpenAI 兼容 `/audio/speech`，MP3 保存到 `<dataDir>/media/outbound/`。API Key 配置只保存环境变量名，密钥从进程环境读取，不进入状态或日志。
 - `sendMedia()` 对图片/语音使用 `base64://` OneBot 消息段，避免网关不能读取 DSH 本地 `file://`；文件使用 `upload_group_file` / `upload_private_file`。发送同样检查总开关、能力开关、大小与扩展名。
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
-- 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.18 的 M4-b 补充。Agent 工具、RVC、图片生成/编辑仍未实现；真实网关/provider 兼容性仍需 M7 实机验证。
+- 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 工具、RVC、图片生成/编辑仍未实现；真实网关/provider 兼容性仍需 M7 实机验证。
 
-### 3.18 表情包、媒体命令与面板（M4-b）
+### 3.18 本地模块内核（M5-a）
+
+- `src/modules/kernel.js` 扫描 `<dataDir>/modules/<id>/module.json`，只动态 import 操作员已经放到本机的数据目录中的 `.js`/`.mjs`；entry 的词法路径与 realpath 都必须留在模块目录内，拒绝路径遍历和符号链接逃逸。
+- manifest 要求合法 `id` 与 `entry`，可声明 name/version/description/permissions/enabled；启停覆盖原子写入 `modules/state.json`，缺失/损坏按空状态处理。无效 manifest 也保留为 error 列表项。
+- 生命周期：setup 可异步并返回 cleanup；reload/disable/dispose 先清理 cleanup、命令、事件、知识源和 capability。加载、setup 与事件错误都隔离并写入模块状态，绝不向 host 抛出。
+- 稳定 API 以权限门控：`events`、`commands`、`send:text`、`cognition:read`、`knowledge`、`capabilities`、`storage`。模块文本发送只能走 cognition outbound（`source=module:<id>`），继续受访问控制与频率限制；认知只暴露六个只读查询。
+- 存储为模块目录内 `data.json`，原子串行写、最多 1 MiB。命令不能覆盖内置或其它模块命令；默认 ownerOnly。
+- host 提供 `onebotModules`，在接受的规范化事件上非阻塞 dispatch；REST 为 `/modules`、`/modules/reload`、`/modules/toggle`，面板提供列表/启停/重载，不提供上传。
+- 安全边界：模块是宿主进程中的任意本地代码，permissions 不是 Node.js 沙箱。M5-a 不含远程下载、依赖安装、签名、marketplace、自动更新或文件监视。详见 `docs/MODULES.md`。
+
+### 3.19 表情包、媒体命令与面板（M4-b）
 
 - `src/media/stickers.js` 在 `<dataDir>/media/stickers/` 保存图片，以 `<dataDir>/media/stickers.json` 原子维护索引。只接受 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个；SHA-256 去重，索引缺失或损坏按空库容错。HTTP/JSON 只公开 ID、名称、MIME、大小、hash、标签和时间，不公开绝对路径。
 - REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
@@ -358,6 +368,7 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
 ├── media/               # 可选：inbound/、outbound/、stickers/ 与 stickers.json
+├── modules/             # 操作员安装的本地模块、state.json 与各模块 data.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）

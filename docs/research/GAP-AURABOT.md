@@ -147,16 +147,16 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
-| 51 | 模块内核/热重载/替换/隔离 | `core/modules.js` + 快照 + 出错隔离 | 无 | **无** | M5 |
+| 51 | 模块内核/热重载/替换/隔离 | `core/modules.js` + 快照 + 出错隔离 | M5-a 本地 kernel：manifest、权限、启停/重载、cleanup、错误隔离 | **受限实现** | M5-a：无进程/VM 沙箱、依赖解析或文件监视 |
 | 52 | 模块市场/社区库 | 有 | 无 | 无 | M5 |
-| 53 | 扩展 API/类型/教程/模拟测试 | API.md + `.d.ts` + MODULE-TUTORIAL | 只有 `ctx.provide('onebotCognition')` | 部分 | M5 |
-| 54 | 外部知识源/动作注册 | 模块 API | `registerKnowledgeSource` 等 | 部分 | M3/M5 |
+| 53 | 扩展 API/类型/教程/模拟测试 | API.md + `.d.ts` + MODULE-TUTORIAL | M5-a 稳定 JS API + `docs/MODULES.md` + real dynamic-module tests；无 `.d.ts` | 部分 | M5-a：本地 JS only，无 SDK/类型包 |
+| 54 | 外部知识源/动作注册 | 模块 API | 权限门控 knowledge/capability 注册 + command/event/sendText/storage；无通用动作总线 | 部分 | M5-a：仅明确 API，发送仍强制走 outbound |
 
 ### 3.12 运维、UI、文档与测试
 
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
-| 55 | 面板页数 | 约 25 个功能页 | 11 个标签（含媒体） | 部分 | M6 |
+| 55 | 面板页数 | 约 25 个功能页 | 12 个标签（含媒体、模块） | 部分 | M6 |
 | 56 | 设置向导 | 有 | 连接步骤（地址→连接→核验） | 部分 | M6 |
 | 57 | 备份/恢复 | zip 备份 + 恢复 + 迁移 | 只有 SQLite backup | 部分 | M6 |
 | 58 | 升级检查/beta 通道 | 有 | 无 | 无 | M6 |

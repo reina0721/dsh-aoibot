@@ -7,6 +7,7 @@
 | 从旧版升级 | [手动迁移](MIGRATION.md) |
 | 连接、人格与面板 | [用户手册](USER-MANUAL.md) |
 | 配置与数据位置 | [配置参考](CONFIG.md) |
+| 安装本地模块 | [本地模块](MODULES.md) |
 | 模型接入 | [模型网关](MODEL-GATEWAY.md) |
 | 遇到问题 | [故障排查](TROUBLESHOOTING.md) |
 | 开发与接口 | [架构契约](ARCHITECTURE.md) · [贡献指南](../CONTRIBUTING.md) |

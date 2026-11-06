@@ -15,6 +15,7 @@
 | 配置文件 | `<数据目录>/config.json` |
 | 事件落盘（可选） | `<数据目录>/events.jsonl`（`events.persist.enabled=true` 时） |
 | 日志落盘（可选） | `<数据目录>/logs/<area>-<day>.log`（`logging.persist.enabled=true` 时） |
+| 本地模块 | `<数据目录>/modules/<id>/`；启停覆盖为 `<数据目录>/modules/state.json` |
 
 在 Windows 上默认就是：
 
@@ -32,6 +33,10 @@ C:\Users\<你>\.dsh\plugins-data\dsh-bot\config.json
 
 `scripts/verify-plugin.ps1` 就是靠 `DSH_BOT_DATA_DIR` 把验证用的配置写到 `verify-out/plugin-data/`，
 不污染你的真实数据。
+
+### 本地模块目录与状态
+
+模块不是 `config.json` 配置项。内核在启动时扫描 `<数据目录>/modules/<id>/module.json`；操作员也可从面板「模块」页热重载或启停。面板/API 的停用列表原子写入 `modules/state.json`，文件缺失或损坏时按空列表处理。模块自己的 `data.json` 位于各模块目录内，最大 1 MiB。完整清单、权限和安全边界见 [本地模块](MODULES.md)。
 
 ## 2. 读取、校验与保存规则
 

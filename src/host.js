@@ -24,6 +24,7 @@ import { createCognition } from './cognition/index.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
+import { createModuleKernel } from './modules/kernel.js'
 import { personaProfileText } from './cognition/persona.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -93,6 +94,19 @@ export function apply(ctx, rowConfig) {
     media,
     stickers,
   })
+  const modules = createModuleKernel({
+    dataDir: dataDir('modules'),
+    getConfig,
+    ctx,
+    logger,
+    cognition,
+    outbound: cognition.services.outbound,
+    commands: cognition.services.commands,
+  })
+  const modulesReady = modules.start().catch((error) => {
+    log.warn('本地模块初始化失败：', error.message)
+    return []
+  })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
   function registerPromptVariables() {
@@ -161,6 +175,8 @@ export function apply(ctx, rowConfig) {
         log.debug(`事件被过滤：${pushed.reason}`)
         return
       }
+      // 模块事件与宿主广播并行；模块异常由 kernel 隔离，不能阻塞 OneBot 事件循环。
+      modules.dispatch(pushed.record).catch((error) => log.warn('模块事件分发失败：', error.message))
       try {
         ctx.emit?.('onebot-qq/event', pushed.record)
       } catch (error) {
@@ -195,6 +211,11 @@ export function apply(ctx, rowConfig) {
     ctx.provide?.('onebotModels', models)
   } catch (error) {
     log.warn('注册 onebotModels 服务失败：', error.message)
+  }
+  try {
+    ctx.provide?.('onebotModules', modules)
+  } catch (error) {
+    log.warn('注册 onebotModules 服务失败：', error.message)
   }
 
   /** 保存配置并热应用（端点变化时 gateway 内部自动重连）。 */
@@ -234,12 +255,14 @@ export function apply(ctx, rowConfig) {
     media,
     stickers,
     access,
+    modules,
     version: VERSION,
     dataDir: dataDir(),
   })
 
   const ready = (async () => {
     try {
+      await modulesReady
       await gateway.ready
       if (configState.current.enabled) await gateway.start()
       else gateway.stop()
@@ -253,6 +276,7 @@ export function apply(ctx, rowConfig) {
     try {
       routes.dispose()
     } catch (error) {}
+    modules.dispose().catch(() => {})
     try {
       gateway.dispose()
     } catch (error) {}
@@ -290,6 +314,8 @@ export function apply(ctx, rowConfig) {
     models,
     media,
     stickers,
+    modules,
+    modulesReady,
     access,
     logger,
     routes,
