@@ -26,6 +26,7 @@ import { createMetaService } from './meta.js'
 import { createBeliefService } from './beliefs.js'
 import { createKnowledgeService, defaultSourceRegistry } from './knowledge.js'
 import { createPipeline } from './pipeline.js'
+import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
@@ -40,6 +41,7 @@ export function createCognition({
   dataRoot,
   dryRun = null,
   models = null,
+  access = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -94,6 +96,18 @@ export function createCognition({
       state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
       state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng })
       state.services.llm = createLlmClient({ ctx, models, getConfig, store: personaStore, clock, log })
+      state.services.outbound = createOutbound({
+        getConfig,
+        gateway: {
+          get actions() {
+            return gateway?.actions
+          },
+        },
+        policy: state.services.policy,
+        access,
+        logger: log,
+        clock,
+      })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
@@ -116,6 +130,7 @@ export function createCognition({
         beliefs: state.services.beliefs,
         gateway,
         dryRun,
+        outbound: state.services.outbound,
         turnAggregator: null,
       })
       state.services.aggregator = createTurnAggregator({
@@ -139,7 +154,7 @@ export function createCognition({
       state.services.proactivity = createProactivityService({
         store: personaStore, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
         memory: state.services.memory, persona: state.services.persona, emotion: state.services.emotion,
-        llm: state.services.llm, gateway, policy: state.services.policy, logger: log,
+        llm: state.services.llm, gateway, policy: state.services.policy, logger: log, outbound: state.services.outbound,
       })
       state.services.proactivity.start(scheduler)
       state.ready = true
@@ -531,6 +546,7 @@ export function createCognition({
     retryTask,
     cancelTask,
     metrics,
+    outboundStats: () => state.services.outbound?.stats?.() || null,
     proactivityStats,
     runProactivity,
     insights,

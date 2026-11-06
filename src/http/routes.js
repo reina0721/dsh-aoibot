@@ -68,7 +68,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, access = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -118,12 +118,26 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       gateway: gateway.snapshot(),
       events: events.stats(),
       logs: logger.stats(),
+      access: access?.summary?.() || { mode: 'open', configured: false },
       recentEvents: events.recent(20),
     }
   }
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  // ---- 访问控制：面板/诊断只读接口 ----
+  if (access) {
+    route('GET', '/access/stats', async () => ({ ok: true, ...(access.summary?.() || {}) }))
+    route('POST', '/access/check', async (req) => {
+      const body = await readBody(req)
+      const chatType = body?.chatType === 'group' ? 'group' : body?.chatType === 'private' ? 'private' : ''
+      const chatId = String(body?.chatId ?? '').trim()
+      if (!chatType || !chatId) throw new Error('chatType 必须是 private 或 group，且需要 chatId')
+      const senderId = String(body?.senderId ?? '').trim()
+      return { ok: true, ...access.check({ chatType, chatId, senderId }) }
+    })
+  }
 
   // ---- 模型协议：provider 注册表、测试、发现、选择 ----
   if (models) {

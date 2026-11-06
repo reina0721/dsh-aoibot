@@ -599,6 +599,57 @@ test('过滤器：ignoreUsers / ignoreGroups / kinds.notice 生效，/events 不
 })
 
 // ---------------------------------------------------------------------------
+// 6b. 访问控制
+// ---------------------------------------------------------------------------
+
+test('访问控制 allowlist：非白名单消息不入事件/不回复，白名单与主人正常', { timeout: 25000 }, async (t) => {
+  const owner = '10001'
+  const group = '30001'
+  const otherGroup = '30002'
+  const stranger = '10002'
+  const { fake, mock } = await boot(t, {
+    rowConfig: (m) => ({
+      ...endpointConfig(m),
+      access: { mode: 'allowlist', ownerQQ: owner, private: [], groups: [group] },
+    }),
+  })
+  await waitForLoginCheck(fake, 'ok')
+
+  mock.pushPrivateMessage({ userId: stranger, message: 'blocked-private-秘密' })
+  mock.pushGroupMessage({ groupId: otherGroup, userId: stranger, message: 'blocked-group-秘密' })
+  mock.pushGroupMessage({ groupId: group, userId: stranger, message: 'allowed-group-可见' })
+  mock.pushPrivateMessage({ userId: owner, message: 'allowed-owner-可见' })
+
+  const stats = await waitFor(async () => {
+    const data = await getJson(fake, '/access/stats')
+    return data.counters?.inboundBlocked >= 2 && data.counters?.inboundAllowed >= 2 ? data : null
+  }, { label: '访问控制计数' })
+  assert.equal(stats.mode, 'allowlist')
+  assert.equal(stats.ownerQQ, owner)
+  assert.equal(stats.configured, true)
+
+  const listed = await waitFor(async () => {
+    const data = await getJson(fake, '/events')
+    const text = JSON.stringify(data.items || data.events || [])
+    return text.includes('allowed-owner-可见') && text.includes('allowed-group-可见') ? text : null
+  }, { label: '白名单事件进入缓冲' })
+  assert.ok(!listed.includes('blocked-private-秘密'), '被拒私聊不应进入事件缓冲')
+  assert.ok(!listed.includes('blocked-group-秘密'), '被拒群聊不应进入事件缓冲')
+  assert.equal(mock.sent('send_group_msg').length, 0, '认知不应给被拒会话发消息')
+
+  const denied = await postJson(fake, '/access/check', { chatType: 'group', chatId: otherGroup, senderId: stranger })
+  assert.equal(denied.allowed, false)
+  assert.match(denied.reasonText, /群白名单/)
+  const allowed = await postJson(fake, '/access/check', { chatType: 'private', chatId: owner, senderId: owner })
+  assert.equal(allowed.allowed, true)
+  assert.match(allowed.reasonText, /主人/)
+
+  const status = await getJson(fake, '/status')
+  assert.equal(status.access.mode, 'allowlist')
+  assert.equal(status.access.counters.inboundBlocked, 2)
+})
+
+// ---------------------------------------------------------------------------
 // 7. 发送消息
 // ---------------------------------------------------------------------------
 

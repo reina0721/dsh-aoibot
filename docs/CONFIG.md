@@ -165,13 +165,27 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 |---|---|---|---|---|---|
 | `security.allowRawAction` | switch | `false` | `true`/`false` | 允许面板通过 `POST /onebot-qq/api/action` 透传任意 OneBot action；仅调试用，默认关闭 | ✅ |
 
-### 3.9 内部字段
+### 3.9 访问控制（`access`）
+
+| 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
+|---|---|---|---|---|---|
+| `access.mode` | select | `open` | `open` / `allowlist` | `open` 保持现有行为；`allowlist` 只放行主人与白名单 | ✅ |
+| `access.ownerQQ` | text | `''` | 数字 QQ 号 | 主人 QQ；`allowlist` 下识别主人私聊/主动目标 | ✅ |
+| `access.ownerName` | text | `主人` | ≤32 字 | 面板/审计显示的主人称呼 | ✅ |
+| `access.private` | string-list | `[]` | QQ 号列表 | 非主人私聊白名单 | ✅ |
+| `access.groups` | string-list | `[]` | 群号列表 | 群白名单；群内任何人可触发 | ✅ |
+| `access.auditSize` | number | `100` | 0–1000 | 内存审计环形缓冲条数；只存元数据，不存正文 | ✅ |
+
+`access` 是增量字段，老配置由 `deepMerge` 自动补齐，不需要迁移脚本；默认 `open` 保证升级后行为不变。
+`allowlist` 但 `ownerQQ` 为空时不会出现「人人可私聊」：私聊只按白名单放行，且 `normalizeConfig` 会给出 issue。
+
+### 3.10 内部字段
 
 | 路径 | 类型 | 默认值 | 作用 | 面板 |
 |---|---|---|---|---|
 | `version` | number | `2` | 配置版本号，用于升级时补齐默认值；不要手改 | — |
 
-### 3.10 认知（`cognition`）
+### 3.11 认知（`cognition`）
 
 认知字段按功能分为 11 个面板组（`GET /config` 的 `groups` 中 id 为 `cog-*`），全部持久化、可恢复默认、
 即时生效，不需要重连。完整字段/类型/范围/默认值以 `GET /onebot-qq/api/config` 的 `groups[].fields` 为准；
@@ -221,7 +235,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `{name, profile, traits, style, values, locked, source, activate}`；服务端重新 sanitize/截断，
 设置为 active；不覆盖 `self`。`scripts/import-aoi-persona.mjs` 用于把外部蒸馏包转换成该格式。
 
-### 3.11 模型网关（`models.json`）
+### 3.12 模型网关（`models.json`）
 
 模型 provider 与密钥**不放在 `config.json`**，避免 `/config` 回传；它们存在单独的文件，由「模型」页
 和 `/onebot-qq/api/models/*` 管理：

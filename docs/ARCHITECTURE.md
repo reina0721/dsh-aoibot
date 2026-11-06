@@ -100,6 +100,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 }
 ```
 - 过滤（events.filters）在 **events.push** 前完成：`ignoreUsers`、`ignoreGroups`、消息子类型开关、kind 开关、`includeSelfMessages`。
+- 访问控制（`core/access.js`）在 `events.push` **之前**：`allowlist` 下非主人/非白名单消息直接丢弃，不落 raw、不聚合、不回复；审计只存元数据。
 - 不伪造字段：平台没给的信息留空，不使用「推测」值。
 
 ### 3.4 状态快照（snapshot()，REST `GET /status` 的主体）
@@ -123,7 +124,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 
 | Method | Path | 说明 |
 |---|---|---|
-| GET | `/status` | 状态快照 + 统计 + 最近事件(条数可配) |
+| GET | `/status` | 状态快照 + 统计 + 最近事件(条数可配) + `access` 摘要 |
+| GET | `/access/stats` | 访问控制模式、名单数量、计数与最近审计 |
+| POST | `/access/check` | body `{ chatType, chatId, senderId }`，返回判定与中文原因 |
 | GET | `/config` | `{ config, defaults, groups, dataDir, version }`（含面板字段表） |
 | POST | `/config/save` | body `{ config }` 全量保存，返回规范化后的 config 与 issues |
 | POST | `/config/reset` | 恢复默认值 |
@@ -256,6 +259,14 @@ export function normalizeEvent(raw, cfg) -> null | {
   空文本、只有 reasoning、bad JSON 都不算成功。
 - REST：`/onebot-qq/api/models/*`；UI 第 6 个顶层标签「模型」；详细矩阵见
   `docs/MODEL-GATEWAY.md`。
+
+### 3.11 访问控制与统一出站
+
+- `src/core/access.js`：`normalizeAccess` / `decideInbound` / `canSend` 纯函数；`createAccess` 负责配置读取、审计环形缓冲与计数。
+- `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 是认知侧唯一自动发送入口；
+  顺序为访问控制 → 频率上限 → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
+- `pipeline.sendDecision`、撤回处理与 `proactivity` 全部走 outbound；面板 `POST /send` 是人工操作，保留独立路径。
+- 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
 
 ## 4. 数据目录
 

@@ -11,7 +11,7 @@ export function createPipeline({
   store, getConfig, clock, logger,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
-  beliefs = null, dryRun = null,
+  beliefs = null, dryRun = null, outbound = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -234,7 +234,6 @@ export function createPipeline({
     if (decision.action === 'silence' || decision.action === 'wait' || decision.action === 'recall_silence' || decision.action === 'recall_ignore') {
       return { ok: true, text: '', skipped: true }
     }
-    if (isDry()) return { ok: true, text: '', skipped: true, dryRun: true }
     if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE' }
     return composeReply({
       turn: context.turn,
@@ -250,32 +249,58 @@ export function createPipeline({
     })
   }
 
-  async function sendDecision(decision, text, turn, opts = {}) {
-    if (!text || isDry()) {
-      policy.markSent(decision.id, { dryRun: isDry() })
-      if (isDry()) stats.dryRun += 1
-      return { ok: true, dryRun: isDry(), messageId: '' }
-    }
+  async function sendDirect(decision, segments, turn) {
     if (!gateway?.actions?.sendMessage) return { ok: false, error: 'GATEWAY_UNAVAILABLE' }
-    const segments = []
-    const replyTo = turn.messages?.at(-1)?.messageId
-    if (replyTo && !opts.noReplySegment) segments.push({ type: 'reply', data: { id: replyTo } })
-    segments.push({ type: 'text', data: { text } })
+    if (isDry()) {
+      policy.markSent(decision.id, { dryRun: true })
+      return { ok: true, dryRun: true, messageId: '' }
+    }
     try {
       const result = await gateway.actions.sendMessage({ chatType: turn.chatType, chatId: turn.chatId, message: segments })
       const messageId = String(result?.message_id ?? result?.data?.message_id ?? result?.id ?? '')
       policy.markSent(decision.id, { messageId })
-      turnAggregatorRef?.noteBotMessage?.(messageId)
-      stats.sent += 1
-      noteGroupReply(turn)
-      pending.set(chatKey(turn), { decisionId: decision.id, sentAt: clock.now(), action: decision.action, text })
-      try { ctxEmit('onebot-qq/cognition-sent', { decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId, action: decision.action }) } catch (error) {}
       return { ok: true, messageId, result }
     } catch (error) {
       policy.markFailed(decision.id, error.message)
-      log.warn?.('发送认知回复失败：', error.message)
       return { ok: false, error: error.message }
     }
+  }
+
+  async function sendDecision(decision, text, turn, opts = {}) {
+    if (!text) {
+      policy.markSent(decision.id, { dryRun: isDry() })
+      if (isDry()) stats.dryRun += 1
+      return { ok: true, dryRun: isDry(), messageId: '' }
+    }
+    const segments = []
+    const replyTo = turn.messages?.at(-1)?.messageId
+    if (replyTo && !opts.noReplySegment) segments.push({ type: 'reply', data: { id: replyTo } })
+    segments.push({ type: 'text', data: { text } })
+    const delivered = outbound && typeof outbound.deliver === 'function'
+      ? await outbound.deliver({
+          chatType: turn.chatType,
+          chatId: turn.chatId,
+          segments,
+          decisionId: decision.id,
+          source: 'pipeline',
+          dryRun: isDry() ? true : null,
+        })
+      : await sendDirect(decision, segments, turn)
+    if (!delivered?.ok) {
+      log.warn?.('发送认知回复失败：', delivered?.message || delivered?.error || 'unknown')
+      return { ok: false, error: delivered?.error || 'SEND_FAILED', blocked: Boolean(delivered?.blocked), reason: delivered?.reason || '' }
+    }
+    if (delivered.dryRun) {
+      stats.dryRun += 1
+      return { ok: true, dryRun: true, messageId: '' }
+    }
+    const messageId = String(delivered.messageId || '')
+    turnAggregatorRef?.noteBotMessage?.(messageId)
+    stats.sent += 1
+    noteGroupReply(turn)
+    pending.set(chatKey(turn), { decisionId: decision.id, sentAt: clock.now(), action: decision.action, text })
+    try { ctxEmit('onebot-qq/cognition-sent', { decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId, action: decision.action }) } catch (error) {}
+    return { ok: true, messageId, result: delivered.result }
   }
 
   function ctxEmit() {}

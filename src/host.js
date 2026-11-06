@@ -13,6 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { createLogger } from './core/logger.js'
+import { createAccess } from './core/access.js'
 import { createEventStore } from './core/events.js'
 import { loadConfig, saveConfig, defaultConfig, refreshSecrets } from './core/config.js'
 import { dataDir } from './core/store.js'
@@ -47,6 +48,7 @@ export function apply(ctx, rowConfig) {
   const logger = createLogger({ getConfig: () => configState.current, dsh: ctx })
   const log = logger.child('plugin')
   const eventLog = logger.child('events')
+  const access = createAccess({ getConfig: () => configState.current, logger: logger.child('access') })
 
   const getConfig = () => configState.current
 
@@ -72,11 +74,18 @@ export function apply(ctx, rowConfig) {
     },
     logger,
     dataRoot: dataDir('cognition'),
+    access,
   })
 
   /** WS 原始事件 → raw 日志/认知 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
   function onEvent(raw) {
     try {
+      // 访问控制先于一切：被拒绝的消息不落 raw、不聚合、不回复。
+      const gate = access.decideRaw(raw)
+      if (!gate.allowed) {
+        log.debug(`访问拒绝：${gate.chatType || '?'}:${gate.chatId || '?'}/${gate.senderId || '?'}（${gate.reason}）`)
+        return
+      }
       // 过滤前先交给认知：原始事件不能因为过滤规则丢失。
       try { cognition.ingestRaw(raw) } catch (error) { log.warn('认知 raw 事件失败：', error.message) }
       const normalized = normalizeEvent(raw, getConfig())
@@ -157,6 +166,7 @@ export function apply(ctx, rowConfig) {
     logger,
     cognition,
     models,
+    access,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -211,6 +221,7 @@ export function apply(ctx, rowConfig) {
     events,
     cognition,
     models,
+    access,
     logger,
     routes,
     dispose,

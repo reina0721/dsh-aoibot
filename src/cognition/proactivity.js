@@ -11,7 +11,7 @@ export function isQuietHour(hour, start, end) {
 }
 
 export function createProactivityService({
-  store, getConfig, clock, person, relationships, memory, persona, emotion, llm, gateway, policy, logger,
+  store, getConfig, clock, person, relationships, memory, persona, emotion, llm, gateway, policy, logger, outbound = null,
 } = {}) {
   const log = logger?.child?.('proactivity') || logger || { debug() {}, warn() {} }
   const cfg = () => getConfig()?.cognition || {}
@@ -89,18 +89,40 @@ export function createProactivityService({
     }
     store.put('decision', decision.id, decision)
     const dry = Boolean(cfg().dryRun)
+    const chatId = String(rel.scopeId || '')
     try {
-      let messageId = ''
-      if (!dry && gateway?.actions?.sendMessage) {
-        const result = await gateway.actions.sendMessage({ chatType: 'private', chatId: String(rel.scopeId || ''), message: [{ type: 'text', data: { text } }] })
-        messageId = String(result?.message_id ?? result?.data?.message_id ?? '')
+      let delivered
+      if (outbound && typeof outbound.deliver === 'function') {
+        delivered = await outbound.deliver({
+          chatType: 'private',
+          chatId,
+          segments: [{ type: 'text', data: { text } }],
+          decisionId: decision.id,
+          source: 'proactivity',
+          dryRun: dry ? true : null,
+        })
+      } else {
+        let messageId = ''
+        const isDry = dry || !gateway?.actions?.sendMessage
+        if (!isDry) {
+          const result = await gateway.actions.sendMessage({ chatType: 'private', chatId, message: [{ type: 'text', data: { text } }] })
+          messageId = String(result?.message_id ?? result?.data?.message_id ?? '')
+        }
+        policy?.markSent?.(decision.id, { messageId, dryRun: isDry })
+        delivered = { ok: true, messageId, dryRun: isDry }
       }
-      policy?.markSent?.(decision.id, { messageId, dryRun: dry })
-      store.put('proactive_intent', uid('proactive'), { personId: rel.personId, chatId: String(rel.scopeId || ''), decisionId: decision.id, text, messageId, dryRun: dry, at: clock.now() })
+      if (!delivered?.ok) {
+        const reason = delivered?.reason || delivered?.error || 'send_failed'
+        state.lastError = reason
+        return { ok: false, reason, blocked: Boolean(delivered?.blocked) }
+      }
+      const messageId = String(delivered.messageId || '')
+      const isDry = Boolean(delivered.dryRun)
+      store.put('proactive_intent', uid('proactive'), { personId: rel.personId, chatId, decisionId: decision.id, text, messageId, dryRun: isDry, at: clock.now() })
       state.sent += 1
       state.lastError = ''
       log.info?.('主动行为已发送', rel.personId, text.slice(0, 80))
-      return { ok: true, decisionId: decision.id, text, dryRun: dry }
+      return { ok: true, decisionId: decision.id, text, dryRun: isDry }
     } catch (error) {
       state.lastError = error.message
       policy?.markFailed?.(decision.id, error.message)

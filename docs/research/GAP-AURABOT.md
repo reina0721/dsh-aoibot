@@ -68,13 +68,13 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
-| 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | 无 | **无** | M1 |
+| 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
 | 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | 无 | 无 | M2 |
 | 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | 无 | 无 | M2 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 部分 | M6 |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
-| 18 | 统一出站闸门 | 执行层兜底 | dryRun 分散、主动行为直连发送 | 部分 | M1 |
+| 18 | 统一出站闸门 | 执行层兜底 | `cognition/outbound.js`：访问 → 限频 → dryRun → 发送；pipeline/proactivity 统一 | **有**（M1-a） | — |
 
 ### 3.4 群聊与表达
 
@@ -236,8 +236,16 @@ QQ → 网关 → events → access（主人/白名单/档位）
 | **M6** | 运维/UI/安全 | 备份恢复、升级提示、工作区迁移、离峰省钱、本机-only/CSRF/反代、审批/危险确认、向导、25 页 | 安全评审 + 向导 + 备份恢复 |
 | **M7** | 审计发布 | parity matrix 关闭、性能/成本、真机验收、发布 | 所有行「实现」或「豁免」 |
 
-## 7. M0 交付（已完成）
+## 7. M0 / M1-a 交付（已完成）
 
+**M1-a（访问控制 + 统一出站）**
+- `src/core/access.js`：open/allowlist、主人/私聊/群白名单、入口判定、审计环形缓冲、计数。
+- `src/cognition/outbound.js`：回复/撤回/主动行为统一出站；访问 → 频率 → dryRun → 发送；失败不重试。
+- 配置 `access.*` 与「配置 → 访问控制」分组；概览访问控制卡片；`/access/stats`、`/access/check`。
+- 测试：`test/access.test.js`、`test/outbound.test.js`、e2e allowlist 用例；默认 open 回归不变。
+- 边界：逐项工具权限/审批、真机 allowlist 验证留到 M1 剩余 / M2。
+
+**M0（视觉与矩阵）**
 - Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。
 - 视觉基线：见 [docs/visuals/README.md](../visuals/README.md)。
   - `current-architecture.html`、`target-architecture.html`

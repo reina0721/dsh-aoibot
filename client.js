@@ -3187,6 +3187,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const byKind = safeObject(events.byKind)
       const byChat = safeObject(events.byChat)
       const recent = safeArray(status && status.recentEvents)
+      const access = safeObject(status && status.access)
+      const accessCounters = safeObject(access.counters)
       const now = props.now || Date.now()
       const [busy, setBusy] = useState('')
       const connected = gateway.state === 'connected'
@@ -3301,6 +3303,31 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h(StatTile, { label: '已丢弃', value: Number(events.dropped) || 0, icon: 'filter', tone: 'warn', hint: '被过滤或无效事件' }),
           h(StatTile, { label: '事件缓冲', value: buffered, denominator: capacity, icon: 'bolt', tone: 'info', hint: '环形缓冲上限 ' + (capacity || '—'), progress: capacity ? buffered / capacity : 0 }),
           h(StatTile, { label: '日志总数', value: Number(logs.total) || 0, icon: 'logs', tone: 'muted', hint: '当前缓冲 ' + (Number(logs.buffered) || 0) + ' 条' }),
+        ),
+
+        h(
+          Reveal,
+          null,
+          h(
+            Panel,
+            {
+              title: '访问控制',
+              description: access.configured ? 'allowlist：只有主人与白名单能触发回复/主动行为。' : 'open：任何私聊/群都能触发回复，保持现有行为。',
+              actions: h(Btn, { small: true, kind: 'ghost', icon: 'security', onClick: () => props.go('config') }, '去配置'),
+            },
+            h('div', { className: 'ob-row', style: { marginBottom: '8px', flexWrap: 'wrap' } },
+              h(Badge, { tone: access.configured ? 'ok' : 'warn' }, access.configured ? 'allowlist' : 'open'),
+              h(Badge, { tone: 'muted' }, '主人：' + (access.ownerQQ ? (access.ownerName || '主人') + ' · ' + access.ownerQQ : '未填写')),
+              h(Badge, { tone: 'muted' }, '私聊白名单 ' + String(Number(safeObject(access.allow).private) || 0)),
+              h(Badge, { tone: 'muted' }, '群白名单 ' + String(Number(safeObject(access.allow).groups) || 0)),
+              h(Badge, { tone: Number(accessCounters.inboundBlocked) ? 'warn' : 'muted' }, '入站拦截 ' + String(Number(accessCounters.inboundBlocked) || 0)),
+              h(Badge, { tone: Number(accessCounters.outboundBlocked) ? 'warn' : 'muted' }, '出站拦截 ' + String(Number(accessCounters.outboundBlocked) || 0)),
+            ),
+            h('p', { className: 'ob-field-help', style: { margin: 0 } },
+              access.configured
+                ? '被拒绝的消息不落 raw、不聚合、不回复；审计只存会话/发送者/原因/时间，不存正文。'
+                : '建议在「配置 → 访问控制」切换到 allowlist 并填写主人 QQ；默认 open 是为了升级后行为不变。'),
+          ),
         ),
 
         h(
