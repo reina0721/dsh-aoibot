@@ -5,15 +5,15 @@
   "status": "pass",
   "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-11-06T16:25:53.169Z",
+  "startedAt": "2026-11-06T17:29:09.654Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
-    "sha256": "a20abea340c2a55ea75eaa6e8400e10beaefba4625cb083b6790dfcda6811881",
+    "sha256": "131456ae89a8c400b0b833562e34c146d23b454255e7f52e2ee60576e7822c1d",
     "bytes": 7101
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-    "sha256": "f8e2ac7d36a461c1cd7773b6d8757707c61b8017225f80cc23c8b924f76e8873",
+    "sha256": "dd4ee251f4f02f316cda2c6345c56a00b54bcb96e20c9a970bb41364135602a8",
     "bytes": 777695
   },
   "stages": {
@@ -38,7 +38,7 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "a20abea340c2a55ea75eaa6e8400e10beaefba4625cb083b6790dfcda6811881",
+          "sha256": "131456ae89a8c400b0b833562e34c146d23b454255e7f52e2ee60576e7822c1d",
           "bytes": 7101
         },
         "validation": {
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 429,
+      "durationMs": 430,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,18 +68,18 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "0369d578-55aa-45d3-95a9-e81b1a0562fc",
+        "receiptId": "8ffa7cb7-b7b9-454e-94d5-c2fa45fb5c65",
         "ok": true,
         "command": "deliver",
         "type": "architecture",
         "input": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
         "output": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "specification": {
-          "sha256": "a20abea340c2a55ea75eaa6e8400e10beaefba4625cb083b6790dfcda6811881",
+          "sha256": "131456ae89a8c400b0b833562e34c146d23b454255e7f52e2ee60576e7822c1d",
           "bytes": 7101
         },
         "artifact": {
-          "sha256": "f8e2ac7d36a461c1cd7773b6d8757707c61b8017225f80cc23c8b924f76e8873",
+          "sha256": "dd4ee251f4f02f316cda2c6345c56a00b54bcb96e20c9a970bb41364135602a8",
           "bytes": 777695
         },
         "validation": {
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 158,
+      "durationMs": 166,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -118,7 +118,7 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "artifact": {
-          "sha256": "f8e2ac7d36a461c1cd7773b6d8757707c61b8017225f80cc23c8b924f76e8873",
+          "sha256": "dd4ee251f4f02f316cda2c6345c56a00b54bcb96e20c9a970bb41364135602a8",
           "bytes": 777695
         },
         "checks": [
@@ -247,13 +247,13 @@
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "0369d578-55aa-45d3-95a9-e81b1a0562fc"
+        "deliveryReceiptId": "8ffa7cb7-b7b9-454e-94d5-c2fa45fb5c65"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2732,
+      "durationMs": 2612,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -273,10 +273,10 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "0369d578-55aa-45d3-95a9-e81b1a0562fc",
+        "deliveryReceiptId": "8ffa7cb7-b7b9-454e-94d5-c2fa45fb5c65",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-          "sha256": "f8e2ac7d36a461c1cd7773b6d8757707c61b8017225f80cc23c8b924f76e8873",
+          "sha256": "dd4ee251f4f02f316cda2c6345c56a00b54bcb96e20c9a970bb41364135602a8",
           "bytes": 777695
         },
         "state": {
@@ -996,8 +996,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T16:25:57.879Z",
-  "durationMs": 4709,
+  "finishedAt": "2026-11-06T17:29:14.554Z",
+  "durationMs": 4899,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

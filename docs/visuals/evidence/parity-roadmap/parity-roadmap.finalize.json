@@ -5,15 +5,15 @@
   "status": "pass",
   "type": "workflow",
   "quality": "showcase",
-  "startedAt": "2026-11-06T16:25:58.044Z",
+  "startedAt": "2026-11-06T17:29:14.789Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-    "sha256": "f551790ae23cfbbdae4f0894fd7a81ffad3d084f136efb06b77f607eff454cb2",
+    "sha256": "2f4a00a444572dc2e595eeae0deeadb9d254a32fc3b8b13df5811127377c2a4b",
     "bytes": 5283
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "4af26ea4407166a0c56280258e2f2ef0ecce5bc1e0090264fc609b27e6367a4c",
+    "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
     "bytes": 763400
   },
   "stages": {
@@ -38,7 +38,7 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "f551790ae23cfbbdae4f0894fd7a81ffad3d084f136efb06b77f607eff454cb2",
+          "sha256": "2f4a00a444572dc2e595eeae0deeadb9d254a32fc3b8b13df5811127377c2a4b",
           "bytes": 5283
         },
         "validation": {
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 507,
+      "durationMs": 470,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,18 +68,18 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "df6f7878-62f4-4de2-89a4-0d5296dbecfa",
+        "receiptId": "fd0cc5c7-8b50-4b4d-808c-bc1e86d116a5",
         "ok": true,
         "command": "deliver",
         "type": "workflow",
         "input": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
         "output": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "specification": {
-          "sha256": "f551790ae23cfbbdae4f0894fd7a81ffad3d084f136efb06b77f607eff454cb2",
+          "sha256": "2f4a00a444572dc2e595eeae0deeadb9d254a32fc3b8b13df5811127377c2a4b",
           "bytes": 5283
         },
         "artifact": {
-          "sha256": "4af26ea4407166a0c56280258e2f2ef0ecce5bc1e0090264fc609b27e6367a4c",
+          "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
           "bytes": 763400
         },
         "validation": {
@@ -118,7 +118,7 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "artifact": {
-          "sha256": "4af26ea4407166a0c56280258e2f2ef0ecce5bc1e0090264fc609b27e6367a4c",
+          "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
           "bytes": 763400
         },
         "checks": [
@@ -249,13 +249,13 @@
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "df6f7878-62f4-4de2-89a4-0d5296dbecfa"
+        "deliveryReceiptId": "fd0cc5c7-8b50-4b4d-808c-bc1e86d116a5"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2418,
+      "durationMs": 2304,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -275,10 +275,10 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "df6f7878-62f4-4de2-89a4-0d5296dbecfa",
+        "deliveryReceiptId": "fd0cc5c7-8b50-4b4d-808c-bc1e86d116a5",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-          "sha256": "4af26ea4407166a0c56280258e2f2ef0ecce5bc1e0090264fc609b27e6367a4c",
+          "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
           "bytes": 763400
         },
         "state": {
@@ -1382,8 +1382,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T16:26:02.548Z",
-  "durationMs": 4504,
+  "finishedAt": "2026-11-06T17:29:19.278Z",
+  "durationMs": 4488,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

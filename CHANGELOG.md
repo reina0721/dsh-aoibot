@@ -1,12 +1,6 @@
 # 变更记录
 
-## 0.11.1（2026-11-06，部分真机验收）
-
-- live `web` 已升级到 0.11.1；健康 `connected`，新增 API 200、真实入站/回复、`/send`、备份已验证。typing 已开启但验收窗口内无私聊入站，未观察到 input_status；主人命令 `/status` 已真实往返（message_id 770603012 / 回复 890788338）；私聊 typing 经主人确认看到输入状态；真实 GitHub upgrade check 成功，B站公开接口被 412/-352 风控，离线分享可用。
-
-- M7-q：新增 `setInputStatus(userId,eventType)`，严格正安全整数字符串 ID（无前导零/非数字、最多 20 字符）与整数 1/2 校验，固定 `set_input_status` payload；新增默认关闭的 `cognition.typing={enabled:false}` 和轮次面板开关。仅私聊/C2C 的 `handleTurn` 在原 `processTurn` 前等待输入中、`finally` 等待暂停；两次异常均捕获，不改变回复/原异常、不记录原始网关错误或聊天 ID。默认零调用，群聊/缺方法旁路，命令早退与处理异常也清理；不改 outbound/sendMedia/发送 API，入站 `input_status` 仍忽略。新增离线 action/配置/集成测试，无新依赖。没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板；真实 QQ 未验证，尚未部署/全量验收。#9 为 steer + 私聊 typing，仍 partial，remaining 47，#31/#42/#49/#50 不变。
-
-## 未发布
+## 0.11.2（2026-11-06）
 
 - M7-t：新增主人 `/purpose plan ID`，仅活跃 goal 且标题/描述非空时调用现有 JSON LLM；去控制字符，严格校验 1–8 条非空唯一、每条最多 200 UTF-16 单元的步骤，仅更新 steps 并回复当前聊天。无效 JSON/步骤、缺服务和目标在等待期间变化均安全失败；完整 ID/唯一前缀、owner/禁用/访问闸门。`/purpose step ID N [done|undo]`（1–20，默认 done）只改指定步骤完成标记，`/purpose steps ID` 查看步骤/进度；沿用目的服务进度与完成规则，undo 不自动 resume。无新配置/依赖或默认行为变化，未使用 plan 无新增 LLM 调用；没有自主执行器、动作绑定或审批集成。离线 fake LLM/目的服务测试，真实模型/QQ 未验证、未部署；#38 仍 partial，矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
 
@@ -14,6 +8,11 @@
 
 - M7-r：新增默认空的 `access.operators`（string-list、同私聊列表规范化、去重最多 500 项）。主人优先；操作员可在 allowlist 私聊入站/出站（原因 `operator`），群仍需白名单。固定只读命令为 help/status/model（无参数）/bili/groupinfo/memberinfo，其他内置、模型设置/清除和未知命令静默；查询服务仅开放允许群的只读操作。模块默认 ownerOnly 保留，显式公开命令不变；deniedCommands 仍优先拦截且操作员静默。新增离线访问/配置/命令/查询服务测试，无新依赖。#13 从 none 改为 partial，#14 交叉引用并保持 partial；无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变，真实 QQ 未验证。
 
+## 0.11.1（2026-11-06，部分真机验收）
+
+- live `web` 已升级到 0.11.1；健康 `connected`，新增 API 200、真实入站/回复、`/send`、备份已验证。typing 已开启但验收窗口内无私聊入站，未观察到 input_status；主人命令 `/status` 已真实往返（message_id 770603012 / 回复 890788338）；私聊 typing 经主人确认看到输入状态；真实 GitHub upgrade check 成功，B站公开接口被 412/-352 风控，离线分享可用。
+
+- M7-q：新增 `setInputStatus(userId,eventType)`，严格正安全整数字符串 ID（无前导零/非数字、最多 20 字符）与整数 1/2 校验，固定 `set_input_status` payload；新增默认关闭的 `cognition.typing={enabled:false}` 和轮次面板开关。仅私聊/C2C 的 `handleTurn` 在原 `processTurn` 前等待输入中、`finally` 等待暂停；两次异常均捕获，不改变回复/原异常、不记录原始网关错误或聊天 ID。默认零调用，群聊/缺方法旁路，命令早退与处理异常也清理；不改 outbound/sendMedia/发送 API，入站 `input_status` 仍忽略。新增离线 action/配置/集成测试，无新依赖。没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板；真实 QQ 未验证，尚未部署/全量验收。#9 为 steer + 私聊 typing，仍 partial，remaining 47，#31/#42/#49/#50 不变。
 
 ## 0.11.0（2026-11-06，部分真机验收）
 

@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "df6f7878-62f4-4de2-89a4-0d5296dbecfa",
+  "receiptId": "fd0cc5c7-8b50-4b4d-808c-bc1e86d116a5",
   "status": "current",
   "command": "deliver",
   "type": "workflow",
   "input": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
   "output": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
   "specification": {
-    "sha256": "f551790ae23cfbbdae4f0894fd7a81ffad3d084f136efb06b77f607eff454cb2",
+    "sha256": "2f4a00a444572dc2e595eeae0deeadb9d254a32fc3b8b13df5811127377c2a4b",
     "bytes": 5283
   },
   "artifact": {
-    "sha256": "4af26ea4407166a0c56280258e2f2ef0ecce5bc1e0090264fc609b27e6367a4c",
+    "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
     "bytes": 763400
   }
 }
