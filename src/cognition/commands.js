@@ -10,7 +10,7 @@ import { redactText } from '../core/leak-guard.js'
 const ADMIN_COMMANDS = ADMIN_APPROVAL_ACTIONS
 const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
 const REMINDER_COMMANDS = ['remind', 'reminders', 'forgetreminder']
-const COMMANDS = ['approvals', ...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const COMMANDS = ['approvals', ...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'identity', 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const OPERATOR_COMMANDS = ['help', 'status', 'model', 'bili', 'groupinfo', 'memberinfo']
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
@@ -36,6 +36,9 @@ const HELP_TEXT = [
   '/model — 查看当前会话模型',
   '/model provider/model — 设置当前会话模型',
   '/model clear — 清除当前会话模型',
+  '/identity — 手动身份链接（最多 20 条，仅主人）',
+  '/identity link platform externalId personId [label] — 登记/重链（不改人物）',
+  '/identity unlink platform externalId — 移除链接',
   '/remember 文本 — 写入一条记忆',
   '/forget 关键词 — 遗忘匹配的记忆',
   '/remind 秒|ISO时间 文本 — 当前聊天重复/一次提醒（默认关闭）',
@@ -81,11 +84,12 @@ const HELP_TEXT = [
  * @param {object} o.outbound createOutbound()
  * @param {object} [o.llm] 认知 LLM 客户端（currentRoute）
  * @param {object} [o.memory] 记忆服务（remember/forgetMatching）
+ * @param {object} [o.identities] 手动身份链接服务（不改人物/路由）
  * @param {object} [o.runtime] createAgentRuntime()
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -410,6 +414,31 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return send(turn, help + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
     }
     if (parsed.name === 'status') return send(turn, await statusText(turn))
+
+    if (parsed.name === 'identity') {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      const usage = () => send(turn, '用法：/identity | /identity link platform externalId personId [label] | /identity unlink platform externalId')
+      // Splitting must not hide control characters in labels or identifiers.
+      if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(parsed.args)) return usage()
+      const parts = parsed.args ? parsed.args.split(/\s+/) : []
+      if (parts.length && !((parts[0] === 'link' && parts.length >= 4) || (parts[0] === 'unlink' && parts.length === 3))) return usage()
+      if (!identities) return send(turn, '身份链接服务不可用。')
+      try {
+        if (!parts.length) {
+          const rows = identities.list({ limit: 20 }).slice(0, 20)
+          return send(turn, rows.length ? ['手动身份链接：', ...rows.map((row) => `${row.platform}:${row.externalId} → ${row.personId}${row.label ? ` · ${row.label}` : ''}`)].join('\n') : '暂无手动身份链接。')
+        }
+        const [, platform, externalId, personId] = parts
+        if (parts[0] === 'unlink') return send(turn, identities.unlink({ platform, externalId }) ? '已移除身份链接。' : '没有找到身份链接。')
+        const label = parts.length > 4 ? parts.slice(4).join(' ') : undefined
+        identities.link({ platform, externalId, personId, label })
+        return send(turn, '已保存手动身份链接（不修改人物或消息路由）。')
+      } catch (error) {
+        if (error?.message === 'IDENTITY_FULL') return send(turn, '身份链接已满（最多 5000 条）。')
+        if (/^IDENTITY_(?:INVALID_|SECRET$)/.test(error?.message || '')) return send(turn, '身份链接参数无效或包含疑似密钥。平台仅 qq/telegram/discord/matrix/custom；externalId 1–64、personId 1–80、标签最多 80 字符。')
+        return send(turn, '身份链接操作失败，请稍后重试。')
+      }
+    }
 
     if (parsed.name === 'steer') {
       if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }

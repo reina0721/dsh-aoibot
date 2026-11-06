@@ -103,7 +103,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | M7-g 当前人格人物页可编辑 facet 内容/置信度/active 或 disputed（含 group-scope 群印象）；关系页按原作用域手动调整 API 返回的 10 维，仅保存变化项，source=ui 历史 | 部分（M7-g） | M3 剩余：无独立人物说话方式编辑器、无 Aurabot 专用人物/群档案导入；未做本轮真实浏览器验证 |
 | 30 | 时间轴/回忆日志/导入旧档案 | 有 | 轮次/记忆/决策/事件只读时间轴；M7-h 通用 JSON/JSONL 经面板/API 导入当前人格记忆或时间轴事件，默认 5 MiB/5000 项、作用域校验、必填事件时间、幂等去重、本地处理 | 部分（M3-c/M7-d/M7-h） | M7：无 Aurabot 专用档案迁移或向量导入；无真实旧档案样本验证 |
 | 31 | 语义检索/embedding | 可选，默认关 | M7-f 默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法不变，异常回退；32 条/4000 字符/8–4096 维/2000 项内存 LRU，fake 离线测试 | 部分（M7-f） | M7：仅兼容 embeddings；无本地模型/独立 reranker/向量数据库/全库向量召回；真实 provider 未验证 |
-| 32 | 跨平台身份 | 有 | 无 | 无 | M3 |
+| 32 | 跨平台身份 | 有 | M7-v 默认空的全局手动链接 registry；主人 /identity 列表/登记重链/移除，严格字段/已知密钥校验、唯一键/5000 条/解析筛选计数，独立存储且不改人物 | 部分（M7-v） | M3：仅人工登记基础；无 Telegram/Discord adapter、自动合并、账号验证或消息路由；无人物创建/修改，真实跨平台未验证 |
 
 ### 3.7 学习、信念与知识
 
@@ -457,3 +457,11 @@ pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action �
 新增 `readFile(name)` / `removeFile(name)`，只接受 files 目录内存储 basename（≤120，与上传同字符/扩展名白名单）；媒体与文件双开关，拒绝路径/控制字符/目录/符号链接，realpath 限定普通文件。下载句柄不跟随符号链接、校验普通文件及 inode，并按 maxBytes 有界读取；返回规范 base64、名称、大小与 MIME；删除不要求文件小于 maxBytes。缺失文件静态安全错误，不创建目录或覆盖文件。新上传长名称保留扩展名并缩短存储名；旧超过 120 字符的存储 basename 不自动迁移，新操作安全拒绝。
 
 本地 GET `/media/file/download?name=` 返回 base64 JSON；POST `/media/file/delete {name}` 删除。媒体页列表增加下载转 Blob/显示文件名保存、删除确认、共享上传/下载/删除忙碌锁、错误 toast 与删除后刷新。证据为 [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) 的临时文件/fake 宿主/mock UI；无新依赖、配置、外部调用、自动发送或任意本地路径。默认仍关闭，发送沿用主人 `/file`，无发送面板，真实 QQ 文件兼容性与本轮真实浏览器未验证。#45 保持 partial；6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
+
+### M7-v 手动跨平台身份登记（#32 partial，未发布）
+
+新增 `cognition/identities.js` 的默认空全局 registry，独立 `manual_identity` kind，与既有按人格隔离的 QQ 人物 identity、迁移/复制/删除分离。记录固定为随机 `idn_` + 24 hex、platform/externalId/personId/可选标签、createdAt/updatedAt/source=manual；平台仅 qq/telegram/discord/matrix/custom，严格 ASCII ID/Unicode 标签上限、拒绝控制/格式字符和已知密钥，不保留额外字段。platform+externalId 精确唯一，重链保留 ID/创建时间；最多 5000 条，列表先筛选再按创建时间倒序、最多 100，提供 resolve/unlink/counts。
+
+主人 `/identity` 最多列 20 条，`/identity link platform externalId personId [label]` 登记/重链，`/identity unlink platform externalId` 删除；owner/禁用列表/出站访问先于服务调用，操作员和陌生人私聊/群聊静默。错误为固定安全提示，不回显原始服务异常。记录跨重启/人格切换保留，不检查 personId 存在、不创建/修改/合并人物，也不接入既有身份解析/自动关联或消息路由。没有新配置/依赖、网络调用、HTTP/API/面板或 Telegram/Discord/Matrix adapter，默认消息行为不变。
+
+证据：[identities.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/identities.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，均为离线本地存储/fake QQ，涵盖校验/密钥/容量/唯一性/筛选/计数、权限/错误、无人物修改及重启/人格切换。#32 none → partial（手动 registry 基础），仍无跨平台 adapter、自动合并、账号所有权验证或消息路由，真实跨平台未验证；当前 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 矩阵行逐字不变。v0.11.3 已发布/live，M7-v 未发布/部署。

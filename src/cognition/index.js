@@ -9,6 +9,7 @@ import { createStore } from './store.js'
 import { createApprovalService } from '../core/approvals.js'
 import { createTurnAggregator } from './turn.js'
 import { createPersonService } from './person.js'
+import { createIdentityService } from './identities.js'
 import { createRelationshipService } from './relationships.js'
 import { createEmotionService } from './emotion.js'
 import { createPersonaService } from './persona.js'
@@ -95,6 +96,7 @@ export function createCognition({
       state.store = createStore({ file: dbFile, log, clock })
       const pausedRecord = state.store.get('setting', 'cognition.paused')
       if (pausedRecord) state.paused = Boolean(pausedRecord.value)
+      state.services.identities = createIdentityService({ store: state.store, clock, logger: log })
       state.services.persona = createPersonaService({ store: state.store, getConfig, clock })
       const activePersona = state.services.persona.ensure()
       const migrationTarget = state.services.persona.getById('self') ? 'self' : activePersona.id
@@ -165,6 +167,7 @@ export function createCognition({
         clock,
         reminders: state.services.reminders,
         purpose: state.services.purpose,
+        identities: state.services.identities,
         media,
         stickers,
         bilibili,

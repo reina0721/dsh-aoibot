@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t/M7-u 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t/M7-u/M7-v 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-v 更新 #32（未发布）：默认空的全局手动身份链接 registry，独立 manual_identity 存储；五平台白名单、严格 ID/干净标签/已知密钥拒绝、随机 idn_24hex、唯一 platform+externalId、最多 5000 条、重链保留 ID/创建时间、列表筛选最新 100 条及 resolve/unlink/counts。主人 /identity 最多列 20 条、link/unlink 维护；owner/禁用/访问闸门、操作员和陌生人静默、固定安全错误。跨重启/人格切换保留，与旧人物 identity/迁移/复制/删除隔离；不创建/修改/合并人物，无 Telegram/Discord/Matrix adapter、自动合并、账号验证或消息路由，无新配置/依赖、外部调用、HTTP/API 或面板。仅离线存储/fake QQ 证据，默认消息行为不变，真实跨平台未验证。#32 none → partial，当前 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变；v0.11.3 已发布/live，M7-v 未发布/部署。
 
 M7-u 更新 #45（未发布）：文件列表增加本地下载/确认删除、共享上传/下载/删除忙碌锁、错误 toast、删除后刷新；GET `/media/file/download?name=` 返回 base64 JSON，POST `/media/file/delete {name}` 只操作固定 files 目录的安全存储 basename≤120、白名单扩展名、普通非符号链接文件。媒体/文件双开关、realpath、no-follow 句柄及 maxBytes 有界读取，缺失安全错误；新上传长名称保留扩展名缩短存储名，不覆盖或自动迁移旧文件。默认仍关闭，无新依赖/配置、外部调用、发送面板或任意本地路径；发送仍由主人 `/file`，真实 QQ 文件兼容性/本轮真实浏览器未验证。#45 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
 
@@ -70,10 +72,10 @@ npm run check:docs
 <!-- parity-snapshot:start -->
 # 对标审计（并非全量对齐 / not full parity）
 
-矩阵 61 项；has: 6，partial: 39，none: 1，limited: 1，leading: 6，exempt: 8。
+矩阵 61 项；has: 6，partial: 40，none: 0，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：67 个 JS 文件 / 17221 行。
-测试静态计数：47 个文件 / 11521 行 / 502 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：68 个 JS 文件 / 17348 行。
+测试静态计数：48 个文件 / 11826 行 / 518 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -134,7 +136,7 @@ npm run check:docs
 | 27 | 记忆类型 | partial | M3 |
 | 28 | 每日整理/空闲提炼 | partial | M3 剩余：批次/重试/保留 |
 | 29 | 人物档案/群印象/相处经验/说话方式 | partial | M3 剩余：无独立人物说话方式编辑器、无 Aurabot 专用人物/群档案导入；未做本轮真实浏览器验证 |
-| 32 | 跨平台身份 | none | M3 |
+| 32 | 跨平台身份 | partial | M3：仅人工登记基础；无 Telegram/Discord adapter、自动合并、账号验证或消息路由；无人物创建/修改，真实跨平台未验证 |
 | 36 | 真实外部知识源 | partial | M3 |
 | 39 | 主动搭话 | partial | M3 |
 
@@ -193,6 +195,7 @@ npm run check:docs
 | 56 | 设置向导 | partial | 无独立向导/自动修复；模块始终人工待检查，媒体只检查字段，不验密钥/服务；无 API 鉴权变更，仍依赖 DSH 本机信任边界；未做真实浏览器 V |
 | 57 | 备份/恢复 | partial | 复制 SQLite 前停写，恢复后重启；无在线一致性/整目录事务、云端上传下载、自动恢复或迁移 |
 | 58 | 升级检查/beta 通道 | partial | beta 仅放宽预发布过滤；无后台/自动更新、下载/安装、token；未认证每 IP 60 req/h；无真实 GitHub V |
+
 <!-- parity-snapshot:end -->
 
 ## 证据入口与边界
@@ -288,3 +291,9 @@ M7-t 本次最终 `npm test` 退出 **0**：559 项，555 通过、0 失败、4 
 `npm test` 退出 **0**：568 项，564 通过、0 失败、4 跳过（既有 live 模型测试），耗时 135370.129349 ms。新增 9 个顶层测试声明；媒体/面板专项 72 项全通过，文件路由专项 1 项通过。覆盖完整存储 basename、二进制严格 base64/MIME、重复名称隔离、读取/删除、缺失/禁用/大小边界、超大文件可删除、路径/Windows/控制字符/扩展名、文件与目录符号链接、目录/FIFO、长名称上限、HTTP 方法/坏参数/安全错误、删除确认/取消、共享忙碌锁及旧 handler 防重、刷新、下载 Blob/文件名/object URL 清理、接口/连接/数据错误 toast；所有服务调用均为临时文件/fake 宿主/mock fetch，不调用真实 QQ 或媒体 provider。
 
 `npm run check:docs` 与 `npm run check:parity` 均退出 **0**。当前审计为源码 67 个 JS 文件 / 17221 行，测试 47 个文件 / 11521 行 / 502 个顶层声明；6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。`cordis.patch.yml` SHA-256 与 #31/#42/#49/#50 矩阵行均对照任务前快照确认未变。无新增依赖/配置、外部网络请求、git 操作、自动发送、任意本地路径或部署；发送沿用主人 `/file`，真实 QQ 文件兼容性及本轮真实浏览器未验证，#45 保持 partial。
+
+### M7-v 实跑记录（2026-11-06，未发布）
+
+`npm test` 退出 **0**：584 项，580 通过、0 失败、4 跳过（既有 live 模型测试未配置 key），耗时 134239.108569 ms。新增 16 个顶层测试声明；服务专项 9 项全通过，新增命令/集成专项 7 项全通过；完整 commands/cognition-integration 专项 126 项全通过。覆盖默认空/无写入、固定字段/随机 ID/唯一键、重链保留 ID/创建时间/标签更新、五平台/ASCII ID/Unicode 标签边界、已知密钥/控制字符拒绝、5000 条与满后重链/删除、过滤先于限额/倒序/100 和命令 20 条上限、计数、未知 unlink、持久化重启、人格切换、既有 identity/人物解析与迁移隔离。命令覆盖主人私聊/群聊、操作员和陌生人静默、内置命令名保留、按身份显示帮助、禁用/访问闸门、坏输入零写入/无人物或配置修改、缺服务/容量/原始服务异常安全回复。全部本地存储/fake QQ，无真实外部服务调用。
+
+`npm run check:docs` 与 `npm run check:parity` 均退出 **0**。当前快照为源码 68 个 JS 文件 / 17348 行，测试 48 个文件 / 11826 行 / 518 个顶层声明；6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47。只有 #32 none → partial（手动 registry 基础）；`cordis.patch.yml` SHA-256 与 #31/#42/#49/#50 矩阵行均对照任务前快照确认未变。无新配置/依赖、adapter、API/面板、人物创建/修改/合并、自动验证/关联或消息路由；默认空/原 QQ 行为不变。v0.11.3 已发布/live，本次未部署、未执行 git 命令；真实跨平台未验证。

@@ -7,6 +7,10 @@
 > 结论先行：**没有任何写死的算法参数**。重连退避、超时、重试、核验缓冲、事件过滤、缓冲容量、
 > 日志级别、面板刷新间隔……都可以在 `config.json` 或面板「配置」页修改；保存即热应用。
 
+### 手动身份登记（M7-v，无新增配置字段）
+
+此功能默认空，不增加 `DEFAULTS`、`CONFIG_GROUPS` 或环境变量字段。仅主人通过 `/identity` 命令手动维护，受既有访问控制和 `cognition.permissions.deniedCommands` 约束。记录独立保存在 `cognition/cognition.sqlite` 的全局 `manual_identity` kind（存储 fallback 时为对应 JSON），不随人格切换/复制/删除，也不进入既有人物 identity 迁移/查询。没有新增 HTTP/API 或面板；不创建、修改或合并人物、不自动验证/关联或路由消息，无 Telegram/Discord adapter。用法与校验规则见[用户手册](USER-MANUAL.md#手动跨平台身份登记m7-v)。
+
 ## 1. 配置文件位置
 
 | 用途 | 路径 |

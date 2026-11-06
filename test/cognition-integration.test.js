@@ -808,3 +808,31 @@ test('M7-s integration: persisted owner approvals survive restart/persona change
     assert.equal(actions.length, 1)
   } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
 })
+
+test('M7-v: cognition wires an empty manual registry into owner commands; links survive restart/persona switch', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-identity-wiring-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const config = normalizeConfig({ access: { mode: 'allowlist', ownerQQ: '10001' } }).config
+  const sent = []
+  const create = () => createCognition({
+    getConfig: () => config, dataRoot: dir, clock: createClock(), scheduler: createFakeScheduler(),
+    access: createAccess({ getConfig: () => config }),
+    gateway: { actions: { sendMessage: async (...args) => { sent.push(args); return { ok: true, message_id: 'm1' } } } },
+  })
+  let cognition = create()
+  t.after(() => cognition.dispose())
+  assert.equal(cognition.services.identities.counts().total, 0)
+  const personBefore = cognition.services.person.listPersons()
+  const ownerTurn = { chatType: 'private', chatId: '10001', senderId: '10001', text: '/identity link telegram alice p_manual label' }
+  assert.match((await cognition.services.commands.handle(ownerTurn)).reply, /已保存/)
+  assert.deepEqual(cognition.services.person.listPersons(), personBefore)
+  const row = cognition.services.identities.resolve({ platform: 'telegram', externalId: 'alice' })
+  const other = cognition.services.persona.create({ name: 'Other' })
+  assert.equal(cognition.services.persona.activate(other.persona.id).ok, true)
+  assert.equal(cognition.services.identities.resolve({ platform: 'telegram', externalId: 'alice' }).id, row.id)
+  assert.deepEqual(cognition.services.person.listPersons(), [])
+  cognition.dispose()
+  cognition = create()
+  assert.equal(cognition.services.identities.counts().total, 1)
+  assert.match((await cognition.services.commands.handle({ ...ownerTurn, text: '/identity' })).reply, /telegram:alice → p_manual · label/)
+})

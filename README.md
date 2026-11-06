@@ -14,13 +14,15 @@
 
 ## 能力与要求
 
-- QQ 管理审批（M7-s，未发布）：`cognition.qqAdmin.requireApproval=false` 默认保留直接执行；开启后管理/文件动作写入持久化主人待办（10 分钟、最多 50 条），`/approvals` 查看，`/approve apr_ID confirm` 批准后在原聊天执行，`/reject apr_ID confirm` 拒绝。既有 `req_` 请求处理和原动作 confirm 保留。无审批 HTTP/面板、全服务/工具统一审批或 PII/媒体扫描；#15 与 #14 操作员/deny-list 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt、remaining 47。仅 fake QQ 离线测试，见[配置](docs/CONFIG.md#qq-管理审批m7-s)。
+- 手动跨平台身份登记（M7-v，未发布）：默认空的全局 registry；主人 `/identity` 列表、`/identity link platform externalId personId [label]` 登记/重链、`/identity unlink platform externalId` 移除。只存人工对应关系，不创建/修改/合并人物；无新配置/依赖、网络调用、API/面板、Telegram/Discord adapter、自动验证或消息路由，QQ 行为不变。#32 为 partial，6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变；见[身份登记用法](docs/USER-MANUAL.md#手动跨平台身份登记m7-v)。
+
+- QQ 管理审批（M7-s，未发布）：`cognition.qqAdmin.requireApproval=false` 默认保留直接执行；开启后管理/文件动作写入持久化主人待办（10 分钟、最多 50 条），`/approvals` 查看，`/approve apr_ID confirm` 批准后在原聊天执行，`/reject apr_ID confirm` 拒绝。既有 `req_` 请求处理和原动作 confirm 保留。无审批 HTTP/面板、全服务/工具统一审批或 PII/媒体扫描；#15 与 #14 操作员/deny-list 仍 partial，6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt、remaining 47。仅 fake QQ 离线测试，见[配置](docs/CONFIG.md#qq-管理审批m7-s)。
 
 - QQ 连接、账号核验、事件接收、群聊与私聊消息发送。
 - 访问控制：`open`/`allowlist`、主人 QQ、默认空的只读操作员列表、私聊/群白名单、统一出站闸门与审计。
 - 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session；仅主人私聊在运行时挂载 3 个当前会话 QQ 工具，失败自动回退 oneshot。
-- 只读操作员（M7-r，未发布）：`access.operators=[]` 默认保持行为；仅 `/help`、`/status`、无参数 `/model`、`/bili`、`/groupinfo`、`/memberinfo`。allowlist 放行其私聊，群仍须白名单；主人优先，模块 ownerOnly 与命令禁用列表保持约束。无完整 per-tool/per-action RBAC 或 admin/approval 档位；#13 partial、#14 仍 partial，矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。见[访问配置](docs/CONFIG.md#310-访问控制access)。
-- QQ 命令（主人）：`/status` `/steer` `/quiet` `/active` `/model` `/remember` `/forget` `/tts` `/say` `/sticker` `/bili` `/help`；支持按聊天覆盖模型。
+- 只读操作员（M7-r，未发布）：`access.operators=[]` 默认保持行为；仅 `/help`、`/status`、无参数 `/model`、`/bili`、`/groupinfo`、`/memberinfo`。allowlist 放行其私聊，群仍须白名单；主人优先，模块 ownerOnly 与命令禁用列表保持约束。无完整 per-tool/per-action RBAC 或 admin/approval 档位；#13 partial、#14 仍 partial，矩阵 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47。见[访问配置](docs/CONFIG.md#310-访问控制access)。
+- QQ 命令（主人）：`/status` `/steer` `/quiet` `/active` `/model` `/remember` `/forget` `/identity` `/tts` `/say` `/sticker` `/bili` `/help`；支持按聊天覆盖模型。
 - 主人会话插话（M7-o）：`/steer 文本` 将 1–1000 Unicode 字符注入当前 agent Session，复用或创建会话；oneshot 不可用。仅显式主人命令，不自动 steer、不写配置；无插话面板/API，真实 DSH/QQ 未验证，#9 为 partial，remaining 47；见[用户手册](docs/USER-MANUAL.md#32-会话运行时实验默认关闭)。
 - 私聊输入状态（M7-q）：`cognition.typing={enabled:false}`，默认关闭；开启后私聊/C2C 轮次前后调用 `set_input_status`（1 输入中、2 暂停），失败不影响回复。依赖网关支持，无群聊输入状态/群 `set_input_status`、输入状态限频或专用状态面板；仅离线测试，真实 QQ 未验证。#9 仍 partial，remaining 47，#31/#42/#49/#50 不变；见[配置](docs/CONFIG.md#私聊输入状态m7-q)。
 - 命令禁用列表（M7-n）：`cognition.permissions.deniedCommands=[]` 默认保持原行为；本机面板维护者可按小写命令名禁用内置或模块命令，派发前拦截且不调用处理服务或写配置。仅覆盖命令入口，没有所有服务/工具的逐项权限矩阵或统一审批，#14 仍 partial，remaining 47；见[配置](docs/CONFIG.md#命令禁用列表m7-n)。
@@ -29,12 +31,12 @@
 - 群聊词法相关度（M7-p）：`cognition.turn.groupRelevance={enabled:false,minScore:0.15}`，默认保持原行为；开启后未点名消息按已检索记忆词法相关度门控，无记忆/低分只写记忆、不分析，点名绕过，异常放行，无新增外部调用。无 LLM 话题理解/接梗/语义打分，#20 仍 partial、remaining 47；见[配置](docs/CONFIG.md#群聊词法相关度门控m7-p)。
 - 合并转发展开、拍一拍回应、表情表态归因；主人命令 `/like` `/poke` `/groupinfo` `/memberinfo`。
 - 可选媒体：图片下载/视觉描述、语音 ASR/TTS、图片/语音发送、群/私聊文件上传，以及本地表情包库与媒体面板；M7-c 增加 OpenAI 兼容生图/改图和 `/draw` `/redraw` `/image`；外部 provider 默认关闭。
-- 本地文件面板（M7-k/M7-u，M7-u 未发布）：媒体页上传、列出、下载、确认删除并刷新 `files/` 文件，显示相对路径/大小/时间；下载用 base64 JSON 转 Blob，上传/下载/删除共用忙碌锁并显示错误。要求媒体与文件双开关，仅安全存储 basename≤120、白名单扩展名、普通非符号链接文件，无任意本地路径；默认行为不变。发送仍用主人 `/file 相对路径`，无发送按钮，真实 QQ 文件兼容性未验证，#45 仍 partial。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
+- 本地文件面板（M7-k/M7-u，M7-u 未发布）：媒体页上传、列出、下载、确认删除并刷新 `files/` 文件，显示相对路径/大小/时间；下载用 base64 JSON 转 Blob，上传/下载/删除共用忙碌锁并显示错误。要求媒体与文件双开关，仅安全存储 basename≤120、白名单扩展名、普通非符号链接文件，无任意本地路径；默认行为不变。发送仍用主人 `/file 相对路径`，无发送按钮，真实 QQ 文件兼容性未验证，#45 仍 partial。矩阵 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
 - 本地模块内核：从数据目录加载操作员安装的 JS 模块，提供显式权限 API、命令/事件/存储、错误隔离、热重载和模块面板；不含远程安装或 marketplace。
 - 可选 B站公共内容（M7-m）：搜索、热门、BV 视频信息与公开评论、离线分享链接，提供 `/bili comments BV号`、`/bili share BV号`、REST API 与「内容」页。默认关闭，不使用 Cookie/WBI/登录态，不含字幕或发布评论；真实接口未验证，#48 仍 partial，remaining 47。QQ空间因登录授权与服务条款边界未实现。
 - 本地目录备份与「备份」面板：默认 200 MiB / 5000 文件 / 保留 10 份；恢复默认暂存，应用需显式开启并先创建恢复前备份。快照含密钥与认知隐私，请按秘密保护；复制 SQLite 前停止写入，恢复后重启。无 zip、云端传输、自动恢复或工作区迁移，见[备份说明](docs/USER-MANUAL.md#备份)。
 - 「安全」页：只读访问审计与危险面、上线检查清单；默认关闭的手动 GitHub Release 版本检查，stable/beta 仅改变发布过滤，不自动更新、下载或安装。保持 DSH 本机信任边界，不改变 API 鉴权；不提供工作区迁移或离峰省钱，见[安全与上线检查](docs/USER-MANUAL.md#安全与上线检查)。
-- 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；M7-t（未发布）新增主人 `/purpose plan ID` 生成并保存最多 8 步，`/purpose step ID N [done|undo]` 手动标记、`/purpose steps ID` 查看进度。无新配置，仅显式 plan 调用现有 JSON LLM，不执行步骤/绑定动作/接入审批；#38 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt、remaining 47。见[目的用法](docs/USER-MANUAL.md#36-目的与记忆整理)。每日记忆整理与按作用域反思；时间轴只读回忆日志。
+- 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；M7-t（未发布）新增主人 `/purpose plan ID` 生成并保存最多 8 步，`/purpose step ID N [done|undo]` 手动标记、`/purpose steps ID` 查看进度。无新配置，仅显式 plan 调用现有 JSON LLM，不执行步骤/绑定动作/接入审批；#38 仍 partial，6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt、remaining 47。见[目的用法](docs/USER-MANUAL.md#36-目的与记忆整理)。每日记忆整理与按作用域反思；时间轴只读回忆日志。
 - 可选语义检索（M7-f）：默认关闭的 OpenAI 兼容 embeddings 重排词法候选，出错回退词法；仅 fake provider 离线测试，真实 provider 未验证。无本地模型、独立 reranker 或向量数据库，见[配置](docs/CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
 - QQ 通知与请求（M7-j）：十种已知通知写入当前人格时间轴，好友/群申请只存待办；主人 `/requests` 查看、`/approve ID confirm` 或 `/reject ID confirm` 显式处理。无自动审批/审批面板，真实 QQ 未验证，#3/#15 仍 partial；见[用户手册](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人)及[配置](docs/CONFIG.md#qq-通知与请求m7-j)。

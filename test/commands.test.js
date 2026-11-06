@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
+import { createIdentityService } from '../src/cognition/identities.js'
 import { createPurposeService } from '../src/cognition/purpose.js'
 import { createCommandService, parseCommand } from '../src/cognition/commands.js'
 import { createQqActions } from '../src/cognition/qq-actions.js'
@@ -83,6 +84,7 @@ function harness(overrides = {}, services = {}) {
     approvals: services.approvals,
     clock: services.clock,
     reminders: services.reminders,
+    identities: services.identities,
     media: services.media,
     stickers: services.stickers,
     bilibili: services.bilibili,
@@ -1223,4 +1225,108 @@ test('purpose commands: owner group reply stays in current chat; no outbound dep
     assert.match((await offline.handle(turn(`/purpose steps ${h.item.id}`))).reply, /进度 50%/)
     assert.equal(h.sent.length, 1)
   } finally { h.close() }
+})
+
+test('identity commands: owner lists, links, relinks and unlinks without person/config mutation', async (t) => {
+  let now = 1700000000000
+  const store = createStore({ clock: { now: () => now } })
+  t.after(() => store.close())
+  store.put('person', 'person_existing', { displayName: 'Alice', status: 'active' })
+  const before = store.list('person')
+  const identities = createIdentityService({ store, clock: { now: () => now } })
+  const h = harness({}, { identities })
+  assert.match((await h.service.handle(turn('/identity'))).reply, /暂无/)
+  assert.match((await h.service.handle(turn('/identity link qq 123 person_existing Alice QQ'))).reply, /已保存/)
+  const first = identities.resolve({ platform: 'qq', externalId: '123' })
+  assert.equal(first.label, 'Alice QQ')
+  assert.match((await h.service.handle(turn('/identity'))).reply, /qq:123 → person_existing · Alice QQ/)
+  now += 1000
+  assert.match((await h.service.handle(turn('/identity link qq 123 person_other New label', { chatType: 'group', chatId: '20001' }))).reply, /已保存/)
+  assert.equal(identities.resolve({ platform: 'qq', externalId: '123' }).id, first.id)
+  assert.equal(identities.resolve({ platform: 'qq', externalId: '123' }).personId, 'person_other')
+  assert.match((await h.service.handle(turn('/identity unlink qq 123'))).reply, /已移除/)
+  assert.match((await h.service.handle(turn('/identity unlink qq 123'))).reply, /没有找到/)
+  assert.equal(identities.counts().total, 0)
+  assert.deepEqual(store.list('person'), before)
+  assert.equal(store.count('identity'), 0)
+  assert.equal(h.configWrites.length, 0)
+  assert.equal(h.memory.remembered.length, 0)
+})
+
+test('identity commands: operator and stranger stay silent in private/group before any service call', async () => {
+  const identities = new Proxy({}, { get() { assert.fail('Unauthorized service access') } })
+  const access = normalizeAccess({ ownerQQ: '10001', operators: ['10002'], mode: 'allowlist', groups: ['20001'] })
+  const h = harness({ access }, { identities })
+  for (const senderId of ['10002', '10003']) {
+    for (const chatType of ['private', 'group']) {
+      for (const text of ['/identity', '/identity link qq 123 person_a label', '/identity unlink qq 123', '/identity invalid']) {
+        assert.deepEqual(await h.service.handle(turn(text, { chatType, chatId: chatType === 'group' ? '20001' : senderId, senderId })), { handled: true, reply: '' })
+      }
+    }
+  }
+  assert.equal(h.sent.length, 0)
+  assert.equal(h.configWrites.length, 0)
+  assert.match((await h.service.handle(turn('/help'))).reply, /\/identity link/)
+  assert.doesNotMatch((await h.service.handle(turn('/help', { senderId: '10002' }))).reply, /\/identity/)
+  assert.throws(() => h.service.registerCommand('identity', () => 'override', { ownerOnly: false }), /已注册/)
+})
+
+test('identity commands: command deny-list and outbound access gate precede service operations', async () => {
+  const identities = new Proxy({}, { get() { assert.fail('Blocked service access') } })
+  const denied = harness({ cognition: { permissions: { deniedCommands: ['identity'] } } }, { identities })
+  const inaccessible = harness({}, { identities, allowSend: false })
+  for (const text of ['/IDENTITY', '/identity link qq 123 p', '/identity unlink qq 123']) {
+    assert.match((await denied.service.handle(turn(text))).reply, /已被操作员禁用/)
+    assert.deepEqual(await inaccessible.service.handle(turn(text)), { handled: true, reply: '', error: 'ACCESS_DENIED' })
+  }
+  assert.equal(inaccessible.sent.length, 0)
+})
+
+test('identity commands: list is newest first and limited to 20', async (t) => {
+  let now = 1700000000000
+  const store = createStore({ clock: { now: () => now } })
+  t.after(() => store.close())
+  const identities = createIdentityService({ store, clock: { now: () => now } })
+  for (let i = 0; i < 25; i += 1) {
+    now += 1000
+    identities.link({ platform: 'discord', externalId: String(i), personId: 'p', label: 'label' })
+  }
+  const h = harness({}, { identities })
+  const reply = (await h.service.handle(turn('/identity'))).reply
+  assert.equal(reply.split('\n').length, 21)
+  assert.equal(reply.split('\n')[1], 'discord:24 → p · label')
+  assert.equal(reply.split('\n').at(-1), 'discord:5 → p · label')
+})
+
+test('identity commands: malformed syntax, invalid fields and secrets are rejected without writes', async (t) => {
+  const store = createStore()
+  t.after(() => store.close())
+  const identities = createIdentityService({ store })
+  const h = harness({}, { identities })
+  for (const args of ['extra', 'link', 'link qq a', 'link qq a p label\nsecond', 'unlink qq', 'unlink qq a extra']) {
+    assert.match((await h.service.handle(turn('/identity ' + args))).reply, /用法/)
+  }
+  const secret = 'sk-' + 'a'.repeat(24)
+  for (const args of ['link unknown a p', 'link qq a/b p', 'link qq a p.p', 'link qq a p ' + '星'.repeat(81), 'link qq a p bad\u202elabel', 'link qq ' + secret + ' p', 'link qq a ' + secret, 'link qq a p ' + secret, 'unlink unknown a']) {
+    const reply = (await h.service.handle(turn('/identity ' + args))).reply
+    assert.match(reply, /参数无效|用法/)
+    assert.ok(!reply.includes(secret))
+  }
+  assert.equal(identities.counts().total, 0)
+  assert.equal(store.info().stats.puts, 0)
+  assert.equal(h.configWrites.length, 0)
+})
+
+test('identity commands: missing service, full registry and storage errors give fixed safe replies', async () => {
+  assert.match((await harness().service.handle(turn('/identity'))).reply, /服务不可用/)
+  const secret = 'STORE_FAILED private-content sk-' + 'a'.repeat(24)
+  for (const text of ['/identity', '/identity link qq 123 p label', '/identity unlink qq 123']) {
+    const identities = Object.fromEntries(['list', 'link', 'unlink'].map((method) => [method, () => { throw new Error(secret) }]))
+    const h = harness({}, { identities })
+    const reply = (await h.service.handle(turn(text))).reply
+    assert.equal(reply, '身份链接操作失败，请稍后重试。')
+    assert.ok(!JSON.stringify(h.sent).includes(secret))
+  }
+  const full = harness({}, { identities: { link() { throw new Error('IDENTITY_FULL') } } })
+  assert.match((await full.service.handle(turn('/identity link qq 123 p'))).reply, /最多 5000/)
 })

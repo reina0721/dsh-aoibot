@@ -258,6 +258,20 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 备注会去控制字符、脱敏已知密钥和 flag，保存最多 500 Unicode 字符，命令仅显示最多 100 字符摘要；flag 只留在本地存储供网关使用。QQ 号/备注仍是隐私数据，没有 PII 检测。人格数据「请求」组可统计/复制/删除，复制待办不会触发审批；真实 QQ 请求在不同人格副本中仍是同一请求。没有审批面板或新增审批 API/Agent 工具；仅 fake 网关测试，真实 QQ 未验证。配置与边界见 [QQ 通知与请求](CONFIG.md#qq-通知与请求m7-j)。
 
+#### 手动跨平台身份登记（M7-v）
+
+仅主人可以维护默认空的全局手动链接；操作员和陌生人在私聊/群聊均静默。命令先检查身份、禁用列表和当前聊天出站访问，列表回复到当前聊天。
+
+| 命令 | 作用 |
+|---|---|
+| `/identity` | 按创建时间从新到旧列出最多 20 条，格式 `platform:externalId → personId · label`，无标签时省略标签 |
+| `/identity link platform externalId personId [label]` | 登记或重链；相同平台/外部 ID 只有一条，重链保留 ID/创建时间，更新 personId/更新时间；省略标签保留旧标签 |
+| `/identity unlink platform externalId` | 删除对应手动链接；不存在时提示未找到 |
+
+例如 `/identity link telegram alice person_alice Alice 的登记账号`，再用 `/identity` 查看；`/identity unlink telegram alice` 移除。平台严格限 `qq`、`telegram`、`discord`、`matrix`、`custom`，这里只是标识，不会启用 adapter。externalId 为 1–64 字符、匹配 `^[A-Za-z0-9_.:@-]+$`；personId 为 1–80 字符、匹配 `^[A-Za-z0-9_-]+$`。大小写精确匹配，不自动归一/推测；可填现有人物 ID 或人工引用，服务不检查或创建人物。标签可选，最多 80 Unicode 字符，去首尾空白，拒绝控制/方向格式字符与已知密钥模式；ID 也拒绝已知密钥。请勿登记凭据，规则不等于通用秘密检测。
+
+全局最多 5000 条；满后仍可重链/删除。服务另有 resolve、平台/personId 筛选、最新最多 100 条与 counts；没有 HTTP/API 或面板入口。记录为 `source=manual`、随机 `idn_` 加 24 hex，独立持久化到全局 `manual_identity`，跨重启/人格切换保留，不随人格复制或删除。它与既有人物 identity 分开，不创建/修改/合并人物、不自动验证账号所有权或合并身份、不改变 QQ 人物解析或消息路由。无 Telegram/Discord/Matrix adapter、网络调用、新配置或依赖；默认空、未使用命令时消息行为不变。仅离线存储/fake QQ 测试，真实跨平台未验证，#32 从 none 改为 partial（手动登记基础）；6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
+
 ### 3.4 回复分条、引用/@ 与群聊节奏
 
 **私聊输入状态（M7-q，默认关闭）**：在「认知 → 设置 → 轮次与防抖」打开「私聊输入状态」（`cognition.typing.enabled`）。支持此扩展的网关会在私聊/C2C 轮次处理前收到输入中状态，处理结束后收到暂停状态；命令提前返回或处理异常也会尝试暂停。网关拒绝/不支持时不影响回复，不记录含聊天 ID 的原始异常；等待网关可能增加耗时。群聊、手动发送和媒体发送不增加输入状态。现有入站 `input_status` 通知仍忽略；无群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板，只有配置开关。真实 QQ 效果尚未验证，仅离线测试；#9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变，未完成全量验收。详见[配置说明](CONFIG.md#私聊输入状态m7-q)。
@@ -434,7 +448,7 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 - 表情包库：上传 PNG/JPG/JPEG/GIF/WebP，预览、编辑标签、删除；相同内容 SHA-256 去重；
 - 媒体与 provider 默认关闭；配置在「配置 → 媒体」，API Key 只填环境变量名。
 
-文件上传/列表/下载/删除均需 `media.enabled=true` 和 `media.files.enabled=true`。下载以 base64 JSON 转 Blob，沿用大小和扩展名限制；删除可移除超出当前大小限制的普通文件。操作仅按列表 path 中 `files/` 后的存储 basename（最多 120 字符）定位，不接受任意本地路径，拒绝目录及符号链接；文件已移除时提示「文件不存在」。新上传长名称会保留扩展名、缩短存储名，既有超过 120 字符的存储名不能通过新按钮操作，不自动改名。发送仍由主人 `/file` 完成，真实 QQ 文件兼容性未验证；#45 仍 partial，矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
+文件上传/列表/下载/删除均需 `media.enabled=true` 和 `media.files.enabled=true`。下载以 base64 JSON 转 Blob，沿用大小和扩展名限制；删除可移除超出当前大小限制的普通文件。操作仅按列表 path 中 `files/` 后的存储 basename（最多 120 字符）定位，不接受任意本地路径，拒绝目录及符号链接；文件已移除时提示「文件不存在」。新上传长名称会保留扩展名、缩短存储名，既有超过 120 字符的存储名不能通过新按钮操作，不自动改名。发送仍由主人 `/file` 完成，真实 QQ 文件兼容性未验证；#45 仍 partial，矩阵 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
 
 ### 内容
 

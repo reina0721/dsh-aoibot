@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布
+
+- M7-v：新增默认空的全局手动身份链接 registry（独立 `manual_identity` 存储），主人 `/identity` 最多列 20 条，`/identity link platform externalId personId [label]` 登记/重链，`/identity unlink platform externalId` 移除。随机 `idn_` + 24 hex、五种平台白名单、严格 ID/干净标签/已知密钥拒绝、platform+externalId 唯一、最多 5000 条；服务支持解析、筛选/最新 100 条与计数，重链保留 ID/创建时间并更新 personId/标签。owner/禁用/访问闸门，操作员和陌生人静默，失败固定安全提示；离线服务/命令/重启及人格切换测试。无人物创建/修改/合并、自动验证/关联或消息路由，无 Telegram/Discord/Matrix adapter、新配置、依赖、外部调用、HTTP/API 或面板；默认不改变消息行为。#32 none → partial（手动登记基础），6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。v0.11.3 已发布/live，本改动未发布或部署，真实跨平台未验证。
+
 ## 0.11.3（2026-11-06，live 文件面板已验证）
 
 - live 0.11.3 上传/列表/下载/删除 `smoke.txt` 成功，随后恢复 media/files 关闭；真实 QQ 文件发送仍未验证。
