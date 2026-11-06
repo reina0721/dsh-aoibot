@@ -8,6 +8,45 @@ import { join } from 'node:path'
 import { DEFAULTS, CONFIG_GROUPS, normalizeConfig, getPath } from '../src/core/config.js'
 import { createLogger } from '../src/core/logger.js'
 
+test('command permissions config: empty defaults and string-list panel field', () => {
+  const { config, issues } = normalizeConfig({})
+  assert.deepEqual(DEFAULTS.cognition.permissions, { deniedCommands: [] })
+  assert.deepEqual(config.cognition.permissions, { deniedCommands: [] })
+  assert.equal(issues.some((issue) => issue.includes('deniedCommands')), false)
+  const field = CONFIG_GROUPS.find((group) => group.id === 'cog-permissions').fields
+    .find((item) => item.path === 'cognition.permissions.deniedCommands')
+  assert.equal(field.type, 'string-list')
+  assert.equal(field.label, '禁用命令')
+  assert.deepEqual(field.default, [])
+  assert.ok(field.help)
+})
+
+test('command permissions config: strict names, deduplication and invalid-entry issues', () => {
+  const deniedCommands = ['kick', 'draw', 'kick', 'a', 'a'.repeat(32), 'module_cmd-1', 'DRAW', '/kick', ' kick', 'kick ', '', '1cmd', 'a.b', 'a'.repeat(33), 42, null, {}, ['draw'], 'draw\n']
+  const original = structuredClone(deniedCommands)
+  const { config, issues } = normalizeConfig({ cognition: { permissions: { deniedCommands } } })
+  assert.deepEqual(config.cognition.permissions.deniedCommands, ['kick', 'draw', 'a', 'a'.repeat(32), 'module_cmd-1'])
+  assert.ok(issues.some((issue) => issue.includes('deniedCommands') && issue.includes('非法项')))
+  assert.deepEqual(deniedCommands, original)
+  for (const value of ['kick', null, 1, {}, true]) {
+    const result = normalizeConfig({ cognition: { permissions: { deniedCommands: value } } })
+    assert.deepEqual(result.config.cognition.permissions.deniedCommands, [])
+    assert.ok(result.issues.some((issue) => issue.includes('deniedCommands') && issue.includes('数组')))
+  }
+})
+
+test('command permissions config: retains at most 100 unique valid names', () => {
+  const names = Array.from({ length: 101 }, (_, index) => `cmd${index}`)
+  const normalize = (deniedCommands) => normalizeConfig({ cognition: { permissions: { deniedCommands } } })
+  const full = normalize(names.slice(0, 100).flatMap((name) => [name, name]))
+  assert.deepEqual(full.config.cognition.permissions.deniedCommands, names.slice(0, 100))
+  assert.equal(full.issues.some((issue) => issue.includes('deniedCommands')), false)
+  const overflow = normalize(['invalid.name', ...names.flatMap((name) => [name, name])])
+  assert.deepEqual(overflow.config.cognition.permissions.deniedCommands, names.slice(0, 100))
+  assert.ok(overflow.issues.some((issue) => issue.includes('deniedCommands') && issue.includes('100')))
+  assert.ok(overflow.issues.some((issue) => issue.includes('deniedCommands') && issue.includes('非法项')))
+})
+
 test('字段表与 DEFAULTS 不漂移：每个面板字段的 default 都等于 DEFAULTS 里的值', () => {
   const drift = []
   for (const group of CONFIG_GROUPS) {

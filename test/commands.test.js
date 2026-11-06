@@ -59,7 +59,9 @@ function harness(overrides = {}, services = {}) {
     summary: () => ({ mode: 'allowlist' }),
     canSend: () => ({ allowed: services.allowSend !== false }),
   }
+  const configWrites = []
   const setConfig = (next) => {
+    configWrites.push(next)
     config = next
     return { config: next, issues: [] }
   }
@@ -80,7 +82,7 @@ function harness(overrides = {}, services = {}) {
     bilibili: services.bilibili,
     logger: null,
   })
-  return { service, sent, memory, getConfig: () => config, setConfig }
+  return { service, sent, memory, getConfig: () => config, setConfig, configWrites }
 }
 
 function turn(text, { chatType = 'private', chatId = '10001', senderId = '10001' } = {}) {
@@ -99,6 +101,88 @@ test('commands：非主人静默忽略，不发送', async () => {
   const result = await service.handle(turn('/status', { senderId: '10002' }))
   assert.deepEqual(result, { handled: true, reply: '' })
   assert.equal(sent.length, 0)
+})
+
+test('command deny list: built-ins stop before service calls and config writes, including mixed case', async () => {
+  const calls = []
+  const h = harness({ cognition: {
+    permissions: { deniedCommands: ['kick', 'draw', 'quiet', 'model', 'remember', 'forget'] },
+    qqAdmin: { enabled: true },
+  }, media: { enabled: true, images: { enabled: true, generateEnabled: true } } }, {
+    qqActions: { kick: (...args) => calls.push(args) },
+    media: { generateImage: (...args) => calls.push(args), sendMedia: (...args) => calls.push(args) },
+  })
+  const before = structuredClone(h.getConfig())
+  for (const text of ['/kick 10002 confirm', '/KiCk 10002 confirm', '/DRAW cat', '/quiet', '/model p/m', '/remember secret', '/forget secret']) {
+    const result = await h.service.handle(turn(text, { chatType: 'group', chatId: '20001' }))
+    assert.equal(result.reply, '该命令已被操作员禁用。')
+    assert.equal(result.handled, true)
+  }
+  assert.deepEqual(calls, [])
+  assert.deepEqual(h.memory.remembered, [])
+  assert.deepEqual(h.memory.forgotten, [])
+  assert.deepEqual(h.configWrites, [])
+  assert.deepEqual(h.getConfig(), before)
+  assert.equal(h.sent.length, 7)
+  assert.ok(h.sent.every((item) => item.source === 'command' && item.segments[0].data.text === '该命令已被操作员禁用。'))
+})
+
+test('command deny list: external module handlers cannot bypass normalized names', async () => {
+  const h = harness({ cognition: { permissions: { deniedCommands: ['module_cmd-1', 'publiccmd'] } } })
+  let calls = 0
+  h.service.registerCommand('Module_Cmd-1', () => { calls++; return 'ran' })
+  h.service.registerCommand('PublicCmd', () => { calls++; return 'ran' }, { ownerOnly: false })
+  for (const name of ['module_cmd-1', 'MODULE_CMD-1', 'PublicCmd']) {
+    assert.equal((await h.service.handle(turn(`/${name}`))).reply, '该命令已被操作员禁用。')
+  }
+  assert.equal(calls, 0)
+  assert.deepEqual(h.configWrites, [])
+})
+
+test('command deny list: non-owner remains silent for built-ins and denied module commands', async () => {
+  const h = harness({ cognition: { permissions: { deniedCommands: ['kick', 'echo', 'publiccmd'] } } })
+  let calls = 0
+  h.service.registerCommand('echo', () => { calls++ })
+  h.service.registerCommand('publiccmd', () => { calls++ }, { ownerOnly: false })
+  for (const name of ['kick', 'echo', 'publiccmd']) {
+    assert.deepEqual(await h.service.handle(turn(`/${name}`, { senderId: '10002' })), { handled: true, reply: '' })
+  }
+  assert.equal(calls, 0)
+  assert.deepEqual(h.sent, [])
+  assert.deepEqual(h.configWrites, [])
+})
+
+test('command deny list: empty and unlisted policies preserve built-ins, help and public module commands', async () => {
+  for (const deniedCommands of [[], ['kick']]) {
+    const h = harness({ cognition: { permissions: { deniedCommands } } })
+    h.service.registerCommand('echo', () => 'module reply', { ownerOnly: false })
+    assert.equal((await h.service.handle(turn('/remember keep this'))).handled, true)
+    assert.equal(h.memory.remembered.length, 1)
+    const help = await h.service.handle(turn('/help'))
+    assert.match(help.reply, /\/kick/)
+    assert.match(help.reply, /\/echo/)
+    assert.equal((await h.service.handle(turn('/echo', { senderId: '10002' }))).reply, 'module reply')
+  }
+})
+
+test('command deny list: unknown commands retain existing owner and non-owner behavior', async () => {
+  const h = harness({ cognition: { permissions: { deniedCommands: ['nope'] } } })
+  assert.equal((await h.service.handle(turn('/nope'))).reply, '未知命令。发送 /help 查看可用命令。')
+  assert.deepEqual(await h.service.handle(turn('/nope', { senderId: '10002' })), { handled: true, reply: '' })
+  assert.equal(h.sent.length, 1)
+  assert.deepEqual(h.configWrites, [])
+})
+
+test('command deny list: policy updates take effect without rebuilding the service', async () => {
+  const h = harness({ cognition: { permissions: { deniedCommands: [] } } })
+  let calls = 0
+  h.service.registerCommand('echo', () => { calls++; return 'ok' })
+  assert.equal((await h.service.handle(turn('/echo'))).reply, 'ok')
+  h.setConfig({ ...h.getConfig(), cognition: { permissions: { deniedCommands: ['echo'] } } })
+  assert.equal((await h.service.handle(turn('/echo'))).reply, '该命令已被操作员禁用。')
+  h.setConfig({ ...h.getConfig(), cognition: { permissions: { deniedCommands: [] } } })
+  assert.equal((await h.service.handle(turn('/echo'))).reply, 'ok')
+  assert.equal(calls, 2)
 })
 
 test('commands：/help 与 /status 回复', async () => {

@@ -70,7 +70,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
-| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b：管理/文件命令独立默认关；仅主人/当前群或主人私聊；踢人始终 confirm，撤回默认 confirm；回复前 access.canSend；媒体根 realpath 校验 | 部分（M7-b） | M2 剩余/M5：无逐项 action 权限矩阵/统一审批；新动作不挂 Agent |
+| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b 管理/文件默认关、主人/当前会话/确认/access/realpath；M7-n 默认空 deniedCommands，身份检查后拦截内置/模块命令，小写匹配、最多100、非法项 issue，无处理服务调用或配置写入 | 部分（M7-n） | M2 剩余/M5：仅命令 deny-list，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
 | 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；M7-j 主人请求列表与 approve/reject 字面量 confirm，固定 action、无 flag/原始错误日志 | 部分（M7-j） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 豁免（用户批准） | 2026-11-06 用户批准：仅远端 API 鉴权；保留本机-only/CSRF 行为（见 §8.1） |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
@@ -404,3 +404,9 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 沿用默认关闭的 content.bilibili.enabled。视频详情提供数字 aid 与固定域名 shareUrl；评论先查 view，取得有效 aid 后请求公开 reply 第一页，默认 10/限制 1–20，top_replies 优先、按 rpid 去重并保留 API 顺序。正文去标签/控制字符并限 500 Unicode 字符，只含接口自带的一层楼中楼样本，无缓存或翻页。分享离线校验完整 BV 后生成固定域名链接，不验证视频存在或查询标题。新增主人 comments/share 命令、两个 GET 路由与内容页 BV 查询；不增加 Agent 工具。
 
 证据：[bilibili.test.js](../../test/bilibili.test.js)、[commands.test.js](../../test/commands.test.js)、[e2e.test.js](../../test/e2e.test.js)、[panel.test.js](../../test/panel.test.js)，全部为合成接口响应/fake 宿主/mock UI；覆盖去重/限额/纯文本、缺 aid 与无效 BV、默认关闭零网络、离线分享、HTTP/超时/登录与风控错误。无 Cookie/WBI/登录态/字幕/发布评论，无新增依赖；真实 B站接口、QQ 与浏览器未验证。#48 仍 partial，矩阵计数不变、remaining 47；#31/#42/#49/#50 行逐字不变。
+
+### M7-n 操作员命令禁用列表（#14 仍 partial）
+
+`cognition.permissions.deniedCommands=[]` 默认保持原行为。仅数组、每项严格小写命令名 `^[a-z][a-z0-9_-]{0,31}$`，去重后最多保留 100 个，非法项/非数组/超限报告 issue；`cog-permissions` 配置组提供「禁用命令」string-list。现有身份检查后、内置或模块命令派发前检查解析后的小写名，主人收到固定禁用提示、非主人静默，不调用处理服务/handler 或写配置。未知命令与帮助保持原样；未禁用的公开模块命令保留既有行为，动态策略后续命令即生效。
+
+证据：[config.test.js](../../test/config.test.js)、[commands.test.js](../../test/commands.test.js)，全部为离线规范化与 fake 服务测试，覆盖默认/格式/边界/字段、内置与模块/大小写/静默/无副作用/未知命令/动态更新。无新增依赖或外部调用。仅命令入口 deny-list，不覆盖 API、直接服务、Agent 工具或模块同进程代码；仍无所有服务/工具逐项 allow/deny 矩阵和统一审批。#14 保持 partial、remaining 47，#31/#42/#49/#50 矩阵行逐字不变。

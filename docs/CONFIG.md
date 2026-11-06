@@ -557,6 +557,18 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 
 状态形状为 `{enabled,channel,repo,current,cached,checkedAt}`；初始 cached/checkedAt 为 null，checkedAt 是最近成功检查的 ISO 时间。cached 为检查结果 `{ok:true,enabled:true,channel,current,latest,updateAvailable,publishedAt,url,notes?}`，latest 保留 release tag 的 v 前缀。安全页只展示媒体 provider 环境变量名；配置完整性不验证密钥是否存在或 provider 能否连通。面板/API 保持 DSH 本机信任边界，不新增 API 鉴权或远端访问防护，不提供自动更新、工作区迁移或离峰省钱策略。
 
+## 命令禁用列表（M7-n）
+
+| 路径 | 类型 | 默认值 | 规范化 |
+|---|---|---|---|
+| `cognition.permissions.deniedCommands` | string[] | `[]` | 只接受数组；每项必须为匹配 `^[a-z][a-z0-9_-]{0,31}$` 的字符串，去重后按输入顺序最多保留 100 个 |
+
+配置页「命令权限」（`cog-permissions`）的「禁用命令」为 `string-list`。例如填 `kick`、`draw` 或模块命令名，不带 `/`；大写、空白、非字符串、过长等非法项忽略并报告 issue，非数组回退空列表并报告，超过 100 个不同有效名也报告。默认空列表不改变行为，保存后后续命令读取当前策略。
+
+现有身份检查后、派发前，内置与已注册模块命令按解析后的小写名称检查；命中时主人收到「该命令已被操作员禁用。」，回复仍走统一 outbound，不调用命令服务/模块 handler 或写配置。非主人命中时静默，包括模块显式开放的命令；未禁用的公开模块命令保留原行为。未知/未注册命令保持原有提示，`/help` 仍列出原帮助，不标记禁用状态。整个命令名被禁用，不能按子命令或参数区分；`tts` 与 `say` 等独立注册名需要分别列出。
+
+仅覆盖 QQ 文本命令入口，不约束 REST API、直接服务调用、Agent 工具或模块同进程代码；不是所有服务/工具的逐项 allow/deny 矩阵或统一审批。#14 仍 partial，remaining 47；#31/#42/#49/#50 不变。
+
 ## QQ 管理命令（M7-b）
 
 配置页「QQ 管理命令」（`cog-admin`），保存后热应用：

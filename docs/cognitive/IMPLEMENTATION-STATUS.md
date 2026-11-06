@@ -6,7 +6,7 @@
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.10.0` 未发布分支，463 个测试（459 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.10.0` 未发布分支，472 个测试（468 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）+ M7-n 操作员命令禁用列表（默认空、离线配置/命令测试，#14 partial）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
@@ -38,6 +38,7 @@
 | DSH Session 运行时 | I/T | `runtime/agent.js`、`runtime/qq-tools.js`、`cordis.patch.yml` | 每聊天 Session、private/social preset、followup/event、超时/串行、oneshot 回退；仅 full/主人私聊挂 3 个 QQ 工具，注册失败隔离并可 dispose | 默认 oneshot；social/group 0 个 QQ 工具；未真机 V | M1/M5-b 受限完成 |
 | QQ 命令/按聊天模型 | I/T | `cognition/commands.js`、`cognition/llm.js` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`（主人）；`modelRouting` 按会话覆盖；/model 写回配置 | 非主人静默；无 `/sing`；只影响认知 LLM，不改变 agent Session 模型 | M1 剩余：agent 真机 smoke |
 | 访问控制/统一出站 | I/T | `core/access.js`、`cognition/outbound.js` | `open`/`allowlist`、主人 + 私聊/群白名单、入口闸门（不落 raw/不聚合）、统一出站（访问→限频→leak guard→dryRun→发送）、审计/计数、概览卡片与 `/access/*` | 无逐项工具权限/审批（M2）；allowlist 未做真机 V 验证；默认 open 以兼容升级 | M1 剩余：DSH Session 运行时 |
+| 操作员命令禁用（M7-n） | I/T/L | `core/config.js`、`cognition/commands.js` | 默认空 `cognition.permissions.deniedCommands`；严格数组/小写名/去重/最多100/issue 与 string-list 配置；身份检查后、内置/模块派发前拦截；大小写一致、无处理服务调用或配置写入；主人固定提示、非主人静默、未知命令/帮助保持原样；离线配置/命令测试 | 仅命令入口，不覆盖 API/直接服务/Agent 工具/模块同进程代码；无所有服务/工具逐项 allow/deny 矩阵或统一审批；#14 仍 partial，remaining 47，#31/#42/#49/#50 不变 |
 | 出站文本防泄漏（M7-i） | I/T/L | `core/leak-guard.js`、`cognition/outbound.js`、`SecurityPage` | 默认启用 + redact，可选 block；高置信度密钥规则、100k UTF-16 上限、只输出脱敏文本及类别/次数；dry-run 也检查、leakBlocked 计数、固定网关错误；安全页只读开关/策略，没有扫描内容/密钥 | 无统一审批/逐项权限，无 PII/熵检测或媒体/文件扫描；可能误报/漏报，不重组跨段/跨消息；媒体/手动发送等独立路径不覆盖；仅离线/fake 网关与 mock 面板测试，#15 仍 partial，remaining 47 |
 | 隐私/删除 | I/T/V | `memory.js`、`person.js`、`index.deletePerson` | 私聊/群聊作用域隔离；secret 不进 LLM（平台层）；导出；删除人物级联画像/关系/记忆；原始事件镜像可关 | 没有多用户权限模型；DSH 本地单用户认证 |
 | 存储 | I/T/V | `store.js` | `node:sqlite` WAL + FTS5 + 事务/回滚/备份；JSON fallback；schema version；原始 JSONL；WAL checkpoint | 迁移只有 v1；跨大版本升级需补迁移脚本 |

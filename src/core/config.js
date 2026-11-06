@@ -189,6 +189,7 @@ export const DEFAULTS = {
     },
     notices: { enabled: true },
     requests: { enabled: true },
+    permissions: { deniedCommands: [] },
     reminders: { enabled: false, maxActive: 50, minIntervalSeconds: 60, maxIntervalSeconds: 2592000, tickMs: 30000 },
     qqAdmin: { enabled: false, requireConfirm: true, maxText: 100 },
     notice: {
@@ -676,6 +677,14 @@ export const CONFIG_GROUPS = [
     ],
   },
   {
+    id: 'cog-permissions',
+    title: '命令权限',
+    description: '操作员按命令名禁用内置或模块命令；空列表保持原有行为。',
+    fields: [
+      { path: 'cognition.permissions.deniedCommands', label: '禁用命令', type: 'string-list', default: [], placeholder: 'kick 或 draw 后回车，不带 /', help: '最多 100 个不带 / 的小写命令名，匹配 ^[a-z][a-z0-9_-]{0,31}$；去重，非法项忽略并报告。仅拦截命令入口，不覆盖服务/API/Agent 工具。' },
+    ],
+  },
+  {
     id: 'cog-reminders',
     title: '主人本地提醒',
     description: '默认关闭；固定文本经统一出站发送，无任务代码或 LLM 执行；无提醒面板/API。',
@@ -1030,6 +1039,28 @@ function pickNumberArray(value, def, { min = 0, max = 600000, maxItems = 20 } = 
   return out.length ? out : clone(def)
 }
 
+function normalizeDeniedCommands(value, issues) {
+  const path = 'cognition.permissions.deniedCommands'
+  if (!Array.isArray(value)) {
+    issues.push(`${path} 必须为数组，已使用空列表`)
+    return []
+  }
+  const out = []
+  let invalid = false, overflow = false
+  for (const item of value) {
+    if (typeof item !== 'string' || !/^[a-z][a-z0-9_-]{0,31}$/.test(item)) {
+      invalid = true
+      continue
+    }
+    if (out.includes(item)) continue
+    if (out.length >= 100) { overflow = true; continue }
+    out.push(item)
+  }
+  if (invalid) issues.push(`${path} 含非法项，已忽略；命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$`)
+  if (overflow) issues.push(`${path} 最多保留 100 个不同命令名，超出项已忽略`)
+  return out
+}
+
 /**
  * 规范化配置：与 DEFAULTS 深合并 + 逐字段校验；返回 { config, issues }。
  * 非法值回退默认值，issues 里记录可读说明（面板/日志可见）。
@@ -1125,7 +1156,7 @@ export function normalizeConfig(raw) {
       pageTransition: pickEnum(merged.ui?.pageTransition, DEFAULTS.ui.pageTransition, ['default', 'fade', 'fade-slide', 'fade-up', 'fade-down', 'none']),
       contrast: pickEnum(merged.ui?.contrast, DEFAULTS.ui.contrast, ['system', 'standard', 'high']),
     },
-    cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}),
+    cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}, issues),
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
       leakGuard: {
@@ -1216,7 +1247,7 @@ export function normalizeConfig(raw) {
   return { config: cfg, issues }
 }
 
-function normalizeCognition(raw, rawCognition = {}) {
+function normalizeCognition(raw, rawCognition = {}, issues = []) {
   const src = isPlainObject(raw) ? raw : {}
   const d = DEFAULTS.cognition
   const traits = {}
@@ -1252,6 +1283,11 @@ function normalizeCognition(raw, rawCognition = {}) {
     timezone: pickString(src.timezone, '', { max: 64 }),
     notices: { enabled: pickBool(src.notices?.enabled, d.notices.enabled) },
     requests: { enabled: pickBool(src.requests?.enabled, d.requests.enabled) },
+    permissions: {
+      // deepMerge replaces non-array patches with defaults; inspect the raw field to report invalid types.
+      deniedCommands: normalizeDeniedCommands(Object.hasOwn(rawCognition.permissions || {}, 'deniedCommands')
+        ? rawCognition.permissions.deniedCommands : d.permissions.deniedCommands, issues),
+    },
     reminders: {
       enabled: pickBool(src.reminders?.enabled, d.reminders.enabled),
       maxActive: pickNumber(src.reminders?.maxActive, d.reminders.maxActive, { min: 1, max: 1000, integer: true }),

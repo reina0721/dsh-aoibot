@@ -300,6 +300,12 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return { handled: true, reply: '' }
     }
 
+    const deniedCommands = currentConfig().cognition?.permissions?.deniedCommands
+    if (Array.isArray(deniedCommands) && deniedCommands.includes(parsed.name)) {
+      if (!owner) return { handled: true, reply: '' }
+      return send(turn, '该命令已被操作员禁用。')
+    }
+
     if (external) {
       try {
         const result = await external.handler({ turn, parsed, args: parsed.args })
