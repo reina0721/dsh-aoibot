@@ -79,9 +79,13 @@ sh install.sh --profile desktop --version 0.10.0
 ```sh
 npm test
 npm run check:docs
+npm run check:parity
+npm run smoke:temp # 需要本机 DSH；仅临时 profile，不连接 QQ/外部服务
 npm run pack:release
 npm run check:package
 ```
+
+[对标审计与临时 profile smoke](docs/PARITY-AUDIT.md)记录当前计数、剩余项与证据边界；审计会因矩阵结构错误返回 1，剩余差距本身不会导致失败。`smoke:temp` 可用 `DSH_BIN=/path/to/dsh` 指定 DSH，始终新建并清理临时 `DSH_HOME`。
 
 目录：src/ 为宿主实现，client.js 为网页面板，test/ 为测试，scripts/ 为开发与安装工具，docs/ 为用户、开发与研究文档。
 

@@ -1,0 +1,14 @@
+{
+  "kind": "disposable-dsh-profile-smoke",
+  "at": "2026-11-06T09:36:13Z",
+  "command": "DSH_BIN=/opt/dsh/bin/dsh PATH=/opt/dsh/bin:$PATH npm run smoke:temp",
+  "ok": true,
+  "profile": "web",
+  "temporary": true,
+  "version": "0.10.0",
+  "enabled": false,
+  "upgradeEnabled": false,
+  "endpoints": ["health", "status", "config", "modules", "media/status", "backup", "upgrade"],
+  "backupCreated": true,
+  "note": "No QQ connection, no real Bilibili/GitHub/provider requests; temp DSH_HOME and plugin data removed after the run. Token and scratch path intentionally omitted."
+}

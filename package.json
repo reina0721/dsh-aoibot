@@ -65,6 +65,8 @@
     "test": "node --test \"test/*.test.js\"",
     "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-plugin.ps1",
     "check:docs": "node scripts/check-docs.mjs",
+    "check:parity": "node scripts/parity-audit.mjs",
+    "smoke:temp": "bash scripts/smoke-temp-profile.sh",
     "pack:release": "node scripts/build-release.mjs",
     "check:package": "node scripts/check-package.mjs"
   },
