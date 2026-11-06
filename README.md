@@ -1,6 +1,6 @@
 # dsh-bot
 
-认知设置的 `cog-llm` 组提供今日 LLM 预算卡片和确认重置，只作用于当前人格的 UTC 当日计数；[使用说明](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人只读操作员)。
+认知设置的 `cog-llm` 组提供全局/人格双计数、`global|persona|both` 三种预算模式（默认全局 300000），卡片支持分别确认重置全局或当前人格的 UTC 今日用量；[使用说明](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人只读操作员)。
 
 ![dsh-bot 宣传插画：会话、人格与记忆的连接](https://raw.githubusercontent.com/reina0721/dsh-bot/main/docs/assets/promo/dsh-bot-hero.png)
 

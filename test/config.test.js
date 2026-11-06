@@ -271,3 +271,47 @@ test('qqAdmin approval config: strict opt-in and switch/help in QQ admin group',
   assert.equal(field.default, false)
   assert.match(field.help, /approvals.*approve.*reject/)
 })
+
+
+test('LLM dual budgets: defaults preserve global semantics and panel exposes three modes and limits', () => {
+  const { config } = normalizeConfig({})
+  for (const llm of [DEFAULTS.cognition.llm, config.cognition.llm]) {
+    assert.equal(llm.budgetScope, 'global')
+    assert.equal(llm.dailyTokenBudget, 300000)
+    assert.equal(llm.personaDailyTokenBudget, 300000)
+  }
+  const fields = CONFIG_GROUPS.find((group) => group.id === 'cog-llm').fields
+  const scope = fields.find((field) => field.path === 'cognition.llm.budgetScope')
+  assert.equal(scope.type, 'select')
+  assert.equal(scope.default, 'global')
+  assert.deepEqual(scope.options, [{ value: 'global', label: '全局' }, { value: 'persona', label: '按人格' }, { value: 'both', label: '两者取最小' }])
+  for (const name of ['dailyTokenBudget', 'personaDailyTokenBudget']) {
+    const field = fields.find((field) => field.path === 'cognition.llm.' + name)
+    assert.equal(field.type, 'number')
+    assert.equal(field.default, 300000)
+    assert.equal(field.min, 1000)
+    assert.equal(field.max, 5000000)
+  }
+  assert.equal(fields.find((field) => field.path === 'cognition.llm.dailyTokenBudget').label, '全局每日 token 预算')
+})
+
+test('LLM dual budgets: normalize scopes and persona limits; invalid input defaults with issue', () => {
+  for (const budgetScope of ['global', 'persona', 'both']) {
+    for (const personaDailyTokenBudget of [1000, 5000000, '12345']) {
+      const { config } = normalizeConfig({ cognition: { llm: { budgetScope, personaDailyTokenBudget, dailyTokenBudget: 4321 } } })
+      assert.equal(config.cognition.llm.budgetScope, budgetScope)
+      assert.equal(config.cognition.llm.personaDailyTokenBudget, Number(personaDailyTokenBudget))
+      assert.equal(config.cognition.llm.dailyTokenBudget, 4321)
+    }
+  }
+  for (const budgetScope of ['', 'GLOBAL', 'invalid', null, 5, {}, ['persona']]) {
+    const { config, issues } = normalizeConfig({ cognition: { llm: { budgetScope } } })
+    assert.equal(config.cognition.llm.budgetScope, 'global')
+    assert.ok(issues.some((issue) => issue.includes('llm.budgetScope')))
+  }
+  for (const personaDailyTokenBudget of [0, 999, 5000001, -1, '', 'bad', null, true, [], {}]) {
+    const { config, issues } = normalizeConfig({ cognition: { llm: { personaDailyTokenBudget } } })
+    assert.equal(config.cognition.llm.personaDailyTokenBudget, 300000)
+    assert.ok(issues.some((issue) => issue.includes('llm.personaDailyTokenBudget')))
+  }
+})

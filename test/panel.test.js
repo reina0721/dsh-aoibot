@@ -1599,83 +1599,112 @@ test('ContentPage：空评论、服务关闭/风控与网络失败明确展示�
 
 const budgetControl = (tree, text) => control([tree, tree.props.actions, ...treeNodes(tree).map((node) => node.props?.actions)], text)
 
-function renderBudget({ usageToday = 120, budget = 500, loading = false, error = '', resetting = false, toast = () => {} } = {}) {
-  stateOverrides = [{ date: '2026-11-06', usageToday, budget, budgetLeft: Math.max(0, budget - usageToday), personaScoped: true, personaId: 'self' }, error, loading, resetting]
+function renderBudget({ usageToday = 120, budget = 500, personaUsed = 50, personaBudget = 200, scope = 'global', loading = false, error = '', resetting = false, toast = () => {} } = {}) {
+  const counter = (usageToday, budget) => ({ usageToday, budget, budgetLeft: Math.max(0, budget - usageToday), exhausted: usageToday >= budget })
+  const global = counter(usageToday, budget), persona = { ...counter(personaUsed, personaBudget), personaScoped: true }
+  const effectiveLeft = scope === 'both' ? Math.min(global.budgetLeft, persona.budgetLeft) : (scope === 'global' ? global : persona).budgetLeft
+  stateOverrides = [{ date: '2026-11-06', scope, global, persona, effectiveLeft, exhausted: effectiveLeft <= 0, personaId: 'self' }, error, loading, resetting]
   try { return panel.CogBudgetCard({ toast }) } finally { stateOverrides = null }
 }
 
-test('CogBudgetCard: normal/near/exhausted/zero states, UTC scope, shared budget and clamped progress', () => {
+test('CogBudgetCard: both rows, three scope badges, effective remaining and progress', () => {
   const normal = renderBudget(), json = JSON.stringify(normal)
   assert.equal(normal.props.title, '今日 LLM 预算')
   assert.match(json, /2026-11-06 UTC/)
-  assert.match(json, /仅当前人格/)
+  assert.match(json, /所有人格共享此计数/)
+  assert.match(json, /仅当前人格：self/)
   assert.match(json, /analysis.*reply.*cog-learning/)
   const stats = treeNodes(normal).filter((node) => node.type?.name === 'StatTile')
-  assert.deepEqual(stats.map((node) => node.props.value), ['120', '500', '380'])
-  assert.equal(treeNodes(normal).find((node) => node.type?.name === 'CogBar').props.value, 0.24)
+  assert.deepEqual(stats.map((node) => node.props.value), ['120', '500', '380', '50', '200', '150', '380'])
+  const bars = treeNodes(normal).filter((node) => node.type?.name === 'CogBar')
+  assert.deepEqual(bars.map((bar) => bar.props.value), [0.24, 0.25])
+  assert.deepEqual(bars.map((bar) => bar.props.label), ['全局今日预算使用率', '当前人格今日预算使用率'])
   assert.doesNotMatch(json, /已耗尽|接近上限/)
-  assert.match(JSON.stringify(renderBudget({ usageToday: 400 })), /接近上限；仍可继续使用/)
-  for (const options of [{ usageToday: 500 }, { usageToday: 750 }, { usageToday: 0, budget: 0 }]) {
-    const tree = renderBudget(options)
-    assert.match(JSON.stringify(tree), /今日 LLM 预算已耗尽/)
-    const bar = treeNodes(tree).find((node) => node.type?.name === 'CogBar')
-    assert.equal(bar.props.value, 1)
-    assert.match(JSON.stringify(bar.type(bar.props)), /100.0%/)
+  for (const [text, label] of [['重置全局今日', '重置全局今日用量（所有人格共享）'], ['重置当前人格今日', '重置当前人格今日用量']]) {
+    const button = budgetControl(normal, text)
+    assert.equal(button.type(button.props).props['aria-label'], label)
   }
-  assert.equal(budgetControl(renderBudget({ usageToday: 0 }), '重置今日用量').props.disabled, true)
+  for (const [scope, label, left] of [['global', '全局', '380'], ['persona', '按人格', '150'], ['both', '两者取最小', '150']]) {
+    const tree = renderBudget({ scope })
+    assert.match(JSON.stringify(tree.props.actions), new RegExp(label))
+    assert.equal(treeNodes(tree).filter((node) => node.type?.name === 'StatTile').at(-1).props.value, left)
+  }
 })
 
-test('CogBudgetCard: loading, errors/retry and reset busy state disable unsafe actions', async () => {
+test('CogBudgetCard: each row warns at 80%, exhausted/zero clamp progress; only active limits block', () => {
+  for (const options of [{ usageToday: 400 }, { personaUsed: 160 }]) {
+    assert.match(JSON.stringify(renderBudget(options)), /已使用至少 80%，接近上限/)
+  }
+  for (const options of [{ usageToday: 500 }, { usageToday: 750 }, { usageToday: 0, budget: 0 },
+    { personaUsed: 200, scope: 'persona' }, { personaUsed: 300, scope: 'both' }, { personaBudget: 0, personaUsed: 0, scope: 'both' }]) {
+    const tree = renderBudget(options)
+    assert.match(JSON.stringify(tree), /今日 LLM 预算已耗尽/)
+    const bar = treeNodes(tree).filter((node) => node.type?.name === 'CogBar').find((node) => node.props.value === 1)
+    assert.ok(bar)
+    assert.match(JSON.stringify(bar.type(bar.props)), /100.0%/)
+  }
+  assert.doesNotMatch(JSON.stringify(renderBudget({ personaUsed: 300 })), /今日 LLM 预算已耗尽/)
+  assert.doesNotMatch(JSON.stringify(renderBudget({ usageToday: 700, scope: 'persona' })), /今日 LLM 预算已耗尽/)
+  assert.equal(budgetControl(renderBudget({ usageToday: 0 }), '重置全局今日').props.disabled, true)
+  assert.equal(budgetControl(renderBudget({ personaUsed: 0 }), '重置当前人格今日').props.disabled, true)
+  assert.equal(budgetControl(renderBudget({ usageToday: 0 }), '重置当前人格今日').props.disabled, false)
+})
+
+test('CogBudgetCard: loading, errors/retry and reset busy state disable both reset actions', async () => {
   const loading = renderBudget({ loading: true })
   assert.match(JSON.stringify(loading), /正在加载今日 LLM 用量/)
-  assert.equal(budgetControl(loading, '重置今日用量').props.disabled, true)
-  assert.equal(budgetControl(loading, '刷新').props.disabled, true)
+  for (const name of ['重置全局今日', '重置当前人格今日', '刷新']) assert.equal(budgetControl(loading, name).props.disabled, true)
   assert.equal(treeNodes(loading).some((node) => node.type?.name === 'StatTile'), false)
   const calls = [], restore = mockCognitionApi(calls)
   try {
     const error = renderBudget({ error: '读取用量失败' })
     assert.match(JSON.stringify(error), /读取用量失败/)
-    assert.equal(budgetControl(error, '重置今日用量').props.disabled, true)
+    for (const name of ['重置全局今日', '重置当前人格今日']) assert.equal(budgetControl(error, name).props.disabled, true)
     await budgetControl(error, '重试').props.onClick()
     await budgetControl(renderBudget(), '刷新').props.onClick()
     assert.equal(calls.length, 2)
     assert.ok(calls.every((call) => call.method === 'GET' && call.path === panel.API_PREFIX + '/cognition/llm/usage'))
     const resetting = renderBudget({ resetting: true })
-    assert.equal(budgetControl(resetting, '重置今日用量').props.busy, true)
+    for (const name of ['重置全局今日', '重置当前人格今日']) {
+      assert.equal(budgetControl(resetting, name).props.busy, true)
+      assert.equal(budgetControl(resetting, name).props.disabled, true)
+    }
     assert.equal(budgetControl(resetting, '刷新').props.disabled, true)
   } finally { restore() }
 })
 
-test('CogBudgetCard: cancel makes no request; confirmation POSTs only confirm then reloads', async () => {
-  const calls = [], toasts = [], restore = mockCognitionApi(calls), originalConfirm = window.confirm
-  const prompts = []
-  try {
-    window.confirm = (message) => { prompts.push(message); return false }
-    await budgetControl(renderBudget(), '重置今日用量').props.onClick()
-    assert.deepEqual(calls, [])
-    assert.deepEqual(prompts, ['重置今日已用 token？不会修改预算、人格或配置。'])
-    window.confirm = () => true
-    await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置今日用量').props.onClick()
-    assert.deepEqual(calls, [
-      { path: panel.API_PREFIX + '/cognition/llm/usage/reset', method: 'POST', body: { confirm: true } },
-      { path: panel.API_PREFIX + '/cognition/llm/usage', method: 'GET', body: undefined },
-    ])
-    assert.deepEqual(toasts, [['已重置今日 LLM 用量', 'ok']])
-  } finally { restore(); window.confirm = originalConfirm }
-})
+for (const [scope, label] of [['global', '全局'], ['persona', '当前人格']]) {
+  test(`CogBudgetCard: ${scope} cancel makes no request, confirm POSTs scope then reloads`, async () => {
+    const calls = [], toasts = [], restore = mockCognitionApi(calls), originalConfirm = window.confirm
+    const prompts = []
+    try {
+      window.confirm = (message) => { prompts.push(message); return false }
+      await budgetControl(renderBudget(), '重置' + label + '今日').props.onClick()
+      assert.deepEqual(calls, [])
+      assert.deepEqual(prompts, ['重置' + label + '今日已用 token？不会修改预算、人格或配置。'])
+      window.confirm = () => true
+      await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置' + label + '今日').props.onClick()
+      assert.deepEqual(calls, [
+        { path: panel.API_PREFIX + '/cognition/llm/usage/reset', method: 'POST', body: { confirm: true, scope } },
+        { path: panel.API_PREFIX + '/cognition/llm/usage', method: 'GET', body: undefined },
+      ])
+      assert.deepEqual(toasts, [['已重置' + label + '今日 LLM 用量', 'ok']])
+    } finally { restore(); window.confirm = originalConfirm }
+  })
+}
 
 test('CogBudgetCard: failed reset shows error toast without success or reload', async () => {
   const calls = [], toasts = [], restore = mockCognitionApi(calls, { ok: false, message: '重置失败' }), originalConfirm = window.confirm
   try {
     window.confirm = () => true
-    await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置今日用量').props.onClick()
+    await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置全局今日').props.onClick()
     assert.equal(calls.length, 1)
     assert.deepEqual(toasts, [['重置失败', 'err']])
   } finally { restore(); window.confirm = originalConfirm }
 })
 
 test('CogSettings: budget card appears only above cog-llm fields and keeps config editor', () => {
-  const groups = [{ id: 'cog-core', title: '核心', fields: [] }, { id: 'cog-llm', title: '模型路由与预算', fields: [{ path: 'cognition.llm.dailyTokenBudget' }] }]
+  const groups = [{ id: 'cog-core', title: '核心', fields: [] }, { id: 'cog-llm', title: '模型路由与预算', fields: ['dailyTokenBudget', 'budgetScope', 'personaDailyTokenBudget'].map((name) => ({ path: 'cognition.llm.' + name })) }]
   for (const active of ['cog-core', 'cog-llm']) {
     stateOverrides = [active]
     let tree
@@ -1683,9 +1712,9 @@ test('CogSettings: budget card appears only above cog-llm fields and keeps confi
     const nodes = treeNodes(tree), cards = nodes.filter((node) => node.type === panel.CogBudgetCard)
     assert.equal(cards.length, active === 'cog-llm' ? 1 : 0)
     if (cards.length) {
-      const editor = nodes.find((node) => node.type?.name === 'FieldRow')
-      assert.equal(editor.props.spec.path, 'cognition.llm.dailyTokenBudget')
-      assert.ok(nodes.indexOf(cards[0]) < nodes.indexOf(editor))
+      const editors = nodes.filter((node) => node.type?.name === 'FieldRow')
+      assert.deepEqual(editors.map((editor) => editor.props.spec.path), ['cognition.llm.dailyTokenBudget', 'cognition.llm.budgetScope', 'cognition.llm.personaDailyTokenBudget'])
+      assert.ok(editors.every((editor) => nodes.indexOf(cards[0]) < nodes.indexOf(editor)))
     }
   }
 })

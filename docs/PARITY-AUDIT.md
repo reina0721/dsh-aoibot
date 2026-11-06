@@ -2,6 +2,8 @@
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
 
+LLM 双预算静态快照（未发布）：全局/人格始终双计数，`global|persona|both` 默认 global，限额默认各 300000；both 取有效剩余最小值。恢复全局存储、移除中间人格迁移；双行卡片、模式配置、GET 双状态与确认+scope 的独立今日重置均为离线服务/API/React shim 证据，不改配置、不调用模型。没有 live 或真实浏览器验收，不触碰运行中 profile；能力矩阵逐字不变，6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47。见[设计](design/llm-budget-card.md)。
+
 M7-v 更新 #32（未发布）：默认空的全局手动身份链接 registry，独立 manual_identity 存储；五平台白名单、严格 ID/干净标签/已知密钥拒绝、随机 idn_24hex、唯一 platform+externalId、最多 5000 条、重链保留 ID/创建时间、列表筛选最新 100 条及 resolve/unlink/counts。主人 /identity 最多列 20 条、link/unlink 维护；owner/禁用/访问闸门、操作员和陌生人静默、固定安全错误。跨重启/人格切换保留，与旧人物 identity/迁移/复制/删除隔离；不创建/修改/合并人物，无 Telegram/Discord/Matrix adapter、自动合并、账号验证或消息路由，无新配置/依赖、外部调用、HTTP/API 或面板。仅离线存储/fake QQ 证据，默认消息行为不变，真实跨平台未验证。#32 none → partial，当前 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变；v0.11.3 已发布/live，M7-v 未发布/部署。
 
 M7-u 更新 #45（未发布）：文件列表增加本地下载/确认删除、共享上传/下载/删除忙碌锁、错误 toast、删除后刷新；GET `/media/file/download?name=` 返回 base64 JSON，POST `/media/file/delete {name}` 只操作固定 files 目录的安全存储 basename≤120、白名单扩展名、普通非符号链接文件。媒体/文件双开关、realpath、no-follow 句柄及 maxBytes 有界读取，缺失安全错误；新上传长名称保留扩展名缩短存储名，不覆盖或自动迁移旧文件。默认仍关闭，无新依赖/配置、外部调用、发送面板或任意本地路径；发送仍由主人 `/file`，真实 QQ 文件兼容性/本轮真实浏览器未验证。#45 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
@@ -74,8 +76,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 40，none: 0，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：68 个 JS 文件 / 17396 行。
-测试静态计数：48 个文件 / 12059 行 / 528 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：68 个 JS 文件 / 17422 行。
+测试静态计数：48 个文件 / 12225 行 / 531 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 

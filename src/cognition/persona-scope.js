@@ -1,8 +1,8 @@
 // 人格作用域：把认知数据透明地存到 persona 命名空间。
 //
 // 设计原则：
-// - 人格记录、activeId、全局状态、原始事件、turn、审计日志保持全局；
-// - 记忆/人物/关系/情绪/策略/学习/技能/诊断/LLM 用量等按 persona 前缀隔离；
+// - 人格记录、activeId、全局状态、原始事件、turn、审计日志、LLM 总用量保持全局；
+// - 记忆/人物/关系/情绪/策略/学习/技能/诊断/LLM 人格用量等按 persona 前缀隔离；
 // - 旧 v0.7 及以前的无前缀数据在启动时迁移到默认 self 人格；
 // - 服务层不需要知道 persona，所有 get/put/list/search 都由 wrapper 自动加前缀。
 import { deepClone } from './util.js'
@@ -14,6 +14,7 @@ export const PERSONA_GLOBAL_KINDS = new Set([
   'raw_event',
   'turn',
   'audit_log',
+  'llm_usage',
 ])
 
 export const PERSONA_DATA_GROUPS = [
@@ -106,19 +107,9 @@ export function migrateLegacyPersonaData({ base, targetId = 'self', clock = { no
   return { migrated, skipped: false, targetId }
 }
 
-// 旧版用量是全局计数；升级时归入当前人格，保留当天预算约束。
-export function migrateLlmUsage({ base, targetId, clock }) {
-  const markerId = 'persona.llmUsageMigration.v1'
-  if (base.get('setting', markerId)) return
-  base.tx(() => {
-    copyLegacyKind(base, targetId, 'llm_usage')
-    base.put('setting', markerId, { targetPersonaId: targetId, at: clock.now() })
-  })
-}
-
 export function dropPersonaData({ base, personaId }) {
   let removed = 0
-  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage']) {
+  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage_persona']) {
     const targetKind = scopedPersonaKind(personaId, kind)
     try {
       removed += base.removeWhere(targetKind, () => true)

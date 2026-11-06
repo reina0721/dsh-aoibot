@@ -449,7 +449,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     route('POST', '/cognition/llm/usage/reset', async (req) => {
       const body = await readBody(req)
       if (body?.confirm !== true) throw new Error('重置今日 LLM 用量需要 confirm: true')
-      return { ok: true, ...cognition.resetLlmUsage() }
+      if (!['global', 'persona', 'both'].includes(body.scope)) throw new Error('LLM 用量重置 scope 必须为 global、persona 或 both')
+      return { ok: true, ...cognition.resetLlmUsage(body.scope) }
     })
     route('POST', '/cognition/llm/test', async (req) => {
       const body = await readBody(req)

@@ -290,7 +290,7 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | 组 | 代表字段 | 默认值 | 作用 |
 |---|---|---|---|
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
-| `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` / `modelRouting.*` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` / 空 | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；`modelRouting` 按聊天覆盖 provider/model，优先级：会话覆盖 > 私聊/群默认 > 全局路由 |
+| `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `budgetScope` / `personaDailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` / `modelRouting.*` | `auto` / `true` / `""` / `""` / `300000` / `global` / `300000` / `1800` / `800` / 空 | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；`modelRouting` 按聊天覆盖 provider/model，优先级：会话覆盖 > 私聊/群默认 > 全局路由 |
 | `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `groupReplyMode` / `groupReplyProbability` / `groupCooldownMs` / `groupMaxRepliesPerMinute` / `maxConsecutiveGroupReplies` | `1800` / `10000` / `9000` / `addressed` / `0.2` / `3000` / `6` / `3` | 碎片聚合软/硬等待；群聊参与方式（仅@/概率/所有消息）及冷却/频率上限；旧 `addressedOnlyGroups` 仍兼容映射 |
 | `cog-reply` | `reply.split` / `maxChars` / `maxParts` / `delayMs` / `quote` / `atSender` / `notice.patReply` / `patCooldownMs` | `true` / `300` / `3` / `600` / `true` / `false` / `true` / `60000` | 长回复分条、引用与群聊 @；拍一拍回应与冷却；分条中途失败不回滚 |
 | `cog-purpose` | `purpose.enabled` / `injectPrompt` / `promptLimit` / `maxActive` | `true` / `true` / `3` / `5` | 长期目标/计划/意图；注入少量高优先级目的；面板与 `/purpose` 管理 |
@@ -305,15 +305,23 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 
 ### LLM 每日预算与今日用量
 
-`cognition.llm.dailyTokenBudget` 的源码默认值为 `300000` token；实际预算读取已保存配置，仍在「认知 → 设置 → 模型路由与预算（cog-llm）」的既有字段编辑。分析（analysis）与回复（reply/compose）共享此预算；学习预算独立配置于 `cog-learning`（`cognition.learning.dailyTokenBudget`）。预算为 0 表示耗尽，不表示无限制。
+两项用量始终独立记录：全局 `llm_usage` 由所有人格共享，人格 `llm_usage_persona` 只属于请求开始时的当前人格。分析（analysis）与回复（reply/compose）计入两项用量；学习预算另在 `cog-learning`（`cognition.learning.dailyTokenBudget`）配置。
 
-「今日 LLM 预算」卡片显示当前人格的今日已用、每日预算、剩余 token、UTC 日期和使用进度。达到 80% 提醒但不阻止调用，达到预算时既有预算检查返回 `BUDGET_EXHAUSTED`；超额用量保留真实数值，进度最多 100%，剩余最少 0。刷新读取最新已保存配置和计数，不调用模型。
+| 配置 | 默认 | 含义 |
+| --- | --- | --- |
+| `cognition.llm.dailyTokenBudget` | `300000` | 全局每日 token 预算，保留原有默认值和语义 |
+| `cognition.llm.personaDailyTokenBudget` | `300000` | 人格每日 token 预算，1000–5000000，各人格使用同一个限额配置 |
+| `cognition.llm.budgetScope` | `global` | `global` 仅约束全局；`persona` 仅约束人格；`both` 两项均约束，有效剩余取最小 |
 
-- `GET /onebot-qq/api/cognition/llm/usage` 返回 `{ok,date,budget,usageToday,budgetLeft,exhausted,personaScoped:true,personaId}`。
-- `POST /onebot-qq/api/cognition/llm/usage/reset` 必须携带 `{confirm:true}`，只删除当前人格、当前 UTC 日期的 `llm_usage`；不接受客户端选择日期、人格或 token 数。返回 `{ok,reset:true,removed,...用量状态}`，重复重置安全。
-- 重置不修改预算、人格、配置、其他日期或其他人格的记录，也不调用模型/外部网络。卡片需二次确认，取消不发请求；重置计数不撤销 provider 已产生的用量或费用。执行中的请求稍后仍可能写入实际用量，并记入该请求开始时的人格。
+三项字段均在「认知 → 设置 → 模型路由与预算（cog-llm）」编辑。省略新字段保持原来的全局约束行为；人格计数仍持续记录，因此切换模式不会重置用量。非法新字段回退默认并产生 issue。面板配置限额范围为 1000–5000000；服务层遇到预算 0 视为耗尽，不表示无限制。
 
-LLM 用量从旧版全局计数改为按人格隔离。首次升级将旧 `llm_usage` 归入启动时当前人格，保留计数，使用 `setting.persona.llmUsageMigration.v1` 标记确保幂等；之后切换人格读取各自计数。删除人格会清除其用量，用量不参与人格页数据组复制。配置预算仍为全局配置。布局与状态见[卡片设计](design/llm-budget-card.md)。
+「今日 LLM 预算」卡片显示当前模式、UTC 日期、全局与当前人格的已用/预算/剩余和各自进度，以及当前模式有效剩余。达到 80% 提醒，受约束的预算耗尽时返回 `BUDGET_EXHAUSTED`；未参与约束的行标为「仅跟踪」。超额用量保留真实数值，进度最多 100%，剩余最少 0。刷新读取最新已保存配置和计数，不调用模型。
+
+- `GET /onebot-qq/api/cognition/llm/usage` 返回 `{ok,date,scope,global,persona,effectiveLeft,exhausted,binding,personaId}`；`global` / `persona` 含 `{usageToday,budget,budgetLeft,exhausted}`，`persona` 另含 `personaScoped:true`。`binding` 是决定有效剩余的约束（`both` 模式相等时为 `both`）。
+- `POST /onebot-qq/api/cognition/llm/usage/reset` 必须携带 `{confirm:true,scope:'global'|'persona'|'both'}`；只删除服务器当前 UTC 日期的相应记录。人格范围始终为当前人格，客户端日期/人格/token 字段均忽略。返回 `{ok,reset:true,removed:{global,persona},...用量状态}`，未删除的项为 false，重复重置安全。
+- 卡片提供「重置全局今日」「重置当前人格今日」两个确认按钮；取消不发请求。重置不修改限额、模式、人格或配置，其他日期不变，重置人格用量不影响其他人格。重置不调用模型，不撤销供应商费用；执行中的请求仍可能稍后记账，归属请求开始时的人格。当前实现按完成记账时的 UTC 日期记录，未提供并发请求的预算预留。
+
+恢复全局 `llm_usage` 的存储语义，移除中间实现的 `migrateLlmUsage` 及启动调用，不再搬走旧全局数据；新增人格计数从首次记录开始。已运行过中间实现而留下的 `persona_*:llm_usage` / 迁移标记保留原样，不读取、不自动合并或重建历史计数，避免重复记账。两项预算计数都不参与人格数据组复制；删除人格仅清除其 `llm_usage_persona`，全局用量保留。布局与状态见[卡片设计](design/llm-budget-card.md)。
 
 ### 私聊输入状态（M7-q）
 

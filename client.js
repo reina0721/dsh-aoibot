@@ -2517,6 +2517,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           className: cx('ob-btn', props.kind, props.small && 'small', props.large && 'large', props.block && 'block', props.className),
           disabled,
           title: props.title,
+          'aria-label': props['aria-label'],
           'aria-busy': busy ? true : undefined,
           onClick: disabled ? undefined : props.onClick,
         },
@@ -6112,20 +6113,18 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [resetting, setResetting] = useState(false)
       const resetLock = useRef(false)
       const data = api.data || {}
-      const usage = Math.max(0, Number(data.usageToday) || 0)
-      const budget = Math.max(0, Number(data.budget) || 0)
-      const progress = budget > 0 ? Math.min(1, usage / budget) : 1
-      const exhausted = budget <= 0 || usage >= budget
+      const scopeLabels = { global: '全局', persona: '按人格', both: '两者取最小' }
       const busy = api.loading || resetting
-      const reset = async () => {
-        if (busy || api.error || !api.data || usage <= 0 || resetLock.current) return
-        if (!window.confirm('重置今日已用 token？不会修改预算、人格或配置。')) return
+      const reset = async (scope) => {
+        if (busy || api.error || !api.data || Number(data[scope]?.usageToday || 0) <= 0 || resetLock.current) return
+        const label = scope === 'global' ? '全局' : '当前人格'
+        if (!window.confirm('重置' + label + '今日已用 token？不会修改预算、人格或配置。')) return
         resetLock.current = true
         setResetting(true)
         try {
-          const result = await cogPost(props, '/cognition/llm/usage/reset', { confirm: true })
+          const result = await cogPost(props, '/cognition/llm/usage/reset', { confirm: true, scope })
           if (result) {
-            props.toast('已重置今日 LLM 用量', 'ok')
+            props.toast('已重置' + label + '今日 LLM 用量', 'ok')
             await api.reload()
           }
         } finally {
@@ -6133,27 +6132,48 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           setResetting(false)
         }
       }
+      const row = (scope, label, description) => {
+        const counter = data[scope] || {}
+        const usage = Math.max(0, Number(counter.usageToday) || 0)
+        const budget = Math.max(0, Number(counter.budget) || 0)
+        const progress = budget > 0 ? Math.min(1, usage / budget) : 1
+        const enforced = data.scope === scope || data.scope === 'both'
+        return h('div', { className: 'ob-stack', style: { gap: '8px' }, key: scope, role: 'group', 'aria-label': label + '今日预算' },
+          h('div', { className: 'ob-row' }, h('strong', null, label), h(CogTag, null, enforced ? '参与约束' : '仅跟踪')),
+          h('p', { className: 'ob-small ob-muted' }, description),
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: label + '今日已用 token', value: formatCount(usage) }),
+            h(StatTile, { label: label + '每日预算 token', value: formatCount(budget) }),
+            h(StatTile, { label: label + '剩余 token', value: formatCount(Math.max(0, Number(counter.budgetLeft) || 0)) }),
+          ),
+          h(CogBar, { label: label + '今日预算使用率', value: progress }),
+          budget <= 0 || usage >= budget ? h(Banner, { tone: 'warn', message: label + '计数已达预算上限' + (enforced ? '，当前模式受此预算约束。' : '，当前模式仅跟踪此计数。') })
+            : progress >= 0.8 ? h('p', { className: 'ob-small ob-muted', role: 'status' }, label + '预算已使用至少 80%，接近上限。') : null,
+        )
+      }
       return h(Panel, {
         title: '今日 LLM 预算',
-        description: '分析（analysis）与回复（reply）共享此预算；学习预算单独在 cog-learning 配置。',
+        description: '分析（analysis）与回复（reply）计入两项用量；学习预算单独在 cog-learning 配置。',
         actions: h('div', { className: 'ob-row' },
+          api.data ? h(CogTag, null, scopeLabels[data.scope] || '全局') : null,
           h(Btn, { small: true, kind: 'ghost', icon: 'refresh', disabled: busy, onClick: api.reload }, '刷新'),
-          h(Btn, { small: true, kind: 'secondary', busy: resetting, disabled: busy || !!api.error || !api.data || usage <= 0, onClick: reset }, '重置今日用量'),
+          ...['global', 'persona'].map((scope) => h(Btn, {
+            key: scope, small: true, kind: 'secondary', busy: resetting,
+            disabled: busy || !!api.error || !api.data || Number(data[scope]?.usageToday || 0) <= 0,
+            'aria-label': scope === 'global' ? '重置全局今日用量（所有人格共享）' : '重置当前人格今日用量',
+            onClick: () => reset(scope),
+          }, scope === 'global' ? '重置全局今日' : '重置当前人格今日')),
         ),
       },
         h('div', { className: 'ob-stack', 'aria-busy': busy, 'aria-live': 'polite', style: { gap: '12px' } },
           api.loading ? h('p', { className: 'ob-muted', role: 'status' }, '正在加载今日 LLM 用量…')
             : api.error ? h(Banner, { tone: 'err', message: api.error, actions: h(Btn, { small: true, kind: 'secondary', disabled: resetting, onClick: api.reload }, '重试') })
             : api.data ? h('div', { className: 'ob-stack', style: { gap: '12px' } },
-              h('div', { className: 'ob-row' }, h(CogTag, null, String(data.date || '—') + ' UTC'), h(CogTag, null, '仅当前人格')),
-              h('div', { className: 'ob-stat-grid' },
-                h(StatTile, { label: '今日已用 token', value: formatCount(usage) }),
-                h(StatTile, { label: '每日预算 token', value: formatCount(budget) }),
-                h(StatTile, { label: '剩余 token', value: formatCount(Math.max(0, Number(data.budgetLeft) || 0)) }),
-              ),
-              h(CogBar, { label: '今日预算使用率', value: progress }),
-              exhausted ? h(Banner, { tone: 'warn', message: '今日 LLM 预算已耗尽；预算检查会阻止后续分析与回复模型调用。' })
-                : progress >= 0.8 ? h('p', { className: 'ob-small ob-muted', role: 'status' }, '今日预算已使用至少 80%，接近上限；仍可继续使用。') : null,
+              h('div', { className: 'ob-row' }, h(CogTag, null, String(data.date || '—') + ' UTC')),
+              row('global', '全局', '所有人格共享此计数。'),
+              row('persona', '当前人格', '仅当前人格：' + String(data.personaId || '—')),
+              h(StatTile, { label: '当前模式有效剩余 token', value: formatCount(Math.max(0, Number(data.effectiveLeft) || 0)) }),
+              data.exhausted ? h(Banner, { tone: 'warn', message: '今日 LLM 预算已耗尽；预算检查会阻止后续分析与回复模型调用。' }) : null,
             ) : h('p', { className: 'ob-muted' }, '暂无今日用量数据，请刷新。'),
         ),
       )

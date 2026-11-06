@@ -2,8 +2,8 @@
 
 ## 未发布
 
-- 补齐 LLM 日预算可视化配置与重置：`cog-llm` 既有字段上方显示今日已用/预算/剩余、UTC 日期、80% 提示与耗尽警告，支持刷新、加载/错误重试及确认重置。新增只读用量和需 `confirm:true` 的当日重置 API；不修改预算/配置，不调用模型。预算沿用配置，源码默认 `300000`。
-- LLM 用量按人格隔离，旧全局计数幂等迁到升级启动时的当前人格；重置仅影响当前人格的 UTC 当天，其他日期/人格保留。补充离线服务/API/React shim 测试及[设计说明](docs/design/llm-budget-card.md)。未部署，未做真实浏览器或 live 验证。
+- LLM 预算支持 `global|persona|both` 三模式，默认 `global`，保留全局 `dailyTokenBudget=300000`；新增 `personaDailyTokenBudget=300000`（1000–5000000）。始终记录全局 `llm_usage` 和人格 `llm_usage_persona`，`both` 的有效剩余取最小；在途调用记入开始时的人格。恢复全局存储语义，移除中间实现的人格迁移，不自动合并已迁移的历史数据；预算计数不复制，删除人格仅清除人格计数。
+- `cog-llm` 字段上方双预算卡片展示模式、两行已用/预算/剩余、UTC 日期、有效剩余、80% 提示与耗尽警告，支持刷新、加载/错误重试及独立确认重置。GET 返回双状态；POST 需 `confirm:true` 与有效 `scope`，只重置服务器当日选定计数，不改配置、不调用模型。补充离线服务/API/React shim 测试及[设计说明](docs/design/llm-budget-card.md)。未部署，未做真实浏览器或 live 验证；parity 矩阵不变，remaining 47。
 
 ## 0.11.5（2026-11-06，修复 Agent preset）
 
