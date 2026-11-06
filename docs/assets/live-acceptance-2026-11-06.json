@@ -43,7 +43,7 @@
     "file/media send",
     "request approval",
     "reminder delivery",
-    "real B站/GitHub"
+    "B站登录/WBI/字幕/发布评论"
   ],
   "installedFrom": "local dist/dsh-bot.tgz (0.11.1); GitHub release v0.11.1 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
@@ -56,5 +56,19 @@
     "enabled": true,
     "observed": false,
     "note": "cognition.typing.enabled=true in live config; no private inbound message arrived after enabling, so input_status was not observed."
+  },
+  "upgradeCheck": {
+    "enabled": true,
+    "current": "0.11.1",
+    "latest": "v0.11.1",
+    "updateAvailable": false,
+    "url": "https://github.com/reina0721/dsh-bot/releases/tag/v0.11.1",
+    "note": "Real GitHub Releases API check via live /upgrade/check; no download/install performed."
+  },
+  "bilibili": {
+    "search": "HTTP 412 (public endpoint blocked)",
+    "hot": "-352 (login/risk control)",
+    "share": "offline URL generated",
+    "note": "Real network attempt; no Cookie/WBI/login. Public search/hot unusable from this host; share is offline."
   }
 }
