@@ -584,3 +584,21 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 `/requests` 仅主人查看当前人格待办，最多 10 条；`/approve ID confirm`、`/reject ID confirm` 均始终要求小写字面量 confirm，不受 qqAdmin.requireConfirm 控制。身份与 access.canSend 先行，服务再次核对 owner/开关/pending/boolean；仅调用固定 `set_friend_add_request` 或 `set_group_add_request`，不挂 Agent 工具、不自动审批、不调用模型。服务 reason/remark 可为空，最多 100 Unicode 字符且无控制字符，命令暂不提供此参数。成功更新 approved/rejected、resolvedAt/resolvedBy；网关失败保留 pending，返回静态错误，不回显原始错误。请求按 flag 去重；当前进程同 ID 并发只调用一次。超时可能意味着网关已执行但未确认，人工核实后再重试。
 
 请求纳入人格数据组「请求」，支持统计/复制/删除；复制待办不会自动处理，跨人格副本也不代表新的真实请求。没有审批队列面板或新增请求 REST API，没有统一审批/逐项权限。只用 fake 网关离线验证，真实 QQ 事件/审批兼容性未验证，#3/#15 保持 partial。
+
+## 主人本地提醒（M7-l）
+
+`cognition.reminders` 默认关闭。需配置 `access.ownerQQ`；只有主人能在当前聊天创建、列出或取消提醒。这里的配置字段沿用通用配置编辑器，没有提醒管理面板或提醒 REST API。
+
+| 字段 | 默认值 | 范围/含义 |
+|---|---|---|
+| `enabled` | `false` | 只有严格 true 才启用创建与发送；关闭保留记录 |
+| `maxActive` | `50` | 每人格活跃总数，1–1000，跨当前人格的私聊/群聊累计 |
+| `minIntervalSeconds` | `60` | 重复间隔下限，60–2592000 秒 |
+| `maxIntervalSeconds` | `2592000` | 重复间隔上限，至少为配置下限，最多 30 天 |
+| `tickMs` | `30000` | 检查间隔，1000–3600000 ms，非精确到时保证 |
+
+`/remind 3600 喝水` 表示每小时重复，`/remind 2099-01-01T09:00:00+08:00 新年提醒` 表示未来一次提醒；建议 ISO 时间明确带 `Z` 或时区偏移。服务也接受未来毫秒时间戳。必须且只能选择一种时间，文本为 1–500 个 Unicode 字符。群聊/私聊 ID 必须为正安全整数；相同作用域/原文/一次时间或重复间隔的活跃提醒拒绝重复。
+
+数据为当前人格 `reminder`，含 scopeType/scopeId、text、at/everySeconds/nextAt、active/sent/cancelled、createdBy/createdAt、sentCount、lastError。人格切换只检查当前人格；切回后过期活跃提醒会在下次 tick 处理；复制提醒数据组会复制活跃状态，目标人格激活后也会发送，需自行取消不需要的副本。关闭时 tick 不读写提醒、不发送，调度器保留轻量配置检查以支持热启用；服务支持关闭后直接取消，但 QQ 提醒命令均要求 enabled。
+
+每次最多发送 20 条到期记录，全部经 outbound 的 access/rate/leak guard/dry-run；dry-run 成功也记 sent/推进时间。重复成功后按完成时刻 `now + everySeconds` 排下次，跳过错过的次数；失败仍 active、只存固定错误码，至少等 `max(60,minIntervalSeconds)` 秒重试。网关发送非幂等，超时/进程崩溃后的重试可能重复；无跨进程 exactly-once 保证。无 DSH jobs/长任务/LLM 任务执行/任意命令/外部任务调用，真实定时器和 QQ 未验证，#8/#40 为 partial。

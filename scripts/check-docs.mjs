@@ -3,7 +3,7 @@ import { resolve, dirname, relative } from 'node:path';
 const root = resolve(import.meta.dirname, '..'), errors = [];
 function walk(dir) {
   for(const entry of readdirSync(dir,{withFileTypes:true})) {
-    if(['.git','.ctx','node_modules','dist','verify-out','tmp'].includes(entry.name))continue;
+    if(['.git','.ctx','.agents','.codex','node_modules','dist','verify-out','tmp'].includes(entry.name))continue;
     if(relative(root,dir).replaceAll('\\','/') === 'docs/archive' && entry.name !== 'README.md')continue;
     const file=resolve(dir,entry.name), rel=relative(root,file).replaceAll('\\','/');
     if(entry.isDirectory()) { walk(file); continue; }

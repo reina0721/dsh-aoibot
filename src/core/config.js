@@ -189,6 +189,7 @@ export const DEFAULTS = {
     },
     notices: { enabled: true },
     requests: { enabled: true },
+    reminders: { enabled: false, maxActive: 50, minIntervalSeconds: 60, maxIntervalSeconds: 2592000, tickMs: 30000 },
     qqAdmin: { enabled: false, requireConfirm: true, maxText: 100 },
     notice: {
       patReply: true,
@@ -672,6 +673,18 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.timezone', label: '时区覆盖', type: 'text', default: '', placeholder: '留空使用 DSH/主机时区' },
       { path: 'cognition.debug.trace', label: '记录逐阶段 trace', type: 'switch', default: true },
       { path: 'cognition.debug.keepPrompt', label: 'trace 保存完整 Prompt（隐私风险）', type: 'switch', default: false, help: '默认只保存摘要/hash；开启后可能包含敏感文本。' },
+    ],
+  },
+  {
+    id: 'cog-reminders',
+    title: '主人本地提醒',
+    description: '默认关闭；固定文本经统一出站发送，无任务代码或 LLM 执行；无提醒面板/API。',
+    fields: [
+      { path: 'cognition.reminders.enabled', label: '启用主人提醒', type: 'switch', default: false },
+      { path: 'cognition.reminders.maxActive', label: '每人格活跃提醒上限', type: 'number', default: 50, min: 1, max: 1000, step: 1 },
+      { path: 'cognition.reminders.minIntervalSeconds', label: '最短重复间隔', type: 'number', default: 60, min: 60, max: 2592000, step: 1, unit: 's' },
+      { path: 'cognition.reminders.maxIntervalSeconds', label: '最长重复间隔', type: 'number', default: 2592000, min: 60, max: 2592000, step: 1, unit: 's' },
+      { path: 'cognition.reminders.tickMs', label: '到期检查间隔', type: 'number', default: 30000, min: 1000, max: 3600000, step: 1000, unit: 'ms' },
     ],
   },
   {
@@ -1239,6 +1252,13 @@ function normalizeCognition(raw, rawCognition = {}) {
     timezone: pickString(src.timezone, '', { max: 64 }),
     notices: { enabled: pickBool(src.notices?.enabled, d.notices.enabled) },
     requests: { enabled: pickBool(src.requests?.enabled, d.requests.enabled) },
+    reminders: {
+      enabled: pickBool(src.reminders?.enabled, d.reminders.enabled),
+      maxActive: pickNumber(src.reminders?.maxActive, d.reminders.maxActive, { min: 1, max: 1000, integer: true }),
+      minIntervalSeconds: pickNumber(src.reminders?.minIntervalSeconds, d.reminders.minIntervalSeconds, { min: 60, max: 2592000, integer: true }),
+      maxIntervalSeconds: pickNumber(src.reminders?.maxIntervalSeconds, d.reminders.maxIntervalSeconds, { min: pickNumber(src.reminders?.minIntervalSeconds, d.reminders.minIntervalSeconds, { min: 60, max: 2592000, integer: true }), max: 2592000, integer: true }),
+      tickMs: pickNumber(src.reminders?.tickMs, d.reminders.tickMs, { min: 1000, max: 3600000, integer: true }),
+    },
     qqAdmin: {
       enabled: pickBool(src.qqAdmin?.enabled, d.qqAdmin.enabled),
       requireConfirm: pickBool(src.qqAdmin?.requireConfirm, d.qqAdmin.requireConfirm),

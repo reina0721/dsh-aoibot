@@ -8,7 +8,8 @@ import { redactText } from '../core/leak-guard.js'
 
 const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
 const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
-const COMMANDS = [...REQUEST_COMMANDS, 'help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const REMINDER_COMMANDS = ['remind', 'reminders', 'forgetreminder']
+const COMMANDS = [...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -34,6 +35,9 @@ const HELP_TEXT = [
   '/model clear — 清除当前会话模型',
   '/remember 文本 — 写入一条记忆',
   '/forget 关键词 — 遗忘匹配的记忆',
+  '/remind 秒|ISO时间 文本 — 当前聊天重复/一次提醒（默认关闭）',
+  '/reminders — 当前聊天活跃提醒（最多 10 条）',
+  '/forgetreminder ID — 取消当前聊天提醒',
   '/like [次数] — 给当前聊天对象点赞（1-10）',
   '/poke — 戳一戳当前聊天对象',
   '/groupinfo — 当前群信息（仅群聊）',
@@ -73,7 +77,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, reminders = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -434,6 +438,36 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return send(turn, quiet
         ? '已切到安静模式：群聊只回应点名/唤醒，主动行为关闭。'
         : '已切到活跃模式：群聊按概率参与，主动行为开启（仍受预算/静默时段限制）。')
+    }
+
+    if (REMINDER_COMMANDS.includes(parsed.name)) {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (currentConfig().cognition?.reminders?.enabled !== true) return send(turn, '提醒未启用（cognition.reminders.enabled）。')
+      if (!reminders) return send(turn, '提醒服务不可用。')
+      const target = { chatType: turn.chatType, chatId: turn.chatId }
+      const usage = () => send(turn, parsed.name === 'remind' ? '用法：/remind <整数秒（重复）|未来ISO时间（一次）> <1–500字文本>' : parsed.name === 'reminders' ? '用法：/reminders' : '用法：/forgetreminder rem_ID')
+      try {
+        if (parsed.name === 'remind') {
+          const match = /^(\S+)\s+([\s\S]+)$/.exec(parsed.args)
+          if (!match) return usage()
+          const time = match[1]
+          if (!/^\d+$/.test(time) && !/^\d{4}-\d{2}-\d{2}T/.test(time)) return usage()
+          const item = reminders.add({ ...target, text: match[2], createdBy: turn.senderId,
+            ...(/^\d+$/.test(time) ? { everySeconds: Number(time) } : { at: time }) })
+          return send(turn, `已创建提醒 ${item.id}；下次 ${new Date(item.nextAt).toISOString()}。`)
+        }
+        if (parsed.name === 'reminders') {
+          if (parsed.args) return usage()
+          const items = reminders.list({ ...target, status: 'active', limit: 10 })
+          return send(turn, items.length ? ['当前聊天提醒：', ...items.map((item) => `${item.id} · ${new Date(item.nextAt).toISOString()} · ${item.text}`)].join('\n') : '当前聊天没有活跃提醒。')
+        }
+        if (!/^rem_[a-f0-9]+$/.test(parsed.args)) return usage()
+        reminders.cancel(parsed.args, { ...target, operatorId: turn.senderId })
+        return send(turn, `已取消提醒 ${parsed.args}。`)
+      } catch (error) {
+        const messages = { REMINDERS_DISABLED: '提醒未启用。', OWNER_ONLY: '仅主人可操作提醒。', INVALID_TARGET: '当前会话无效。', INVALID_TEXT: '提醒文本须为 1–500 个 Unicode 字符。', INVALID_SCHEDULE: '须选择一种提醒时间。', INVALID_AT: '一次提醒须使用未来 ISO 时间。', INVALID_INTERVAL: '重复间隔超出配置范围（硬限制 60–2592000 秒）。', REMINDER_DUPLICATE: '已有相同活跃提醒。', MAX_ACTIVE: '活跃提醒已达上限。', REMINDER_NOT_FOUND: '当前聊天没有这个活跃提醒。' }
+        return send(turn, messages[error?.message] || '提醒操作失败。')
+      }
     }
 
     if (parsed.name === 'model') return send(turn, await handleModel(turn, parsed.args))

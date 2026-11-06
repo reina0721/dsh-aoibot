@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-l 更新 #8/#40：默认关闭的主人本地一次/重复固定文本提醒，owner/当前聊天/Unicode/时间/限额/防重；每次最多 20 条，统一 outbound 访问/限频/leak guard/dry-run，延迟安全重试、不补错过次数、自调度不重叠/dispose、异步固定原人格。新增 reminders 人格数据组与三个主人命令；无 DSH jobs/长任务/LLM 执行/任意代码或外部任务调用/提醒 HTTP 或管理面板。真实定时器与 QQ 未验证，仅离线测试；#8/#40 从 none 改为 partial，37 partial / 3 none，remaining 47，#31/#42/#49/#50 不变。
 
 M7-f 更新 #31：默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法保留，错误回退，不重复强化。只有 fake provider/假 embedder 离线测试，无本地模型/独立 reranker/向量数据库/全库向量召回，真实 provider 未验证；#31 仍 partial，其余状态与豁免不变。
 
@@ -42,10 +44,10 @@ npm run check:docs
 <!-- parity-snapshot:start -->
 # 对标审计（并非全量对齐 / not full parity）
 
-矩阵 61 项；has: 6，partial: 35，none: 5，limited: 1，leading: 6，exempt: 8。
+矩阵 61 项；has: 6，partial: 37，none: 3，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：65 个 JS 文件 / 16505 行。
-测试静态计数：45 个文件 / 9430 行 / 400 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：66 个 JS 文件 / 16699 行。
+测试静态计数：46 个文件 / 9753 行 / 414 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -54,7 +56,7 @@ npm run check:docs
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
 | 6 | 每聊天 DSH Session | partial | M1 剩余：真机验证/工具面 |
-| 8 | 后台任务/定时任务 | none | M1 |
+| 8 | 后台任务/定时任务 | partial | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
 | 9 | 会话内插话/steer/typing | none | M1 |
 | 10 | 按聊天选模型 | partial | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | partial | M1 剩余：`/sing` 等媒体命令 |
@@ -71,7 +73,7 @@ npm run check:docs
 
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
-| 40 | 定时/后台任务 | none | M1/M3 |
+| 40 | 定时/后台任务 | partial | M1/M3：仅本地主人提醒；无 DSH jobs/长任务/LLM 执行/提醒 HTTP 或面板；真实定时器/QQ 未验证 |
 
 ## M2
 
@@ -174,6 +176,7 @@ npm run check:docs
 | 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
 | M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
+| M7-l 主人本地提醒 | [reminders.test.js](../test/reminders.test.js)、[commands.test.js](../test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
 | M7-k 本地文件上传/列表 | [media.test.js](../test/media.test.js)、[API](../test/e2e.test.js)、[面板](../test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
 | M7-j 通知/主人请求审批 | [notices.test.js](../test/notices.test.js)、[commands.test.js](../test/commands.test.js)、[actions.test.js](../test/actions.test.js)、[集成测试](../test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
 | M7-i 出站文本防泄漏 | [leak-guard.test.js](../test/leak-guard.test.js)、[outbound.test.js](../test/outbound.test.js)、[panel.test.js](../test/panel.test.js)：本地规则、重叠/上限、配置回退、访问/限频/dry-run、错误隐私与只读状态 | 统一审批/逐项权限、PII/熵检测、媒体/文件及独立发送路径、跨段/跨消息密钥；可能误报/漏报，未做真实 QQ/浏览器验证；#15 仍 partial |
@@ -225,3 +228,8 @@ M7-i 本次最终 `npm test` 实跑退出 **0**：409 项，405 通过、0 失�
 M7-j 本次最终 `npm test` 实跑退出 **0**：425 项，421 通过、0 失败、4 跳过（既有 live 模型测试），耗时 70843.219057 ms。新增 16 个顶层测试声明；首次 notices/actions/commands 专项 48 项全通过。覆盖十种通知映射/字段/时间轴/确定性去重/未知和无效输入，好友/群请求存储/列表/flag 去重/无自动动作，owner/配置/boolean/长度/confirm/访问控制，固定 OneBot 参数，成功/失败公共投影和日志隐私，并发只调用一次及人格切换完成写入、请求数据统计/复制/删除，accepted/暂停分流与零网关动作。`npm run check:docs`、`npm run check:parity` 均退出 **0**，快照由本次审计生成。矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining；#3/#15 保持 partial，#31/#42/#49/#50 矩阵行逐字不变。无新依赖、外部调用、真实 QQ 发送或自动审批，未改 `cordis.patch.yml`；没有审批队列面板/新增请求 REST API/Agent 工具，也没有通用审批/逐项权限或 PII 检测，真实 QQ 事件/审批动作未验证。
 
 M7-k 本次最终 `npm test` 实跑退出 **0**：436 项，432 通过、0 失败、4 跳过（既有 live 模型测试），耗时 82416.139695 ms。新增 11 个顶层测试声明；最终媒体专项 21 项全通过，面板专项 40 项全通过。覆盖本地上传/列表、规范严格 base64 与空数据/大小/文件名/扩展名、总开关与文件开关、固定目录和文件/目录符号链接、并发重名及强制时间戳/UUID 碰撞不覆盖、最新 500 项与全部合格文件总量、超过旧 1 MiB 请求体的上传及固定 15 MiB 入口上限、客户端预检/读取失败/防重/错误/禁用/渲染/刷新。`npm run check:docs`、`npm run check:parity` 均退出 **0**；快照为源码 65 个 JS 文件 / 16505 行，测试 45 个文件 / 9430 行 / 400 个顶层声明。矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining；#45 仍 partial，#31/#42/#49/#50 矩阵行逐字不变。无新依赖、外部调用、QQ 发送或真实浏览器验证，未改 `cordis.patch.yml`；无文件发送/删除/下载面板，发送仍使用主人 `/file`，真实 QQ 文件兼容性未验证。
+
+
+M7-l 本次最终 `npm test` 退出 **0**：450 项，446 通过、0 失败、4 跳过（既有 live 模型测试），耗时 82872.955249 ms；新增 14 个顶层测试声明。最终 reminders/commands/config 专项 50 项全通过。覆盖默认关闭、owner/scope、Unicode/一次时间/重复间隔/限额/防重、一次与重复发送/跳过错过次数、安全失败延迟重试、20 条上限/不重叠/取消/dispose、人格统计/复制/删除及 await 后写原人格、真实 outbound 访问/限频/leak guard/dry-run、命令校验与 cognition 重启持久化且零 LLM 调用；时间与网关均为 fake。
+
+`npm run check:docs` 最终退出 **0**；首次运行因扫描 `.agents/worktrees` 内既有嵌套仓库的旧名/归档链接失败，检查器现跳过 `.agents`/`.codex` 元数据目录，与既有 `.git`/`.ctx` 排除一致，不修改嵌套仓库。`npm run check:parity` 退出 **0**，快照为源码 66 个 JS 文件 / 16699 行，测试 46 个文件 / 9753 行 / 414 个顶层声明。矩阵为 6 has / 37 partial / 3 none / 1 limited / 6 leading / 8 exempt，remaining 47；只将 #8/#40 从 none 改为 partial，#31/#42/#49/#50 矩阵行逐字不变。无新增依赖、自动审批、任意代码/外部任务调用、LLM 任务执行或提醒 HTTP/管理面板；未改 `cordis.patch.yml`、未提交。没有真实定时器/QQ 验证，也没有 DSH jobs 或长任务执行。

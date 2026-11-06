@@ -480,3 +480,13 @@ memory 保留同步 retrieve 的词法/FTS/关联与强化行为；retrieveAsync
 commands 注入 requests 服务，三个内置命令不能被模块覆盖；命令先检查 owner/access/requests.enabled，`/requests` 只列最多 10 条单行摘要，`/approve`、`/reject` 始终校验完整 ID + 字面量 confirm，服务再次校验 owner/pending/boolean/文本。成功固定调用 `gateway.actions.setFriendAddRequest(flag,approve,remark)` 或 `setGroupAddRequest(flag,subType,approve,reason)`，写 approved/rejected 与 resolvedAt/resolvedBy；网关失败只返回静态错误，仍 pending。同 ID 进程内 inFlight 防重；await 前固定 persona kind，切换人格不把完成状态写入新人格。不是分布式 exactly-once：网关超时应人工核实，跨人格复制也不产生新真实请求。
 
 `cognition.notices.enabled`、`cognition.requests.enabled` 默认 true，经 DEFAULTS/normalize/配置字段保持热应用；关闭只停对应服务入口，不删除历史。PERSONA_DATA_GROUPS 和客户端增加 requests/请求（qq_request），支持统计/复制/删除。没有自动审批、通用审批/逐项权限、审批队列面板、新增请求 REST API 或 Agent 工具，真实 QQ 未验证；#3/#15 仍 partial。
+
+### 3.26 主人本地提醒（M7-l）
+
+`cognition/reminders.js` 的 `createReminderService({store,getConfig,access,clock,scheduler,outbound,logger})` 在 outbound 之后、commands 之前构建，init 完成后 start，dispose 在关闭 store 前清理定时器。只接收当前私聊/群聊、正安全整数 ID、主人、1–500 Unicode 字符和唯一的一次/重复时间；默认关闭。`add/list/cancel` 使用当前人格 store；`reminder` 归入 reminders/提醒数据组，支持统计/复制/删除。公开投影只含提醒字段，不暴露存储 kind。
+
+`start()` 用注入 scheduler 的单次 setTimeout 自调度，await tick 完成后才排下一次；tick 的进程内 running 标记也阻止手动重叠。禁用时不读写提醒或发送，只保留配置轮询，便于热启用。每次按 nextAt 排序取最早到期的 20 条；固定 text 段传给 `outbound.deliver(...,source:'reminder')`，复用 access → rate → leak guard → dryRun → gateway。服务没有任意代码、命令、LLM 或额外文件/网络执行入口；持久化只经 store，发送只经 outbound。
+
+成功把一次提醒标 sent、重复提醒设 `nextAt=完成时刻+everySeconds`、计数加一并清空错误；错过的次数不回补。失败保持 active，仅允许固定公共错误码，其余归为 SEND_FAILED，`nextAt=now+max(60,minIntervalSeconds)`，避免紧循环。dryRun 视作成功。dispose 后不再写 store；await 前固定原人格 kind，完成时重读记录，已取消/删除不覆盖；切换人格后停止旧批次余项。不是分布式 exactly-once，网关超时或进程在发送/记账之间崩溃可能重复。
+
+主人 `/remind`、`/reminders`、`/forgetreminder` 先检查 owner/access/开关；服务对创建和取消再校验 owner 与 scope。命令与提醒都走 outbound。没有提醒 REST API/管理面板、新 Agent 工具、自动审批、DSH jobs/长任务/LLM 任务执行；仅 fake clock/scheduler/gateway 与本地持久化测试，真实 timer/QQ 未验证，#8/#40 为 partial。

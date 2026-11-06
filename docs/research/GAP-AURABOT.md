@@ -59,7 +59,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 6 | 每聊天 DSH Session | `sessionController` + preset + 映射文件 | `src/runtime/agent.js`：Session 映射、preset、followup、超时、oneshot 回退 | 部分（M1-b） | M1 剩余：真机验证/工具面 |
 | 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | private preset 内置 fs/fs-search/web；full/主人私聊另挂 3 个当前会话 QQ 工具；无 MCP/子智能体 | 部分（M5-b） | M1/M2 |
-| 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | 无 | **无** | M1 |
+| 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | M7-l 默认关闭的主人本地固定文本提醒；一次/重复、人格与聊天隔离、统一 outbound、延迟安全重试；离线测试 | 部分（M7-l） | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
 | 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | 无 | 无 | M1 |
 | 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | `cognition.modelRouting`：私聊/群默认 + 会话覆盖；`/model` 写回 | 部分（M1-c，仅认知 LLM） | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；非主人静默 | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
@@ -121,7 +121,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 37 | 候选效用/bandit/结果归因 | 模块化 hooks + 群聊策略 | Beta 后验、效用、限频、沉默、撤回专项 | **领先** | 已领先（无缺口） |
 | 38 | 目的引擎/计划 | `purpose/engine.js` 2,287 行，目标/计划/执行 | goal/plan/intent CRUD、优先级/进度/步骤、少量注入、`/purpose`、面板；无执行器 | 部分（M3-a） | M3 剩余/M5 |
 | 39 | 主动搭话 | 醒着时间/频率/白名单/晚安心情 | 安静时段/日预算/关系门槛/退避/dryRun | 部分 | M3 |
-| 40 | 定时/后台任务 | 有 | 无 | 无 | M1/M3 |
+| 40 | 定时/后台任务 | 有 | M7-l 主人 /remind /reminders /forgetreminder；本地一次/重复提醒经 outbound 访问/限频/leak guard，默认关闭 | 部分（M7-l） | M1/M3：仅本地主人提醒；无 DSH jobs/长任务/LLM 执行/提醒 HTTP 或面板；真实定时器/QQ 未验证 |
 
 ### 3.9 媒体
 
@@ -392,3 +392,9 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`；媒体与文件开关均需开启，关闭时报错。上传只接受安全 basename≤120、FILE_EXTENSIONS、非空严格规范 base64 与大小内内容；固定 files 目录、根/目录 realpath、拒绝目录符号链接、wx 防覆盖。列表不递归、不跟随符号链接，仅白名单扩展名/大小内普通文件，mtime 最新优先最多 500 项，totalBytes 统计全部合格文件。新增本地 GET `/media/files` / POST `/media/file/upload`，POST 请求体固定 15 MiB；媒体页增加客户端预检、上传防重、路径/大小/时间列表、刷新与独立错误显示。
 
 证据：[media.test.js](../../test/media.test.js)、[API](../../test/e2e.test.js)、[面板](../../test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。无文件发送/删除/下载面板；发送仍使用主人 `/file 相对路径`。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。
+
+### M7-l 主人本地提醒（#8/#40 partial）
+
+默认关闭的固定文本提醒基础：主人当前私聊/群聊，一次未来时间或 60–2592000 秒重复间隔，1–500 Unicode 字符，每人格默认最多 50 条；同 scope/text/time 防重。每 tick 最多 20 条，统一 outbound 访问/限频/leak guard/dry-run；重复跳过错过次数，安全失败至少 60 秒后重试，自调度不重叠且 dispose 清理。reminders/提醒人格数据组支持统计/复制/删除；异步完成固定原人格，取消/删除不复活。
+
+仅本地主人提醒，不是 DSH jobs、长任务或 LLM 任务执行；无任意命令/外部任务调用、自动审批或提醒 HTTP/管理面板。离线 fake clock/scheduler/gateway 与本地持久化证据，真实定时器/QQ 未验证；发送超时/崩溃可能重复。#8/#40 从 none 变 partial，矩阵为 6 has / 37 partial / 3 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行保持不变。

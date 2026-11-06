@@ -21,6 +21,7 @@ export const PERSONA_DATA_GROUPS = [
   { id: 'memory', label: '记忆', kinds: ['memory', 'memory_link'] },
   { id: 'timeline', label: '时间轴事件', kinds: ['timeline_event'] },
   { id: 'requests', label: '请求', kinds: ['qq_request'] },
+  { id: 'reminders', label: '提醒', kinds: ['reminder'] },
   { id: 'people', label: '人物画像', kinds: ['person', 'identity', 'person_facet'] },
   { id: 'relationships', label: '关系', kinds: ['relationship', 'relationship_event'] },
   { id: 'emotion', label: '情绪', kinds: ['emotion', 'emotion_event'] },

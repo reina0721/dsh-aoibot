@@ -74,6 +74,7 @@ function harness(overrides = {}, services = {}) {
     qqActions: services.qqActions || qqActions,
     purpose,
     requests: services.requests,
+    reminders: services.reminders,
     media: services.media,
     stickers: services.stickers,
     bilibili: services.bilibili,
@@ -522,4 +523,44 @@ test('request commands: empty/missing services and failures return safe replies 
     assert.match(reply, /失败/)
     assert.doesNotMatch(reply, /private-flag|raw-comment|secret/)
   }
+})
+
+test('reminder commands owner, enable, usage and access gates precede service calls', async () => {
+  let calls = 0
+  const reminders = { add() { calls++; throw new Error('raw secret') }, list() { calls++; return [] }, cancel() { calls++ } }
+  for (const command of ['/remind 60 hello', '/reminders', '/forgetreminder rem_abc']) {
+    const h = harness({}, { reminders })
+    assert.equal((await h.service.handle(turn(command, { senderId: '20002' }))).reply, '')
+    assert.match((await h.service.handle(turn(command))).reply, /未启用/)
+    const denied = harness({ cognition: { reminders: { enabled: true } } }, { reminders, allowSend: false })
+    assert.equal((await denied.service.handle(turn(command))).error, 'ACCESS_DENIED')
+  }
+  const h = harness({ cognition: { reminders: { enabled: true } } }, { reminders })
+  for (const command of ['/remind', '/remind 60', '/remind tomorrow hello', '/remind 1.5 hello', '/reminders extra', '/forgetreminder', '/forgetreminder rem_abc extra']) {
+    assert.match((await h.service.handle(turn(command))).reply, /用法/)
+  }
+  assert.equal(calls, 0)
+  assert.match((await h.service.handle(turn('/remind 60 hello'))).reply, /提醒操作失败/)
+  assert.match(h.service.help, /\/remind/)
+})
+
+test('reminder commands add repeat/ISO, list at most ten and cancel with current owner scope', async () => {
+  const calls = []
+  const nextAt = Date.parse('2099-01-01T00:00:00Z')
+  const reminders = {
+    add(input) { calls.push(['add', input]); return { id: 'rem_abc', nextAt } },
+    list(input) { calls.push(['list', input]); return [{ id: 'rem_abc', nextAt, text: 'hello' }] },
+    cancel(id, input) { calls.push(['cancel', id, input]) },
+  }
+  const h = harness({ cognition: { reminders: { enabled: true } } }, { reminders })
+  const context = { chatType: 'group', chatId: '20001' }
+  assert.match((await h.service.handle(turn('/remind 60 hello', context))).reply, /rem_abc.*2099/)
+  assert.deepEqual(calls[0], ['add', { ...context, text: 'hello', everySeconds: 60, createdBy: '10001' }])
+  await h.service.handle(turn('/remind 2099-01-01T00:00:00Z once', context))
+  assert.equal(calls[1][1].at, '2099-01-01T00:00:00Z')
+  assert.match((await h.service.handle(turn('/reminders', context))).reply, /rem_abc.*hello/)
+  assert.deepEqual(calls[2], ['list', { ...context, status: 'active', limit: 10 }])
+  assert.match((await h.service.handle(turn('/forgetreminder rem_abc', context))).reply, /已取消/)
+  assert.deepEqual(calls[3], ['cancel', 'rem_abc', { ...context, operatorId: '10001' }])
+  assert.ok(h.sent.every((p) => p.source === 'command'))
 })

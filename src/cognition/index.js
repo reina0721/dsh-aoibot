@@ -31,6 +31,7 @@ import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
+import { createReminderService } from './reminders.js'
 import { createCommandService } from './commands.js'
 import { createNoticeService } from './notices.js'
 import { createQqActions } from './qq-actions.js'
@@ -144,6 +145,10 @@ export function createCognition({
       })
       state.services.qqActions = createQqActions({ gateway, getConfig, logger: log })
       state.services.notices = createNoticeService({ store: state.scopedStore, getConfig, clock, logger: log, gateway })
+      state.services.reminders = createReminderService({
+        store: personaStore, getConfig, clock, scheduler, access,
+        outbound: state.services.outbound, logger: log,
+      })
       state.services.commands = createCommandService({
         getConfig,
         setConfig,
@@ -154,6 +159,7 @@ export function createCognition({
         runtime: state.services.runtime,
         qqActions: state.services.qqActions,
         requests: state.services.notices,
+        reminders: state.services.reminders,
         purpose: state.services.purpose,
         media,
         stickers,
@@ -217,6 +223,7 @@ export function createCognition({
       state.services.aggregator.restore()
       log.info?.(`认知存储就绪：${state.store.info().mode} ${dbFile}`)
       startBackgroundJobs()
+      state.services.reminders.start()
     } catch (error) {
       state.error = String(error?.message || error)
       state.ready = false
@@ -607,6 +614,7 @@ export function createCognition({
   }
 
   function dispose() {
+    try { state.services.reminders?.dispose?.() } catch (error) {}
     try { state.services.consolidation?.dispose?.() } catch (error) {}
     try { state.services.runtime?.dispose?.() } catch (error) {}
     try { scheduler.dispose?.() } catch (error) {}
