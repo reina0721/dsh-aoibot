@@ -1758,3 +1758,63 @@ test('CogSettings: budget card appears only above cog-llm fields and keeps confi
     }
   }
 })
+
+test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上限与刷新', async () => {
+  const items = [
+    { id: 'builtin-sample', name: '内置示例', builtin: true, status: 'blocked', enabled: true, requires: ['external'], permissions: ['commands'], canReload: false, canToggle: true },
+    { id: 'external', name: '外部清单关闭', builtin: false, status: 'disabled', enabled: false, requires: [], canReload: true, canToggle: false },
+  ]
+  const session = { values: [items, false, '', ''], index: 0 }
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast() {} }) } finally { hookSession = null } }
+  const tree = render(), text = JSON.stringify(tree)
+  assert.match(text, /内置 1/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
+  assert.match(text, /permissions 不是沙箱/)
+  const panels = treeNodes(tree).filter((node) => node.props?.title)
+  const built = panels.find((node) => node.props.title === '内置示例')
+  assert.equal(treeNodes(built.props.actions).some((node) => node.children?.includes('重载')), false)
+  assert.equal(control(built.props.actions, '停用').props.disabled, false)
+  const external = panels.find((node) => node.props.title === '外部清单关闭')
+  assert.equal(control(external.props.actions, '启用').props.disabled, true)
+  assert.equal(control(external.props.actions, '重载').props.disabled, false)
+  const original = globalThis.fetch, calls = []
+  globalThis.fetch = async (path, options) => { calls.push([path, options.method]); return { ok: true, json: async () => ({ ok: true, items }) } }
+  try {
+    const header = panels.find((node) => node.props.title === '模块目录')
+    await control(header.props.actions, '刷新').props.onClick()
+    assert.deepEqual(calls, [[panel.API_PREFIX + '/modules', 'GET']])
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage: 启停 payload、状态 toast、失败后清除 busy，空/错误/加载状态', async () => {
+  const item = { id: 'builtin-sample', builtin: true, status: 'disabled', enabled: false, canReload: false, canToggle: true }
+  const session = { values: [[item], false, '', ''], index: 0 }, toasts = [], calls = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
+  const button = () => control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '启用')
+  const original = globalThis.fetch
+  let status = 'blocked', reject = false
+  globalThis.fetch = async (path, options) => {
+    calls.push({ path, method: options.method, body: options.body ? JSON.parse(options.body) : undefined })
+    if (reject) throw Error('offline')
+    return { ok: true, json: async () => options.method === 'POST' ? { ok: true, item: { ...item, status } } : { ok: true, items: [item] } }
+  }
+  try {
+    for (const [nextStatus, message, tone] of [['blocked', '模块被依赖阻塞', 'err'], ['error', '模块加载失败', 'err'], ['loaded', '模块已加载', 'ok']]) {
+      status = nextStatus
+      await button().props.onClick()
+      assert.deepEqual(toasts.at(-1), [message, tone])
+      assert.equal(button().props.disabled, false)
+    }
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/toggle', method: 'POST', body: { id: item.id, enabled: true } })
+    reject = true
+    await button().props.onClick()
+    assert.equal(button().props.disabled, false)
+    assert.equal(toasts.at(-1)[1], 'err')
+    assert.ok(session.values[2])
+  } finally { globalThis.fetch = original }
+  stateOverrides = [[], false, '', '']
+  try { assert.match(JSON.stringify(panel.ModulesPage({})), /还没有模块/) } finally { stateOverrides = null }
+  stateOverrides = [[], false, '列表失败', '']
+  try { assert.match(JSON.stringify(panel.ModulesPage({})), /列表失败/) } finally { stateOverrides = null }
+  stateOverrides = [[], true, '', '']
+  try { assert.doesNotMatch(JSON.stringify(panel.ModulesPage({})), /还没有模块/) } finally { stateOverrides = null }
+})

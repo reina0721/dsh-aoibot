@@ -15,7 +15,7 @@
 // 等待一律用 waitFor 轮询（默认 5s 超时），不用固定 sleep。
 
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -409,9 +409,23 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   assert.ok(Array.isArray(status.recentEvents))
   assert.equal(status.config.version, 2)
 
-  // /modules：未安装本地模块时返回空列表，不暴露数据目录路径
+  // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.items, [])
+  assert.deepEqual(modules.summary, { builtin: 1, external: 0 })
+  assert.equal(modules.items.length, 1)
+  const sample = modules.items[0]
+  assert.equal(sample.id, 'builtin-sample')
+  assert.equal(sample.source, 'builtin'); assert.equal(sample.builtin, true)
+  assert.equal(sample.status, 'disabled'); assert.equal(sample.enabled, false)
+  assert.equal(sample.canReload, false); assert.equal(sample.canToggle, true)
+  assert.equal(sample.apiVersion, 1); assert.deepEqual(sample.requires, [])
+  assert.ok(!JSON.stringify(modules).includes(dir))
+  const reload = await fake.call(API + '/modules/reload', { id: sample.id }, { method: 'POST' })
+  assert.equal(reload.status, 200)
+  assert.deepEqual(reload.json, { ok: false, code: 'MODULE_BUILTIN_RELOAD', message: '内置模块不能重载' })
+  assert.equal((await postJson(fake, '/modules/toggle', { id: sample.id, enabled: true })).item.status, 'loaded')
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'modules', 'state.json'), 'utf8')), { disabled: [], enabled: [sample.id] })
+  assert.equal((await postJson(fake, '/modules/toggle', { id: sample.id, enabled: false })).item.status, 'disabled')
 
   const backup = await getJson(fake, '/backup')
   assert.equal(backup.status.enabled, true)
@@ -1085,4 +1099,31 @@ test('e2e: dual LLM usage/reset validates scope and confirmation, isolates perso
   const unavailable = await fake.call(API + '/cognition/llm/usage/reset', { confirm: true, scope: 'global' }, { method: 'POST' })
   assert.equal(unavailable.json.ok, false)
   assert.equal(unavailable.json.message, 'LLM 用量服务不可用')
+})
+
+
+test('e2e: external module reload/toggle, cross-source blocked and manifest ceiling', async (t) => {
+  const { fake, dir } = await boot(t)
+  const moduleDir = join(dir, 'modules', 'external-test')
+  await mkdir(moduleDir)
+  const manifest = { id: 'external-test', entry: 'index.mjs', apiVersion: 1, requires: ['builtin-sample'] }
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify(manifest))
+  await writeFile(join(moduleDir, 'index.mjs'), 'export function setup() {}')
+  const reloaded = await postJson(fake, '/modules/reload', { id: manifest.id })
+  assert.equal(reloaded.item.status, 'blocked')
+  assert.equal(reloaded.item.source, 'external'); assert.equal(reloaded.item.canReload, true)
+  assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
+  let catalog = await getJson(fake, '/modules')
+  assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
+  assert.deepEqual(catalog.summary, { builtin: 1, external: 1 })
+  assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
+  assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
+  const ceiling = await postJson(fake, '/modules/reload', { id: manifest.id })
+  assert.equal(ceiling.item.canToggle, false)
+  const denied = await fake.call(API + '/modules/toggle', { id: manifest.id, enabled: true }, { method: 'POST' })
+  assert.equal(denied.status, 200); assert.equal(denied.json.ok, false)
+  assert.equal(denied.json.code, 'MODULE_MANIFEST_DISABLED')
+  catalog = await getJson(fake, '/modules')
+  assert.ok(!JSON.stringify(catalog).includes(dir))
 })

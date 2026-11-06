@@ -4,5 +4,11 @@
   "version": "1.0.0",
   "description": "Minimal local command, event, and storage example.",
   "entry": "index.js",
-  "permissions": ["commands", "events", "storage"]
+  "permissions": [
+    "commands",
+    "events",
+    "storage"
+  ],
+  "apiVersion": 1,
+  "requires": []
 }

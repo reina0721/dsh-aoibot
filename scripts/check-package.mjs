@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['src/host.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
+    for(const file of ['src/host.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/sample.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist)$/.test(entry.name),file);
@@ -30,6 +30,27 @@ try {
       }
     }} scan(base);
     execFileSync(process.execPath,['--input-type=module','-e',`const p = await import(${JSON.stringify(pathToFileURL(join(base,'src/host.js')).href)}); if(p.PLUGIN_ID !== 'dsh-bot')process.exit(1)`],{stdio:'pipe'});
+    execFileSync(process.execPath,['--input-type=module','-e',`
+      import assert from 'node:assert/strict';
+      import { mkdtemp, rm } from 'node:fs/promises';
+      import { tmpdir } from 'node:os';
+      import { join } from 'node:path';
+      const { builtinRegistry } = await import(${JSON.stringify(pathToFileURL(join(base,'src/modules/registry.js')).href)});
+      const { createModuleKernel } = await import(${JSON.stringify(pathToFileURL(join(base,'src/modules/kernel.js')).href)});
+      const root = await mkdtemp(join(tmpdir(), 'dsh-pack-modules-'));
+      let calls = 0;
+      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, commands: {
+        registerCommand(name, handler, options) {
+          assert.equal(name, 'module-sample'); assert.equal(options.ownerOnly, true);
+          assert.equal(handler(), '内置示例模块已启用。'); calls++; return () => {};
+        }
+      } });
+      try {
+        const items = await kernel.start();
+        assert.equal(items.length, 1); assert.equal(items[0].status, 'disabled'); assert.equal(calls, 0);
+        assert.equal((await kernel.setEnabled('builtin-sample', true)).status, 'loaded'); assert.equal(calls, 1);
+      } finally { await kernel.dispose(); await rm(root, {recursive:true,force:true}); }
+    `],{stdio:'pipe'});
     execFileSync(process.execPath,['--check',join(base,'client.js')]);
   }
   console.log('Both archives verified: checksums, contents and standalone module loading.');

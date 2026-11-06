@@ -21,7 +21,7 @@
 | 日志落盘（可选） | `<数据目录>/logs/<area>-<day>.log`（`logging.persist.enabled=true` 时） |
 | 本地备份 | `<数据目录>/backups/<id>/manifest.json` + `files/`（目录快照，无 zip） |
 | 恢复暂存 | `<数据目录>/restore-<id>/`，相对路径由 API 返回 |
-| 本地模块 | `<数据目录>/modules/<id>/`；启停覆盖为 `<数据目录>/modules/state.json` |
+| 模块 | 外部 `<数据目录>/modules/<id>/`，内置数据 `modules/.builtin/<id>/`；启停覆盖 `modules/state.json` |
 
 在 Windows 上默认就是：
 
@@ -42,7 +42,7 @@ C:\Users\<你>\.dsh\plugins-data\dsh-bot\config.json
 
 ### 本地模块目录与状态
 
-模块不是 `config.json` 配置项。内核在启动时扫描 `<数据目录>/modules/<id>/module.json`；操作员也可从面板「模块」页热重载或启停。面板/API 的停用列表原子写入 `modules/state.json`，文件缺失或损坏时按空列表处理。模块自己的 `data.json` 位于各模块目录内，最大 1 MiB。完整清单、权限和安全边界见 [本地模块](MODULES.md)。
+模块不是 `config.json` 配置项。内置使用包内静态注册表（builtin- 保留前缀），外部启动扫描 `<数据目录>/modules/<id>/module.json`，跳过 `.builtin`。默认关闭的 builtin-sample 可启停但不可直接重载；外部可重载，清单 enabled:false 是不可越过的启停上限。`modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}`；缺失/损坏按空状态，disabled 优先，enabled 只用于内置主动开启。状态写入失败不会改变运行状态。外部 data.json 在模块目录，内置在 `modules/.builtin/<id>/data.json`，均最大 1 MiB、包含在本地备份中。apiVersion 默认/仅支持 1，requires 为最多 16 项的本机模块依赖，不自动启用或下载。完整清单、依赖与安全边界见 [模块文档](MODULES.md)。
 
 ## 2. 读取、校验与保存规则
 

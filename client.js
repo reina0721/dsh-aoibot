@@ -7351,10 +7351,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const refresh = useCallback(async () => {
         setLoading(true)
         setError('')
-        const result = safeObject(await get('/modules'))
-        if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
-        else setItems(safeArray(result.items))
-        setLoading(false)
+        try {
+          const result = safeObject(await get('/modules'))
+          if (result.ok === false) setError(String(result.message || '模块列表加载失败'))
+          else setItems(safeArray(result.items))
+        } catch (error) { setError(String(error.message || '模块列表加载失败')) }
+        finally { setLoading(false) }
       }, [])
 
       useEffect(() => { refresh() }, [refresh])
@@ -7362,49 +7364,62 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const action = async (item, kind) => {
         const key = String(item.id) + ':' + kind
         setBusy(key)
-        const result = safeObject(await post(kind === 'reload' ? '/modules/reload' : '/modules/toggle', kind === 'reload' ? { id: item.id } : { id: item.id, enabled: !item.enabled }))
-        setBusy('')
-        if (result.ok === false) {
-          const message = String(result.message || '模块操作失败')
+        try {
+          const result = safeObject(await post(kind === 'reload' ? '/modules/reload' : '/modules/toggle', kind === 'reload' ? { id: item.id } : { id: item.id, enabled: !item.enabled }))
+          if (result.ok === false) {
+            const message = String(result.message || '模块操作失败')
+            setError(message)
+            props.toast?.(message, 'err')
+            return
+          }
+          const status = result.item?.status
+          const failed = status === 'error' || status === 'blocked'
+          props.toast?.(failed ? (status === 'blocked' ? '模块被依赖阻塞' : '模块加载失败') : (status === 'disabled' ? '模块已停用' : '模块已加载'), failed ? 'err' : 'ok')
+          await refresh()
+        } catch (error) {
+          const message = String(error.message || '模块操作失败')
           setError(message)
           props.toast?.(message, 'err')
-          return
-        }
-        props.toast?.(kind === 'reload' ? '模块已重载' : (item.enabled ? '模块已停用' : '模块已启用'), 'ok')
-        await refresh()
+        } finally { setBusy('') }
       }
 
       if (loading && !items.length) return h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 }))
       return h(
         'div',
         { className: 'ob-stack' },
+        h(Panel, { title: '模块目录', description: '内置模块随插件发布；外部模块是操作员安装的同进程代码。permissions 不是沙箱，请先审核外部代码。', actions: h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: loading, disabled: Boolean(busy) || loading, onClick: refresh }, '刷新') },
+          h('div', { className: 'ob-row' }, h(Badge, { tone: 'muted' }, '内置 ' + items.filter((item) => item.builtin).length), h(Badge, { tone: 'muted' }, '外部 ' + items.filter((item) => !item.builtin).length)),
+        ),
         error ? h(Banner, { tone: 'err', message: error, actions: [h(Btn, { key: 'retry', small: true, kind: 'secondary', onClick: refresh }, '重试')] }) : null,
         items.length
           ? h('div', { className: 'ob-grid two' }, items.map((item) => {
               const permissions = safeArray(item.permissions)
-              const tone = item.status === 'loaded' ? 'ok' : item.status === 'error' ? 'err' : 'muted'
+              const tone = item.status === 'loaded' ? 'ok' : (item.status === 'error' || item.status === 'blocked') ? 'err' : 'muted'
               return h(Panel, {
                 key: item.id,
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
                 actions: h('div', { className: 'ob-row' },
-                  h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: busy || !item.enabled, onClick: () => action(item, 'reload') }, '重载'),
-                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: busy, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
+                  item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
+                  h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
               },
                 h('div', { className: 'ob-row' },
+                  h(Badge, { tone: item.builtin ? 'brand' : 'muted' }, item.builtin ? '内置' : '外部'),
                   h(Badge, { tone }, String(item.status || 'unknown')),
                   item.version ? h(Badge, { tone: 'muted' }, 'v' + String(item.version)) : null,
                   h(Badge, { tone: item.enabled ? 'brand' : 'muted' }, item.enabled ? '已启用' : '已停用'),
                 ),
                 permissions.length ? h('div', { className: 'ob-row', style: { marginTop: '12px' } }, permissions.map((permission) => h(Badge, { key: permission, tone: 'muted' }, permission))) : h('p', { className: 'ob-muted ob-small', style: { marginTop: '12px' } }, '未申请权限'),
+                safeArray(item.requires).length ? h('p', { className: 'ob-muted ob-small' }, '依赖：' + item.requires.join('、')) : null,
+                !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
               )
             }))
           : h(Panel, null, h(EmptyState, {
               icon: 'layout',
-              title: '还没有本地模块',
-              description: '模块由操作员安装到 <dataDir>/modules。复制模块目录后在这里刷新或重载；不提供上传、远程安装或 marketplace。',
+              title: '还没有模块',
+              description: '外部模块由操作员安装到 <dataDir>/modules/<id>，重启或通过 API 按 ID 重载后可见。内置模块使用静态目录；此页不提供安装功能。',
               action: h('a', { className: 'ob-btn secondary', href: 'https://github.com/reina0721/dsh-bot/blob/main/docs/MODULES.md', target: '_blank', rel: 'noreferrer' }, '查看模块文档'),
             })),
       )

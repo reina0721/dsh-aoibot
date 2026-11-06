@@ -1,5 +1,11 @@
 # 变更记录
 
+## 未发布
+
+- 模块架构 v2：统一内置/外部目录，静态冻结 registry 与默认关闭的 builtin-sample（主人 `/module-sample` 固定回复）；保留 builtin- 命名空间，关闭时不导入/运行。共享 apiVersion=1、requires 校验和依赖图，拓扑加载、逆序清理、error/blocked 隔离、外部重载级联与内置代码缓存。
+- 状态兼容旧 disabled 并新增 enabled，先原子持久化再改变运行状态；外部 manifest enabled:false 保持硬上限。内置数据写 modules/.builtin/<id>/data.json（1 MiB、包含关系检查），不写包内源码；API 新增来源/能力/依赖/summary，面板显示数量/来源/阻塞、刷新和状态提示。
+- 增补离线内核/API/面板/备份/独立包加载验证与模块契约文档。无核心迁移、远程安装、上传、依赖下载、沙箱、watcher 或移除接口；未改版本、未发布/部署，parity 矩阵与 remaining 47 不变。
+
 ## 0.11.6（2026-11-06，双预算与 bot 名称）
 
 - 面板入口、概览页标题与导航 aria 名称使用 bot 自身名称：当前人格 `profile.displayName` → QQ 登录昵称 → `dsh-bot`，清理控制字符与首尾空白、最多 40 个 Unicode 字符。index 安全注入初始名称，`/status.brand` 更新页头；改名或切换人格后侧栏需刷新网页。面板 ID、其他标签和「关于 dsh-bot」保持不变；补充离线注入/回退/面板测试，未做 live 或真实浏览器验证。

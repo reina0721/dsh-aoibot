@@ -1,5 +1,7 @@
 # M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t/M7-u/M7-v 对标审计、用户豁免与临时 profile smoke
 
+模块架构 v2 静态快照（2026-11-06，未发布）：统一包内静态内置与本地外部模块，共享 API/manifest 与 requires 图；builtin- 命名空间、默认关闭示例、原子 enabled/disabled、内置独立存储、外部重载级联与 blocked 状态。补充内核、fake REST/React shim、备份和独立包加载证据；没有核心迁移、远程安装/上传、依赖下载、沙箱、watcher、移除接口或真实浏览器/live 验证。仅更新此静态说明，不改变能力矩阵或 parity 计数：6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47。
+
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
 
 LLM 双预算静态快照（未发布）：全局/人格始终双计数，`global|persona|both` 默认 global，限额默认各 300000；both 取有效剩余最小值。恢复全局存储、移除中间人格迁移；双行卡片、模式配置、GET 双状态与确认+scope 的独立今日重置均为离线服务/API/React shim 证据，不改配置、不调用模型。没有 live 或真实浏览器验收，不触碰运行中 profile；能力矩阵逐字不变，6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47。见[设计](design/llm-budget-card.md)。

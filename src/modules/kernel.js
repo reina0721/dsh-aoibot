@@ -1,15 +1,16 @@
-// 本地模块内核：只加载数据目录中由操作员安装的 JavaScript 模块。
+// 统一模块目录：包内静态注册表 + 操作员安装的本地 JavaScript。
 // 模块是任意本地代码；这里的 permissions 约束稳定 API 的暴露面，不是进程沙箱。
 
 import { constants } from 'node:fs'
-import { access, mkdir, readFile, readdir, realpath, rename, stat, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
+import { ID_RE, validateManifest } from './manifest.js'
+import { analyzeDependencies, dependentClosure } from './dependencies.js'
+import { builtinRegistry } from './registry.js'
 const COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 const EVENT_NAMES = new Set(['message', 'notice', 'request', 'meta_event', 'any'])
-const KNOWN_PERMISSIONS = new Set(['events', 'commands', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage'])
 const MAX_STORAGE_BYTES = 1024 * 1024
 
 function messageOf(error) {
@@ -33,8 +34,10 @@ async function readJson(file, fallback) {
 async function writeJsonAtomic(file, value) {
   await mkdir(dirname(file), { recursive: true })
   const temporary = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  await writeFile(temporary, JSON.stringify(value, null, 2), 'utf8')
-  await rename(temporary, file)
+  try {
+    await writeFile(temporary, JSON.stringify(value, null, 2), { encoding: 'utf8', flag: 'wx' })
+    await rename(temporary, file)
+  } finally { await unlink(temporary).catch(() => {}) }
 }
 
 function publicRecord(record) {
@@ -43,6 +46,12 @@ function publicRecord(record) {
     name: record.name,
     version: record.version,
     description: record.description,
+    source: record.source,
+    builtin: record.builtin,
+    apiVersion: record.apiVersion,
+    requires: [...record.requires],
+    canReload: !record.builtin,
+    canToggle: record.builtin || (record.valid && record.manifestEnabled),
     permissions: [...record.permissions],
     enabled: Boolean(record.enabled),
     status: record.status,
@@ -55,13 +64,15 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null, registry = builtinRegistry } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
   const log = logger?.child?.('modules') || logger || { info() {}, warn() {}, debug() {}, error() {}, child() { return this } }
   const records = new Map()
   let disabled = new Set()
+  let enabledIds = new Set()
+  let importGeneration = 0
   let started = false
   let disposed = false
   let operation = Promise.resolve()
@@ -76,6 +87,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return messageOf(error)
       .replaceAll(root, '<modules>')
       .replaceAll(pathToFileURL(root).href, 'file://<modules>')
+      .replace(/(?:file:\/\/)?(?:[A-Za-z]:[\\/]|\/)[^\s'"<>]+/g, '<path>')
   }
 
   async function requireModuleDirectory(id) {
@@ -89,92 +101,94 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
 
   async function loadState() {
     const state = await readJson(stateFile, {})
-    disabled = new Set(Array.isArray(state?.disabled) ? state.disabled.filter((id) => ID_RE.test(String(id))) : [])
+    const ids = (value) => new Set(Array.isArray(value) ? value.filter((id) => typeof id === 'string' && ID_RE.test(id)) : [])
+    disabled = ids(state?.disabled)
+    enabledIds = ids(state?.enabled)
   }
 
-  async function saveState() {
-    await writeJsonAtomic(stateFile, { disabled: [...disabled].sort() })
+  function effectiveEnabled(record) {
+    if (disabled.has(record.id)) return false
+    return record.builtin ? (enabledIds.has(record.id) || record.defaultEnabled) : record.manifestEnabled
   }
 
   async function manifestFor(moduleDir, directoryName) {
-    const manifestFile = join(moduleDir, 'module.json')
-    let manifest
-    try {
-      manifest = JSON.parse(await readFile(manifestFile, 'utf8'))
-    } catch (error) {
-      throw new Error(`module.json 无法读取：${messageOf(error)}`)
-    }
-    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('module.json 必须是对象')
-    const id = String(manifest.id || '')
-    if (!ID_RE.test(id)) throw new Error('manifest.id 不合法')
-    if (id !== directoryName) throw new Error(`manifest.id 必须与目录名一致（${directoryName}）`)
-    const entry = String(manifest.entry || '')
+    let raw
+    try { raw = JSON.parse(await readFile(join(moduleDir, 'module.json'), 'utf8')) }
+    catch (error) { throw new Error(`module.json 无法读取：${messageOf(error)}`) }
+    const manifest = validateManifest(raw, { directoryName })
+    const entry = manifest.entry
     if (!entry || isAbsolute(entry) || !['.js', '.mjs'].includes(extname(entry).toLowerCase())) throw new Error('manifest.entry 必须是模块目录内的相对 .js/.mjs 文件')
     const entryPath = resolve(moduleDir, entry)
     if (!inside(moduleDir, entryPath)) throw new Error('manifest.entry 不能离开模块目录')
     const realModuleDir = await realpath(moduleDir)
     const realRoot = await realpath(root)
     if (!inside(realRoot, realModuleDir)) throw new Error('模块目录不能通过符号链接离开 modules 目录')
-    let realEntry
-    try {
-      await access(entryPath, constants.R_OK)
-      realEntry = await realpath(entryPath)
-    } catch (error) {
-      throw new Error(`入口文件无法读取：${messageOf(error)}`)
-    }
+    await access(entryPath, constants.R_OK)
+    const realEntry = await realpath(entryPath)
     if (!inside(realModuleDir, realEntry)) throw new Error('manifest.entry 不能通过符号链接离开模块目录')
-    const permissions = manifest.permissions === undefined ? [] : manifest.permissions
-    if (!Array.isArray(permissions) || permissions.some((item) => typeof item !== 'string')) throw new Error('manifest.permissions 必须是字符串数组')
-    const uniquePermissions = [...new Set(permissions)]
-    const unknown = uniquePermissions.find((item) => !KNOWN_PERMISSIONS.has(item))
-    if (unknown) throw new Error(`未知 permission：${unknown}`)
+    return { ...manifest, source: 'external', builtin: false, valid: true, moduleDir: realModuleDir, entryPath: realEntry }
+  }
+
+  function makeRecord(manifest) {
+    return { ...manifest, enabled: effectiveEnabled(manifest), status: 'disabled', error: '', loadedAt: null, runtime: null, storage: null }
+  }
+
+  function errorRecord(id, error, previous = null) {
     return {
-      id,
-      name: String(manifest.name || id),
-      version: String(manifest.version || ''),
-      description: String(manifest.description || ''),
-      permissions: uniquePermissions,
-      manifestEnabled: manifest.enabled !== false,
-      moduleDir: realModuleDir,
-      entryPath: realEntry,
+      id, name: previous?.name || id, version: previous?.version || '', description: previous?.description || '',
+      permissions: previous?.permissions || [], requires: [], apiVersion: previous?.apiVersion || 1,
+      source: 'external', builtin: false, valid: false, manifestEnabled: false,
+      enabled: false, status: 'error', error: safeMessage(error), loadedAt: null, runtime: null,
     }
   }
 
-  function errorRecord(directoryName, error, previous = null) {
-    return {
-      id: previous?.id || directoryName,
-      name: previous?.name || directoryName,
-      version: previous?.version || '',
-      description: previous?.description || '',
-      permissions: previous?.permissions || [],
-      enabled: !disabled.has(previous?.id || directoryName),
-      status: 'error',
-      error: safeMessage(error),
-      loadedAt: previous?.loadedAt || null,
-      moduleDir: previous?.moduleDir || join(root, directoryName),
-      entryPath: previous?.entryPath || '',
-      runtime: null,
+  function actionError(message, code) {
+    return Object.assign(new Error(message), { code })
+  }
+
+  // 写目录和 data.json 都需要 realpath containment；包内源码路径从不作为写入目标。
+  async function storagePath(record) {
+    const realRoot = await realpath(root)
+    if (record.builtin) {
+      const base = join(root, '.builtin')
+      await mkdir(base, { recursive: true })
+      const realBase = await realpath(base)
+      if (!inside(realRoot, realBase)) throw new Error('内置存储不能通过符号链接离开 modules 目录')
+      await mkdir(record.moduleDir, { recursive: true })
+      if (!inside(realBase, await realpath(record.moduleDir))) throw new Error('内置存储目录符号链接逃逸')
     }
+    const dir = await realpath(record.moduleDir)
+    if (!inside(realRoot, dir)) throw new Error('模块存储目录符号链接逃逸')
+    const file = join(dir, 'data.json')
+    try {
+      if (!inside(dir, await realpath(file))) throw new Error('模块存储文件符号链接逃逸')
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    return file
   }
 
   async function disposeRuntime(record) {
     const runtime = record?.runtime
     if (!runtime) return
+    runtime.active = false
     record.runtime = null
     const disposers = [...runtime.disposers].reverse()
     runtime.disposers.length = 0
     for (const dispose of disposers) {
       try { await dispose() } catch (error) { log.warn?.(`模块 ${record.id} 清理失败：${messageOf(error)}`) }
     }
+    await record.drainStorage?.()
+    record.storage = null
+    record.drainStorage = null
   }
 
   function requirePermission(record, permission) {
     if (!record.permissions.includes(permission)) throw new Error(`模块 ${record.id} 缺少 permission: ${permission}`)
   }
 
-  function storageApi(record, runtime) {
-    const file = join(record.moduleDir, 'data.json')
+  function storageApi(record) {
+    const filePromise = storagePath(record)
     let valuesPromise = (async () => {
+      const file = await filePromise
       try {
         const info = await stat(file)
         if (info.size > MAX_STORAGE_BYTES) throw new Error(`模块存储超过 ${MAX_STORAGE_BYTES} bytes`)
@@ -183,7 +197,9 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       }
       return readJson(file, {})
     })()
+    valuesPromise.catch(() => {})
     let writes = Promise.resolve()
+    record.drainStorage = () => writes
     const values = async () => {
       const current = await valuesPromise
       return current && typeof current === 'object' && !Array.isArray(current) ? current : {}
@@ -195,7 +211,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         const result = work(draft)
         const text = JSON.stringify(draft, null, 2)
         if (Buffer.byteLength(text) > MAX_STORAGE_BYTES) throw new Error(`模块存储超过 ${MAX_STORAGE_BYTES} bytes`)
-        await writeJsonAtomic(file, draft)
+        await writeJsonAtomic(await storagePath(record), draft)
         valuesPromise = Promise.resolve(draft)
         return result
       })
@@ -221,12 +237,15 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     const moduleLog = log?.child?.(record.id) || log
     const api = {
       id: record.id,
+      source: record.source,
+      builtin: record.builtin,
       name: record.name,
       version: record.version,
       dir: record.moduleDir,
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
       on(eventName, handler) {
+        requireActive(runtime)
         requirePermission(record, 'events')
         const name = String(eventName || '')
         if (!EVENT_NAMES.has(name)) throw new Error(`不支持的事件名：${name}`)
@@ -238,12 +257,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
       registerCommand(name, handler, options = {}) {
+        requireActive(runtime)
         requirePermission(record, 'commands')
         const normalized = String(name || '').toLowerCase()
         if (!COMMAND_RE.test(normalized)) throw new Error('命令名不合法')
         if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
         if (!commands?.registerCommand) throw new Error('命令服务不可用')
-        const dispose = commands.registerCommand(normalized, handler, { ownerOnly: options.ownerOnly !== false })
+        const dispose = commands.registerCommand(normalized, (...args) => runtime.active ? handler(...args) : undefined, { ownerOnly: options.ownerOnly !== false })
         runtime.disposers.push(dispose)
         return dispose
       },
@@ -257,6 +277,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return outbound.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
       },
       registerKnowledgeSource(source) {
+        requireActive(runtime)
         requirePermission(record, 'knowledge')
         if (!cognition?.registerKnowledgeSource) throw new Error('认知服务不可用')
         const dispose = cognition.registerKnowledgeSource(source)
@@ -264,6 +285,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
       registerCapability(name, impl) {
+        requireActive(runtime)
         requirePermission(record, 'capabilities')
         if (!cognition?.registerCapability) throw new Error('认知服务不可用')
         const dispose = cognition.registerCapability(name, impl)
@@ -292,24 +314,35 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return Object.freeze(api)
   }
 
-  async function loadRecord(manifest, previous = null) {
-    if (previous) await disposeRuntime(previous)
-    const enabled = manifest.manifestEnabled && !disabled.has(manifest.id)
-    const record = { ...manifest, enabled, status: enabled ? 'loading' : 'disabled', error: '', loadedAt: null, runtime: null }
-    records.set(record.id, record)
-    if (!enabled) return record
-    const runtime = { handlers: new Set(), disposers: [], storage: null }
+  function requireActive(runtime) {
+    if (!runtime.active) throw new Error('模块已停止')
+  }
+
+  async function loadRecord(record) {
+    const runtime = { active: true, handlers: new Set(), disposers: [], storage: null }
     record.runtime = runtime
-    runtime.storage = storageApi(record, runtime)
+    record.status = 'loading'
     try {
-      const fileStat = await stat(record.entryPath)
-      const imported = await import(`${pathToFileURL(record.entryPath).href}?v=${fileStat.mtimeMs}-${Date.now()}`)
+      if (record.builtin) await storagePath(record)
+      if (!record.storage) record.storage = storageApi(record)
+      runtime.storage = record.storage
+      // 初始化和校验存储，避免未被模块访问的拒绝 Promise 泄漏。
+      await runtime.storage.all()
+      let imported
+      if (record.builtin) {
+        record.imported ||= Promise.resolve().then(() => record.load())
+        imported = await record.imported
+      } else {
+        const fileStat = await stat(record.entryPath)
+        imported = await import(`${pathToFileURL(record.entryPath).href}?v=${fileStat.mtimeMs}-${++importGeneration}-${Date.now()}`)
+      }
       const setup = typeof imported.setup === 'function' ? imported.setup : (typeof imported.default === 'function' ? imported.default : imported.default?.setup)
       if (typeof setup !== 'function') throw new Error('入口必须导出 setup(api)（named 或 default）')
       const cleanup = await setup(apiFor(record, runtime))
       if (cleanup !== undefined && typeof cleanup !== 'function') throw new Error('setup 返回值必须是 cleanup 函数或 undefined')
       if (cleanup) runtime.disposers.push(cleanup)
       record.status = 'loaded'
+      record.error = ''
       record.loadedAt = Date.now()
       log.info?.(`模块 ${record.id} 已加载`)
     } catch (error) {
@@ -318,33 +351,61 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       record.error = safeMessage(error)
       log.warn?.(`模块 ${record.id} 加载失败：${record.error}`)
     }
-    return record
+  }
+
+  async function stop(ids) {
+    const { order } = analyzeDependencies(records)
+    for (const id of order.reverse()) if (ids.has(id)) await disposeRuntime(records.get(id))
+  }
+
+  async function reconcile() {
+    const { order, errors } = analyzeDependencies(records)
+    // 先计算不可运行闭包并逆序清理，再按拓扑顺序 setup。
+    const unavailable = new Set()
+    for (const id of order) {
+      const record = records.get(id)
+      record.enabled = effectiveEnabled(record)
+      if (!record.valid || errors.has(id) || !record.enabled || record.status === 'error' || record.requires.some((dep) => unavailable.has(dep))) unavailable.add(id)
+    }
+    await stop(unavailable)
+    for (const id of order) {
+      const record = records.get(id)
+      if (!record.valid) continue
+      if (errors.has(id)) { record.status = 'error'; record.error = errors.get(id); continue }
+      if (!record.enabled) { record.status = 'disabled'; record.error = ''; continue }
+      const missing = record.requires.find((dep) => records.get(dep)?.status !== 'loaded')
+      if (missing) { record.status = 'blocked'; record.error = `依赖未加载：${missing}`; continue }
+      if (!record.runtime && record.status !== 'error') await loadRecord(record)
+    }
   }
 
   async function scan() {
     await mkdir(root, { recursive: true })
     await loadState()
+    for (const descriptor of registry) {
+      const manifest = validateManifest(descriptor.manifest, { builtin: true })
+      if (records.has(manifest.id)) throw new Error('内置注册表 id 重复')
+      if (typeof descriptor.load !== 'function') throw new Error('内置注册表缺少 lazy loader')
+      records.set(manifest.id, makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
+        defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) }))
+    }
     const entries = await readdir(root, { withFileTypes: true })
     for (const entry of entries) {
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue
-      const directoryName = entry.name
-      const existing = records.get(directoryName)
-      try {
-        const manifest = await manifestFor(join(root, directoryName), directoryName)
-        await loadRecord(manifest, existing)
-      } catch (error) {
-        if (existing) await disposeRuntime(existing)
-        records.set(directoryName, errorRecord(directoryName, error, existing))
-      }
+      if (entry.name === '.builtin' || (!entry.isDirectory() && !entry.isSymbolicLink())) continue
+      // 保留命名空间的外部目录不可能覆盖真正的内置记录。
+      if (records.has(entry.name)) { log.warn?.(`忽略保留的内置模块目录：${entry.name}`); continue }
+      try { records.set(entry.name, makeRecord(await manifestFor(join(root, entry.name), entry.name))) }
+      catch (error) { records.set(entry.name, errorRecord(entry.name, error)) }
     }
+    await reconcile()
   }
 
   function start() {
     return serialize(async () => {
       if (disposed) throw new Error('module kernel 已释放')
       if (started) return list()
-      started = true
       await scan()
+      started = true
       return list()
     })
   }
@@ -353,54 +414,58 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return [...records.values()].map(publicRecord).sort((a, b) => a.id.localeCompare(b.id))
   }
 
+  function checkAction(id) {
+    if (disposed) throw new Error('module kernel 已释放')
+    const normalized = String(id || '')
+    if (!ID_RE.test(normalized)) throw new Error('模块 id 不合法')
+    return normalized
+  }
+
   function reload(id) {
     return serialize(async () => {
-      const normalized = String(id || '')
-      if (!ID_RE.test(normalized)) throw new Error('模块 id 不合法')
+      const normalized = checkAction(id)
       const previous = records.get(normalized)
-      try {
-        await requireModuleDirectory(normalized)
-      } catch (error) {
-        if (previous) await disposeRuntime(previous)
+      if (previous?.builtin || normalized.startsWith('builtin-')) throw actionError('内置模块不能重载', 'MODULE_BUILTIN_RELOAD')
+      const affected = dependentClosure(records, [normalized])
+      await stop(affected)
+      for (const id of affected) {
+        const record = records.get(id)
+        if (record?.valid) { record.status = 'disabled'; record.error = '' }
+      }
+      try { await requireModuleDirectory(normalized) }
+      catch (error) {
         records.delete(normalized)
+        await reconcile()
         throw error
       }
-      try {
-        const manifest = await manifestFor(join(root, normalized), normalized)
-        return publicRecord(await loadRecord(manifest, previous))
-      } catch (error) {
-        if (previous) await disposeRuntime(previous)
-        const record = errorRecord(normalized, error, previous)
-        records.set(normalized, record)
-        return publicRecord(record)
-      }
+      try { records.set(normalized, makeRecord(await manifestFor(join(root, normalized), normalized))) }
+      catch (error) { records.set(normalized, errorRecord(normalized, error, previous)) }
+      await reconcile()
+      return publicRecord(records.get(normalized))
     })
   }
 
   function setEnabled(id, enabled) {
     return serialize(async () => {
-      const normalized = String(id || '')
-      if (!ID_RE.test(normalized)) throw new Error('模块 id 不合法')
-      await requireModuleDirectory(normalized)
-      if (enabled) disabled.delete(normalized)
-      else disabled.add(normalized)
-      await saveState()
+      const normalized = checkAction(id)
+      if (typeof enabled !== 'boolean') throw new Error('enabled 必须是 boolean')
       const previous = records.get(normalized)
-      if (!enabled && previous) {
-        await disposeRuntime(previous)
-        previous.enabled = false
-        previous.status = 'disabled'
-        previous.error = ''
-        return publicRecord(previous)
+      if (!previous) throw new Error('模块不存在；请先重载外部模块')
+      if (!previous.builtin && (!previous.valid || !previous.manifestEnabled)) throw actionError('外部模块清单禁止启停，请编辑 manifest 后重载', 'MODULE_MANIFEST_DISABLED')
+      const nextDisabled = new Set(disabled), nextEnabled = new Set(enabledIds)
+      if (enabled) { nextDisabled.delete(normalized); nextEnabled.add(normalized) }
+      else { nextDisabled.add(normalized); nextEnabled.delete(normalized) }
+      try { await writeJsonAtomic(stateFile, { disabled: [...nextDisabled].sort(), enabled: [...nextEnabled].sort() }) }
+      catch { throw actionError('模块状态保存失败，运行状态未改变', 'MODULE_STATE_WRITE_FAILED') }
+      disabled = nextDisabled; enabledIds = nextEnabled
+      const affected = dependentClosure(records, [normalized])
+      await stop(affected)
+      for (const id of affected) {
+        const record = records.get(id)
+        if (record?.valid) { record.status = 'disabled'; record.error = '' }
       }
-      try {
-        const manifest = await manifestFor(join(root, normalized), normalized)
-        return publicRecord(await loadRecord(manifest, previous))
-      } catch (error) {
-        const record = errorRecord(normalized, error, previous)
-        records.set(normalized, record)
-        return publicRecord(record)
-      }
+      await reconcile()
+      return publicRecord(records.get(normalized))
     })
   }
 
@@ -411,12 +476,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       if (record.status !== 'loaded' || !record.runtime) continue
       for (const registration of record.runtime.handlers) {
         if (registration.name !== 'any' && registration.name !== normalizedEvent.kind) continue
-        tasks.push(Promise.resolve().then(() => registration.handler(normalizedEvent)).catch(async (error) => {
-          await disposeRuntime(record)
+        const runtime = record.runtime
+        tasks.push(Promise.resolve().then(() => {
+          if (runtime.active && record.runtime === runtime) return registration.handler(normalizedEvent)
+        }).catch((error) => serialize(async () => {
+          if (!runtime.active || record.runtime !== runtime || records.get(record.id) !== record) return
+          await stop(dependentClosure(records, [record.id]))
           record.status = 'error'
           record.error = `事件处理失败：${safeMessage(error)}`
+          await reconcile()
           log.warn?.(`模块 ${record.id} 事件处理失败：${messageOf(error)}`)
-        }))
+        })))
       }
     }
     await Promise.allSettled(tasks)
@@ -426,7 +496,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     return serialize(async () => {
       if (disposed) return
       disposed = true
-      for (const record of records.values()) await disposeRuntime(record)
+      await stop(new Set(records.keys()))
     })
   }
 
