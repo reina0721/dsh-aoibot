@@ -156,3 +156,162 @@ test('media file command: relative paths, size/extension gates and symlink confi
   await assert.rejects(service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', filePath: join(root, 'link.txt') }), /符号链接/)
   assert.equal(calls.length, 2)
 })
+
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+function imageConfig(patch = {}) {
+  return config({ images: { enabled: true, generateEnabled: true, editEnabled: true, generateBaseUrl: 'https://image-provider.test/v1', generateApiKeyEnv: 'DSH_MEDIA_IMAGE_KEY', ...patch } })
+}
+function imageHarness(t, { cfg = imageConfig(), fetchImpl } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-image-provider-'))
+  const calls = [], sent = [], logs = []
+  process.env.DSH_MEDIA_IMAGE_KEY = 'image-secret'
+  t.after(() => { delete process.env.DSH_MEDIA_IMAGE_KEY; rmSync(dir, { recursive: true, force: true }) })
+  const media = createMediaService({ getConfig: () => cfg, dataDir: dir,
+    logger: { debug: (...args) => logs.push(args), warn: (...args) => logs.push(args) },
+    gateway: { actions: { sendMessage: async (payload) => { sent.push(payload) } } },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init })
+      return fetchImpl ? fetchImpl(url, init) : response(JSON.stringify({ data: [{ b64_json: PNG.toString('base64') }] }))
+    },
+  })
+  return { media, cfg, dir, calls, sent, logs }
+}
+
+test('images: generation JSON, confined PNG output, status, ordinary image send', async (t) => {
+  const { media, dir, calls, sent, logs } = imageHarness(t)
+  const result = await media.generateImage('  一只猫  ', { size: '512x512' })
+  assert.equal(result.ok, true)
+  assert.equal(result.size, '512x512')
+  assert.ok(result.path.startsWith('generated/') && result.path.endsWith('.png'))
+  assert.deepEqual(readFileSync(join(dir, result.path)), PNG)
+  assert.equal(calls[0].url, 'https://image-provider.test/v1/images/generations')
+  assert.deepEqual(JSON.parse(calls[0].init.body), { model: 'gpt-image-1', prompt: '一只猫', size: '512x512', n: 1 })
+  assert.equal(calls[0].init.headers.authorization, 'Bearer image-secret')
+  assert.equal(calls[0].init.redirect, 'error')
+  assert.ok(calls[0].init.signal instanceof AbortSignal)
+  await media.sendMedia({ chatType: 'group', chatId: '20001', kind: 'image', relativePath: result.path })
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].message[0].data.file, 'base64://' + PNG.toString('base64'))
+  assert.deepEqual(media.status().images.generate, { enabled: true, configured: true })
+  assert.deepEqual(media.status().images.edit, { enabled: true, configured: true })
+  assert.ok(!JSON.stringify([logs, media.status()]).includes('image-secret'))
+})
+
+test('images: DALL-E 3 requests b64_json while gpt-image omits response_format', async (t) => {
+  const dalle = imageHarness(t, { cfg: imageConfig({ generateModel: 'dall-e-3' }) })
+  await dalle.media.generateImage('cat')
+  assert.equal(JSON.parse(dalle.calls[0].init.body).response_format, 'b64_json')
+  const gpt = imageHarness(t, { cfg: imageConfig({ generateModel: 'gpt-image-1' }) })
+  await gpt.media.generateImage('cat')
+  assert.equal(JSON.parse(gpt.calls[0].init.body).response_format, undefined)
+})
+
+test('images: edit multipart source bytes, independent overrides and generate fallbacks', async (t) => {
+  const { media, dir, calls, cfg } = imageHarness(t)
+  writeFileSync(join(dir, 'source.png'), PNG)
+  const result = await media.editImage('蓝色背景', 'source.png')
+  assert.deepEqual(readFileSync(join(dir, result.path)), PNG)
+  assert.equal(calls[0].url, 'https://image-provider.test/v1/images/edits')
+  const form = calls[0].init.body
+  assert.ok(form instanceof FormData)
+  assert.equal(form.get('model'), 'gpt-image-1')
+  assert.equal(form.get('prompt'), '蓝色背景')
+  assert.equal(form.get('size'), '1024x1024')
+  assert.equal(form.get('response_format'), null)
+  assert.equal(form.get('image').name, 'source.png')
+  assert.equal(form.get('image').type, 'image/png')
+  assert.deepEqual(Buffer.from(await form.get('image').arrayBuffer()), PNG)
+  assert.equal(calls[0].init.headers['content-type'], undefined)
+  Object.assign(cfg.media.images, { editBaseUrl: 'https://edit.test/v1', editModel: 'edit-model', editApiKeyEnv: 'DSH_MEDIA_EDIT_KEY', editSize: '256x256' })
+  process.env.DSH_MEDIA_EDIT_KEY = 'edit-secret'
+  t.after(() => { delete process.env.DSH_MEDIA_EDIT_KEY })
+  await media.editImage('绿色背景', 'source.png', { size: '1024x1792' })
+  assert.equal(calls[1].url, 'https://edit.test/v1/images/edits')
+  assert.equal(calls[1].init.body.get('model'), 'edit-model')
+  assert.equal(calls[1].init.body.get('size'), '1024x1792')
+  assert.equal(calls[1].init.headers.authorization, 'Bearer edit-secret')
+})
+
+test('images: disabled switches and invalid prompt/size/config never fetch', async (t) => {
+  const { media, cfg, calls } = imageHarness(t, { cfg: normalizeConfig({}).config })
+  assert.deepEqual(media.status().images.generate, { enabled: false, configured: false })
+  assert.deepEqual(media.status().images.edit, { enabled: false, configured: false })
+  await assert.rejects(media.generateImage('cat'), /未启用/)
+  await assert.rejects(media.editImage('cat', 'source.png'), /未启用/)
+  Object.assign(cfg.media, imageConfig().media)
+  for (const prompt of ['', '   ', 'x'.repeat(1001), null, {}, 3]) {
+    await assert.rejects(media.generateImage(prompt), /prompt/)
+    await assert.rejects(media.editImage(prompt, 'source.png'), /prompt/)
+  }
+  for (const size of ['auto', '9999x9999', '', null, {}]) {
+    await assert.rejects(media.generateImage('cat', { size }), /size/)
+    await assert.rejects(media.editImage('cat', 'source.png', { size }), /size/)
+  }
+  cfg.media.images.generateEnabled = false
+  await assert.rejects(media.generateImage('cat'), /未启用/)
+  cfg.media.images.editEnabled = false
+  await assert.rejects(media.editImage('cat', 'source.png'), /未启用/)
+  Object.assign(cfg.media.images, { generateEnabled: true, generateBaseUrl: '' })
+  await assert.rejects(media.generateImage('cat'), /base URL/)
+  Object.assign(cfg.media.images, { generateBaseUrl: 'https://image-provider.test', generateApiKeyEnv: 'DSH_UNSET_IMAGE_KEY' })
+  await assert.rejects(media.generateImage('cat'), /环境变量/)
+  assert.equal(calls.length, 0)
+})
+
+test('images: edit rejects absolute/traversal/control paths, escaping symlinks, extensions and oversized files before fetch', async (t) => {
+  const { media, dir, cfg, calls } = imageHarness(t)
+  const outside = mkdtempSync(join(tmpdir(), 'dsh-image-outside-'))
+  t.after(() => rmSync(outside, { recursive: true, force: true }))
+  writeFileSync(join(outside, 'outside.png'), PNG)
+  symlinkSync(join(outside, 'outside.png'), join(dir, 'escape.png'))
+  symlinkSync(outside, join(dir, 'escape-dir'), 'dir')
+  writeFileSync(join(dir, 'source.txt'), PNG)
+  symlinkSync(join(dir, 'source.txt'), join(dir, 'disguised.png'))
+  writeFileSync(join(dir, 'big.png'), Buffer.alloc(1025))
+  cfg.media.maxBytes = 1024
+  for (const path of [undefined, null, '', '../outside.png', '/etc/passwd', 'C:/outside.png', 'C:outside.png', 'a' + String.fromCharCode(92) + 'b.png', 'x' + String.fromCharCode(0), 'escape.png', 'escape-dir/outside.png', 'source.txt', 'disguised.png', 'big.png', '.']) await assert.rejects(media.editImage('cat', path))
+  assert.equal(calls.length, 0)
+})
+
+test('images: missing base64 never follows provider URL; HTTP, invalid PNG, dimensions and response size are bounded', async (t) => {
+  let body = { data: [{ url: 'https://untrusted.test/image.png' }] }, status = 200
+  const { media, cfg, calls, dir } = imageHarness(t, { fetchImpl: async () => response(JSON.stringify(body), { status }) })
+  await assert.rejects(media.generateImage('cat'), /b64_json/)
+  assert.equal(calls.length, 1)
+  status = 401
+  await assert.rejects(media.generateImage('cat'), /HTTP 401/)
+  status = 200
+  for (const value of ['invalid', Buffer.from('not-png').toString('base64')]) {
+    body = { data: [{ b64_json: value }] }
+    await assert.rejects(media.generateImage('cat'), /b64_json|PNG/)
+  }
+  const huge = Buffer.from(PNG); huge.writeUInt32BE(10000, 16)
+  body = { data: [{ b64_json: huge.toString('base64') }] }
+  await assert.rejects(media.generateImage('cat'), /尺寸/)
+  cfg.media.maxBytes = 1024
+  body = { data: [{ b64_json: Buffer.alloc(1025).toString('base64') }] }
+  await assert.rejects(media.generateImage('cat'), /大小/)
+  body = { data: [{ b64_json: 'A'.repeat(70000) }] }
+  await assert.rejects(media.generateImage('cat'), /响应无效或超过大小限制/)
+  body = { data: [{ b64_json: PNG.toString('base64') }] }
+  const outside = mkdtempSync(join(tmpdir(), 'dsh-image-generated-outside-'))
+  t.after(() => rmSync(outside, { recursive: true, force: true }))
+  symlinkSync(outside, join(dir, 'generated'), 'dir')
+  await assert.rejects(media.generateImage('cat'), /符号链接/)
+})
+
+test('images: fetch timeout aborts and provider errors never expose secrets or response bodies', async (t) => {
+  const { media, cfg, dir } = imageHarness(t, { fetchImpl: async (_url, init) => new Promise((resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(init.signal.reason), { once: true })
+  }) })
+  cfg.timeouts.callMs = 1000
+  // AbortSignal.timeout is unref'ed; keep this fake provider test alive until it aborts.
+  const timer = setInterval(() => {}, 100)
+  try { await assert.rejects(media.generateImage('cat'), /超时/) } finally { clearInterval(timer) }
+  writeFileSync(join(dir, 'source.png'), PNG)
+  const failing = imageHarness(t, { fetchImpl: async () => { throw new Error('image-secret raw provider body') } })
+  await assert.rejects(failing.media.generateImage('cat'), { message: '图片 provider 请求失败' })
+  writeFileSync(join(failing.dir, 'source.png'), PNG)
+  await assert.rejects(failing.media.editImage('cat', 'source.png'), { message: '图片 provider 请求失败' })
+  assert.deepEqual(failing.logs, [])
+})

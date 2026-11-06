@@ -976,3 +976,36 @@ test('SecurityPage: read-only launch checklist, last five audit rows, manual upg
     assert.ok(calls.slice(1).every((call) => call.method === 'GET'))
   } finally { globalThis.fetch = originalFetch }
 })
+
+test('MediaPage: image status, text-only source, generation/edit payloads and local result/error', async () => {
+  const calls = [], originalFetch = globalThis.fetch
+  const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children)]
+  const render = (result = '', error = '') => {
+    stateOverrides = [{ enabled: true, images: { generate: { enabled: true, configured: true }, edit: { enabled: true, configured: false } } }, [], false, '', '', '', 'cat', '512x512', 'inbound/cat.png', result, error, '']
+    try { return panel.MediaPage({ toast() {} }) } finally { stateOverrides = null }
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: JSON.parse(init.body) })
+    return { ok: true, json: async () => ({ ok: true, path: 'generated/result.png', size: '512x512' }) }
+  }
+  try {
+    const tree = render()
+    assert.ok(JSON.stringify(tree).includes('生图/改图'))
+    const all = nodes(tree)
+    const source = all.find((node) => node.props?.['aria-label'] === '源图片相对路径')
+    assert.equal(source.type, 'input')
+    assert.notEqual(source.props.type, 'file')
+    assert.equal(source.props.value, 'inbound/cat.png')
+    assert.equal(all.filter((node) => node.type === 'option').length, 5)
+    const generate = all.find((node) => node.children?.includes('生成图片'))
+    const edit = all.find((node) => node.children?.includes('编辑图片'))
+    await generate.props.onClick()
+    await edit.props.onClick()
+    assert.deepEqual(calls, [
+      { path: panel.API_PREFIX + '/media/image/generate', body: { prompt: 'cat', size: '512x512' } },
+      { path: panel.API_PREFIX + '/media/image/edit', body: { prompt: 'cat', size: '512x512', path: 'inbound/cat.png' } },
+    ])
+    assert.ok(JSON.stringify(render('generated/result.png')).includes('生成路径：generated/result.png'))
+    assert.ok(JSON.stringify(render('', 'provider HTTP 401')).includes('provider HTTP 401'))
+  } finally { globalThis.fetch = originalFetch }
+})

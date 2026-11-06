@@ -1,6 +1,6 @@
-# M7-a/M7-b 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c 对标审计、用户豁免与临时 profile smoke
 
-快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt，并更新固定主人命令的实际边界。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #42/#44/#49/#50 或其他差距，不改变本机-only/CSRF 行为。
+快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #42/#44/#49/#50 或其他差距，不改变本机-only/CSRF 行为。
 
 ## 临时 profile smoke 证据
 
@@ -30,8 +30,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 35，none: 8，limited: 1，leading: 6，exempt: 5。
 剩余 50 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：61 个 JS 文件 / 15566 行。
-测试静态计数：40 个文件 / 7286 行 / 293 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：61 个 JS 文件 / 15723 行。
+测试静态计数：40 个文件 / 7568 行 / 305 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -138,6 +138,8 @@ npm run check:docs
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
 | 2 | SnowLuma 检测/读取 | partial | M7：许可边界复核（维持只读） |
+| 44 | 图片收发/视觉/生图/改图 | partial | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
+| 46 | 本地接口（TTS/生图/识别脚本） | partial | M7：无本地识别脚本桥/任意本地路径/新图片上传下载接口；不抓 provider 返回 URL，只支持兼容 edits；真实 provider/QQ 未验证，面板/API 不自动发送 |
 | 61 | 真机 QQ/媒体验证 | partial | M7 |
 
 ## 未分配里程碑
@@ -152,9 +154,7 @@ npm run check:docs
 | 37 | 候选效用/bandit/结果归因 | leading | 已领先（无缺口） |
 | 41 | TTS/语音条/ASR | partial | 无自动语音策略、多音色编排、RVC/翻唱或 Agent 工具；待真机 |
 | 43 | 表情包 | partial | 不自动收集、缩放转码、语境/情绪选择或接商城 |
-| 44 | 图片收发/视觉/生图/改图 | partial | 无普通图片发送面板/命令、生图/改图或真机验证 |
 | 45 | 文件发送/接收 | partial | 无文件面板；media.enabled/files.enabled 与 qqAdmin.enabled 必须开启；网关兼容性未实机验证 |
-| 46 | 本地接口（TTS/生图/识别脚本） | partial | 无脚本桥、生图/改图接口或任意本地路径入口 |
 | 48 | B 站浏览/评论/分享 | partial | 无评论/分享/字幕/登录态；真实接口待验 |
 | 56 | 设置向导 | partial | 无独立向导/自动修复；模块始终人工待检查，媒体只检查字段，不验密钥/服务；无 API 鉴权变更，仍依赖 DSH 本机信任边界；未做真实浏览器 V |
 | 57 | 备份/恢复 | partial | 复制 SQLite 前停写，恢复后重启；无在线一致性/整目录事务、云端上传下载、自动恢复或迁移 |
@@ -194,4 +194,4 @@ DSH_BIN=/opt/dsh/bin/dsh PATH=/opt/dsh/bin:$PATH npm run smoke:temp
 {"ok":true,"profile":"web","temporary":true,"version":"0.10.0","dataDir":"/tmp/dsh-bot-smoke.pupxsN/home/plugins-data/dsh-bot","enabled":false,"upgradeEnabled":false,"endpoints":["health","status","config","modules","media/status","backup","upgrade"],"backupId":"20261106T092811073Z-b7d12ac7"}
 ```
 
-M7-b 本次 `npm test` 实跑退出 **0**：320 项，316 通过、0 失败、4 跳过（live 模型测试）。静态 293 个声明与执行 320 项的差异来自循环/缩进等声明形式。`npm run check:docs` 实跑退出 **0**，本地文档链接与当前命名检查通过；上述 smoke 仅证明关闭 QQ 的临时宿主/API 启动与本地备份路径，不宣称全量对齐。
+M7-c 本次 `npm test` 实跑退出 **0**：331 项，327 通过、0 失败、4 跳过（live 模型测试）。静态 304 个声明与执行 331 项的差异来自循环/缩进等声明形式。`npm run check:docs` 实跑退出 **0**，本地文档链接与当前命名检查通过；`npm run check:parity` 实跑退出 **0**，快照已按 #44/#46 的 M7-c 状态/目标更新。M7-c 测试使用 fake fetch/FormData、临时 PNG 和 fake QQ 网关；生成/编辑 API 只落盘，不自动发送。上述 smoke 是先前记录，仅证明关闭 QQ 的临时宿主/API 启动与本地备份路径；本次未运行真实 provider/QQ，不宣称真实图片生成/编辑已验证或全量对齐。

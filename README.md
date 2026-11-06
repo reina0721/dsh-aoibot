@@ -20,7 +20,7 @@
 - QQ 命令（主人）：`/status` `/quiet` `/active` `/model` `/remember` `/forget` `/tts` `/say` `/sticker` `/bili` `/help`；支持按聊天覆盖模型。
 - 回复分条、可配引用/@、连续未点名接话上限，避免长文刷屏与自说自话。
 - 合并转发展开、拍一拍回应、表情表态归因；主人命令 `/like` `/poke` `/groupinfo` `/memberinfo`。
-- 可选媒体：图片下载/视觉描述、语音 ASR/TTS、图片/语音发送、群/私聊文件上传，以及本地表情包库与媒体面板；外部 provider 默认关闭。
+- 可选媒体：图片下载/视觉描述、语音 ASR/TTS、图片/语音发送、群/私聊文件上传，以及本地表情包库与媒体面板；M7-c 增加 OpenAI 兼容生图/改图和 `/draw` `/redraw` `/image`；外部 provider 默认关闭。
 - 本地模块内核：从数据目录加载操作员安装的 JS 模块，提供显式权限 API、命令/事件/存储、错误隔离、热重载和模块面板；不含远程安装或 marketplace。
 - 可选 B站公共内容：搜索、热门、BV 视频基本信息、REST API 与「内容」页；默认关闭，不使用 Cookie/WBI，不含评论/分享。QQ空间因登录授权与服务条款边界未实现。
 - 本地目录备份与「备份」面板：默认 200 MiB / 5000 文件 / 保留 10 份；恢复默认暂存，应用需显式开启并先创建恢复前备份。快照含密钥与认知隐私，请按秘密保护；复制 SQLite 前停止写入，恢复后重启。无 zip、云端传输、自动恢复或工作区迁移，见[备份说明](docs/USER-MANUAL.md#备份)。
@@ -62,6 +62,8 @@ sh install.sh --profile desktop --version 0.10.0
 ```
 
 脚本验证发布包 SHA-256，支持自定义 DSH 路径；不会自动重启 DSH。源码安装在仓库根目录执行 `dsh plugin --profile desktop add .`。详见[安装、升级与回退](docs/INSTALLATION.md)。旧版用户先阅读[迁移说明](docs/MIGRATION.md)。
+
+M7-c 生图/改图与普通图片发送已接入服务、主人命令和媒体面板。生成/改图默认关闭，仅接收受大小/尺寸限制的 PNG base64，不抓取返回 URL；源图限媒体根内相对路径，realpath 防符号链接逃逸。改图只支持 OpenAI 兼容 edits；面板/API 只落盘，QQ 命令先检查 access。自动化使用 fake provider，真实 provider/QQ 生图改图未验证，#44/#46 仍保留差距。配置和限制见 [CONFIG 媒体](docs/CONFIG.md#39-媒体media) 与 [用户手册](docs/USER-MANUAL.md#37-媒体与表情包m4-am4-bm7-c)。
 
 M7-b 新增默认关闭的主人 QQ 管理命令：资料、当前群管理、精华/撤回与媒体根内文件上传。需启用 `cognition.qqAdmin.enabled`，踢人始终 `confirm`、撤回默认确认；群管需机器人具备权限，无任意 action 透传或新增 Agent 工具，真实 QQ 管理/资料/文件动作尚未验证。用法见 [用户手册](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人)，配置见 [CONFIG](docs/CONFIG.md)。2026-11-06 用户批准的发布门槛豁免见 [GAP §8.1](docs/research/GAP-AURABOT.md#81-用户批准豁免)，其他差距继续跟踪。
 

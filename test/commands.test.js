@@ -410,3 +410,57 @@ test('commands admin: /file only passes relative media paths; rejects absolute a
   const failing = adminCommands({}, { media: { async sendMedia() { throw new Error('secret') } } })
   assert.doesNotMatch((await failing.service.handle(turn('/file a.txt'))).reply, /secret/)
 })
+
+test('image commands: draw/redraw/image send once to current chat without confirmation text', async () => {
+  const calls = []
+  const media = {
+    async generateImage(prompt) { calls.push(['generate', prompt]); return { ok: true, path: 'generated/cat.png' } },
+    async editImage(prompt, path) { calls.push(['edit', prompt, path]); return { ok: true, path: 'generated/edited.png' } },
+    async sendMedia(payload) { calls.push(['send', payload]) },
+  }
+  const h = harness({ media: { enabled: true, images: { enabled: true, generateEnabled: true, editEnabled: true } } }, { media })
+  for (const command of ['/draw 一只猫', '/redraw inbound/cat.png 蓝色背景', '/image inbound/ordinary.png']) {
+    assert.deepEqual(await h.service.handle(turn(command, { chatType: 'group', chatId: '20001' })), { handled: true, reply: '' })
+  }
+  assert.deepEqual(calls, [
+    ['generate', '一只猫'], ['send', { chatType: 'group', chatId: '20001', kind: 'image', relativePath: 'generated/cat.png' }],
+    ['edit', '蓝色背景', 'inbound/cat.png'], ['send', { chatType: 'group', chatId: '20001', kind: 'image', relativePath: 'generated/edited.png' }],
+    ['send', { chatType: 'group', chatId: '20001', kind: 'image', relativePath: 'inbound/ordinary.png' }],
+  ])
+  assert.equal(h.sent.length, 0)
+  const help = await h.service.handle(turn('/help'))
+  for (const name of ['/draw', '/redraw', '/image']) assert.ok(help.reply.includes(name))
+})
+
+test('image commands: disabled, owner/access denied and invalid inputs produce no media side effects', async () => {
+  const calls = []
+  const media = Object.fromEntries(['generateImage', 'editImage', 'sendMedia'].map((name) => [name, async (...args) => { calls.push([name, args]) }]))
+  const enabled = { enabled: true, images: { enabled: true, generateEnabled: true, editEnabled: true } }
+  const disabled = harness({}, { media })
+  assert.ok((await disabled.service.handle(turn('/draw cat'))).reply.includes('未启用'))
+  assert.ok((await disabled.service.handle(turn('/redraw source.png cat'))).reply.includes('未启用'))
+  assert.ok((await harness({ media: { enabled: true } }, { media }).service.handle(turn('/image source.png'))).reply.includes('未启用'))
+  const blocked = harness({ media: enabled }, { media, allowSend: false })
+  const h = harness({ media: enabled }, { media })
+  for (const cmd of ['/draw cat', '/redraw source.png cat', '/image source.png']) {
+    assert.equal((await blocked.service.handle(turn(cmd))).error, 'ACCESS_DENIED')
+    assert.deepEqual(await h.service.handle(turn(cmd, { senderId: '20002' })), { handled: true, reply: '' })
+  }
+  assert.equal(blocked.sent.length, 0)
+  for (const path of ['../cat.png', '/etc/cat.png', 'C:/cat.png', 'C:cat.png', 'a' + String.fromCharCode(92) + 'cat.png', 'x' + String.fromCharCode(0) + '.png']) {
+    assert.ok((await h.service.handle(turn('/redraw ' + path + ' cat'))).reply.includes('相对路径'))
+    assert.ok((await h.service.handle(turn('/image ' + path))).reply.includes('相对路径'))
+  }
+  for (const cmd of ['/draw', '/draw ' + 'x'.repeat(1001), '/redraw source.png', '/redraw source.png ' + 'x'.repeat(1001), '/image']) assert.ok((await h.service.handle(turn(cmd))).reply)
+  assert.deepEqual(calls, [])
+})
+
+test('image commands: provider/send failures return a short safe error', async () => {
+  const media = { async generateImage() { throw new Error('provider-secret') }, async editImage() { throw new Error('provider-secret') }, async sendMedia() { throw new Error('raw gateway error') } }
+  const h = harness({ media: { enabled: true, images: { enabled: true, generateEnabled: true, editEnabled: true } } }, { media })
+  for (const cmd of ['/draw cat', '/redraw source.png cat', '/image source.png']) {
+    const result = await h.service.handle(turn(cmd))
+    assert.ok(result.reply.includes('图片操作失败'))
+    assert.ok(!result.reply.includes('secret') && !result.reply.includes('raw gateway'))
+  }
+})

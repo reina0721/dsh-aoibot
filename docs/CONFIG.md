@@ -179,7 +179,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | 路径 | 默认值 | 作用 |
 |---|---|---|
 | `media.enabled` | `false` | 媒体总开关 |
-| `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、TTS 输出和发送均检查 |
+| `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、TTS/生图/改图输出、改图源和发送均检查 |
 | `media.dir` | `""` | 留空为 `<数据目录>/media`；可指定自定义目录 |
 | `media.stickers.enabled` | `true` | 启用本地表情包库；QQ 发送仍要求 `media.enabled` 与 `media.images.enabled` 同时开启 |
 | `media.stickers.maxCount` | `200` | 表情包最多 1–5000 个；默认 200 |
@@ -188,6 +188,16 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `media.images.enabled` | `false` | 允许图片入站下载与 `sendMedia` 发送 |
 | `media.images.visionEnabled` | `false` | 调用 OpenAI 兼容 `/chat/completions` 生成简短图片描述 |
 | `media.images.visionBaseUrl/visionModel/visionApiKeyEnv` | `""` | Vision 根地址、模型、API Key 环境变量名 |
+| `media.images.generateEnabled` | `false` | 独立开启生图，仍要求 media.enabled |
+| `media.images.generateBaseUrl` | `""` | 生图 OpenAI 兼容 API 根地址 |
+| `media.images.generateModel` | `"gpt-image-1"` | 生图模型；仅在启用时使用 |
+| `media.images.generateApiKeyEnv` | `""` | 生图 API Key 环境变量名，不保存密钥 |
+| `media.images.generateSize` | `"1024x1024"` | 默认请求尺寸，限下列五种 |
+| `media.images.editEnabled` | `false` | 独立开启改图，仍要求 media.enabled |
+| `media.images.editBaseUrl` | `""` | 改图 OpenAI 兼容 API 根地址；留空沿用 generate 对应配置 |
+| `media.images.editModel` | `""` | 改图模型；仅在启用时使用；留空沿用 generate 对应配置 |
+| `media.images.editApiKeyEnv` | `""` | 改图 API Key 环境变量名，不保存密钥；留空沿用 generate 对应配置 |
+| `media.images.editSize` | `"1024x1024"` | 默认请求尺寸，限下列五种 |
 | `media.audio.asrEnabled` | `false` | 下载 record 并调用 `/audio/transcriptions`；默认模型 `whisper-1` |
 | `media.audio.asrBaseUrl/asrModel/asrApiKeyEnv` | `""` / `"whisper-1"` / `""` | ASR 根地址、模型、API Key 环境变量名 |
 | `media.audio.ttsEnabled` | `false` | 调用 `/audio/speech`，输出 MP3；不自动发送 |
@@ -195,6 +205,10 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `media.files.enabled` | `false` | 允许白名单扩展名的文件入站下载和 OneBot 文件上传 |
 
 允许扩展名：图片 `jpg/jpeg/png/gif/webp/bmp`；语音 `mp3/wav/ogg/m4a/aac/amr/silk`；文件 `txt/md/json/csv/pdf/doc/docx/xls/xlsx/ppt/pptx/zip/7z/rar`。网络超时沿用 `timeouts.callMs`。
+
+生图/改图（M7-c）：`generateImage(prompt,{size?})` POST `/images/generations` JSON（model/prompt/size/n=1/response_format=b64_json）；`editImage(prompt,path,{size?})` POST `/images/edits` multipart（image/prompt/model/size/response_format=b64_json）。提示词 trim 后 1–1000 字符；size 仅 `256x256`、`512x512`、`1024x1024`、`1792x1024`、`1024x1792`。仅接收 `data[0].b64_json` PNG，不获取 provider 返回 URL，也不跟随 provider HTTP 重定向；生成结果受 `media.maxBytes` 限制，PNG 头尺寸每边最多 1792、总像素最多 1792×1024；JSON 响应另限 base64 上限加 64 KiB 元数据。输出为媒体根内 `generated/<uuid>.png` 相对路径。
+
+改图源只接受媒体根内相对路径、允许的图片扩展名和大小内普通文件，realpath 同时约束源文件及生成目录，拒绝绝对/Windows/控制字符/`..` 路径与符号链接逃逸。不会做图片转码、mask 或本地编辑，只提交 OpenAI 兼容 edits。`timeouts.callMs` 在媒体调用中限制到 1000–120000ms；密钥只从环境读取，provider 请求/响应错误不回显原始内容。`status().images.generate/edit` 分别给出 enabled/configured；configured 只判断字段完整性，不读取密钥或验证连通性。面板和 REST 只落盘；QQ `/draw`、`/redraw`、`/image` 发送还需 `images.enabled`，并先通过主人身份及 access.canSend。真实 provider/QQ 生图改图未验证，各 provider 的模型、尺寸和字段兼容性需自行受控验证。
 
 ### 3.9.1 公共内容（`content.bilibili`）
 

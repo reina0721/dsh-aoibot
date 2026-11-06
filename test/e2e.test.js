@@ -790,3 +790,39 @@ test('升级 API：默认零联网、手动检查、缓存/force 与真实错误
   assert.deepEqual((await getJson(fake, '/upgrade')).cached, checked, '错误不会伪造或替换上次成功结果')
   assert.equal(calls, 3)
 })
+
+test('media image routes: disabled zero provider calls, local generate/edit results, no auto-send', async (t) => {
+  const originalFetch = globalThis.fetch
+  const calls = []
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+  process.env.DSH_E2E_IMAGE_KEY = 'fake-image-key'
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, init })
+    assert.ok(String(url).startsWith('https://image-provider.test/v1/images/'))
+    return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }))
+  }
+  t.after(() => { globalThis.fetch = originalFetch; delete process.env.DSH_E2E_IMAGE_KEY })
+  const { fake, mock } = await boot(t, { rowConfig: { enabled: false } })
+  for (const path of ['/media/image/generate', '/media/image/edit']) {
+    const result = await fake.call(API + path, { prompt: 'cat', path: 'source.png' }, { method: 'POST' })
+    assert.equal(result.json.ok, false)
+    assert.ok(result.json.message.includes('未启用'))
+  }
+  assert.equal(calls.length, 0)
+  await patchConfig(fake, { media: { enabled: true, images: { generateEnabled: true, editEnabled: true, generateBaseUrl: 'https://image-provider.test/v1', generateApiKeyEnv: 'DSH_E2E_IMAGE_KEY' } } })
+  const generated = await postJson(fake, '/media/image/generate', { prompt: 'cat', size: '512x512' })
+  assert.equal(generated.size, '512x512')
+  const status = await getJson(fake, '/media/status')
+  assert.equal(status.images.generate.configured, true)
+  assert.deepEqual(await readFile(join(status.dir, generated.path)), png)
+  const edited = await postJson(fake, '/media/image/edit', { prompt: 'blue', path: generated.path })
+  assert.deepEqual(await readFile(join(status.dir, edited.path)), png)
+  assert.equal(calls.length, 2)
+  assert.ok(calls[1].init.body instanceof FormData)
+  for (const payload of [{ prompt: 'cat', path: '../outside.png' }, { prompt: 'cat', path: generated.path, size: 'auto' }]) {
+    const rejected = await fake.call(API + '/media/image/edit', payload, { method: 'POST' })
+    assert.equal(rejected.json.ok, false)
+  }
+  assert.equal(calls.length, 2)
+  assert.equal(mock.calls.filter((call) => ['send_group_msg', 'send_private_msg'].includes(call.action)).length, 0)
+})

@@ -201,6 +201,9 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 | `/purpose done/drop/pause/resume ID` | 完成/放弃/暂停/恢复目的 |
 | `/purpose progress ID 0-100` | 设置目的进度 |
 | `/tts 文本` | 合成语音并发送到当前聊天（默认≤300 字） |
+| `/draw 提示词` | 生成图片并发送到当前聊天；提示词 1–1000 字符 |
+| `/redraw 相对路径 提示词` | 用媒体根内图片调用兼容 edits 后发送；路径不能含空格 |
+| `/image 相对路径` | 发送媒体根内已有图片（不调用 provider） |
 | `/say 文本` | 直接向当前聊天发送一次文本 |
 | `/sticker [标签]` | 从本地表情包库随机发图 |
 | `/bili hot` | 查看 B站公开热门视频（需先启用内容服务） |
@@ -275,20 +278,26 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 **仍未做**：导入旧档案、人物/群档案的完整编辑页、向量检索；见 GAP 矩阵。
 
-### 3.7 媒体与表情包（M4-a/M4-b）
+### 3.7 媒体与表情包（M4-a/M4-b/M7-c）
 
-媒体默认完全关闭。在「配置 → 媒体」先开 `media.enabled`，再按需开启图片、Vision、ASR、TTS 或文件。Provider 使用 OpenAI 兼容接口；配置里只填 API Key 的环境变量名，密钥本身放在启动 DSH 的进程环境中。
+媒体默认完全关闭。在「配置 → 媒体」先开 `media.enabled`，再按需开启图片、Vision、生图、改图、ASR、TTS 或文件。Provider 使用 OpenAI 兼容接口；配置里只填 API Key 的环境变量名，密钥本身放在启动 DSH 的进程环境中。
 
 - 图片：下载入站图片；可选 Vision 会把一句 `[图片：描述]` 追加到本轮上下文。底层 `sendMedia` 使用 `base64://`；普通图片没有独立发送控件，表情包走 `/sticker`，见下。
 - 语音：开启 ASR 后下载 record 并转写，追加 `[语音转写：…]`；TTS 只生成 `<数据目录>/media/outbound/*.mp3`，不会自动发到 QQ。
 - 文件：下载允许扩展名的文件；底层支持 OneBot `upload_group_file` / `upload_private_file`，但没有任意路径上传 API。
 - 所有媒体受 `media.maxBytes`（默认 10 MiB）和扩展名白名单限制；失败只在 debug 日志记录，不会让普通消息处理失败。
-- 顶层「媒体」页显示媒体、Vision、ASR、TTS 与表情包状态。TTS 测试只在本机生成 MP3 并显示文件位置，不会发送到 QQ。
+- 顶层「媒体」页显示媒体、Vision、生图、改图、ASR、TTS 与表情包状态。TTS 测试只在本机生成 MP3 并显示文件位置，不会发送到 QQ。
 - 表情包支持 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个。通过媒体页上传、预览、编辑逗号分隔标签或删除；相同内容按 SHA-256 去重。
 - 主人可在当前聊天使用 `/tts 文本` 合成并发送语音（默认最多 300 字符）、`/say 文本` 发送一次文本、`/sticker [标签]` 从匹配项随机发图。三者均受主人身份、白名单和当前聊天出站权限约束。
 - 诊断接口：`GET /onebot-qq/api/media/status`；`POST /onebot-qq/api/media/test` 只接受 `tts`、`asr`、`vision` 并使用内置样本；`POST /onebot-qq/api/media/tts` 只接受文本并返回本地生成文件路径。
 
-当前不会自动收集聊天图片、按语境挑表情、缩放转码或连接表情包商城；也不包含 Agent 媒体工具、RVC/翻唱、自动语音策略、图片生成/编辑或任意本地脚本接口。真实 OneBot/provider 兼容性需在自己的测试号上验证。
+生图/改图默认关闭。在配置里开启 `media.enabled` 与 `media.images.generateEnabled` / `editEnabled`，填写 Base URL、模型和密钥环境变量名；改图的地址/模型/环境变量名留空会沿用生图配置。默认生图模型是 `gpt-image-1`，实际模型/字段兼容性由 provider 决定。媒体页「生图/改图」输入 1–1000 字符提示词、选择尺寸（256×256、512×512、1024×1024、1792×1024、1024×1792），改图另输入源图片相对路径，再点「生成图片」或「编辑图片」。页面显示返回路径或错误，只落盘，不发送 QQ；不提供本地路径选择器或新的图片上传/下载入口。
+
+主人发送示例：`/draw 一只猫`、`/redraw generated/示例.png 改为蓝色背景`、`/image generated/示例.png`。这些命令还需开启 `media.images.enabled`，先通过当前会话 `access.canSend`，成功只发送一张图片，没有额外确认文本；`/image` 不要求开启生图/改图，也不要求 QQ 管理命令开关。路径相对于媒体根，拒绝绝对路径、Windows 路径、控制字符、`..`、目录及符号链接逃逸；允许 jpg/jpeg/png/gif/webp/bmp，大小受 `media.maxBytes` 限制。
+
+本地接口 `POST /onebot-qq/api/media/image/generate` 接受 `{prompt,size?}`，`POST /onebot-qq/api/media/image/edit` 接受 `{path,prompt,size?}`，返回 `{ok:true,path,size}` 或 `{ok:false,message}`。结果只接受 provider 的 PNG `b64_json`，不抓取返回 URL，不跟随重定向；保存为 `generated/<uuid>.png`。PNG 头尺寸每边最多 1792、总像素最多 1792×1024；源/输出大小沿用媒体上限，超时沿用 `timeouts.callMs`（媒体限制 1–120 秒）。改图只调用 OpenAI 兼容 edits，没有 mask、转码或其他编辑后端；真实 provider 和 QQ 生图/改图未验证。
+
+当前不会自动收集聊天图片、按语境挑表情、缩放转码或连接表情包商城；也不包含 Agent 媒体工具、RVC/翻唱、自动语音策略、兼容 edits 之外的图片编辑或任意本地脚本接口。真实 OneBot/provider 兼容性需在自己的测试号上验证。
 
 ### 3.8 B站公共内容与 QQ空间边界（M5-b）
 
@@ -325,8 +334,9 @@ QQ空间明确未实现：它需要 QQ 登录授权，并涉及平台授权与�
 
 ### 媒体
 
-- 媒体状态卡：总开关、Vision/ASR/TTS 配置状态、表情包数量；
+- 媒体状态卡：总开关、Vision/生图/改图/ASR/TTS 配置状态、表情包数量；
 - TTS 测试：只在本机生成 MP3 并显示路径，不发送到 QQ；
+- 生图/改图：提示词、五档尺寸、可选源相对路径，返回生成路径或错误；只落盘，不发送到 QQ；
 - 表情包库：上传 PNG/JPG/JPEG/GIF/WebP，预览、编辑标签、删除；相同内容 SHA-256 去重；
 - 媒体与 provider 默认关闭；配置在「配置 → 媒体」，API Key 只填环境变量名。
 

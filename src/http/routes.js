@@ -198,6 +198,14 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       if (!['tts', 'asr', 'vision'].includes(kind)) throw new Error('kind 必须是 tts、asr 或 vision')
       return { ok: true, ...(await media.test(kind)) }
     })
+    route('POST', '/media/image/generate', async (req) => {
+      const body = await readBody(req)
+      return media.generateImage(body?.prompt, { size: body?.size })
+    })
+    route('POST', '/media/image/edit', async (req) => {
+      const body = await readBody(req)
+      return media.editImage(body?.prompt, body?.path, { size: body?.size })
+    })
     route('POST', '/media/tts', async (req) => {
       const body = await readBody(req)
       const text = String(body?.text || '').trim()

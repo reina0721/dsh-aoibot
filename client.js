@@ -6607,6 +6607,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [error, setError] = useState('')
       const [ttsText, setTtsText] = useState('')
       const [ttsFile, setTtsFile] = useState('')
+      const [imagePrompt, setImagePrompt] = useState('')
+      const [imageSize, setImageSize] = useState('1024x1024')
+      const [imageSource, setImageSource] = useState('')
+      const [imageResult, setImageResult] = useState('')
+      const [imageError, setImageError] = useState('')
       const [busy, setBusy] = useState('')
 
       const refresh = useCallback(async () => {
@@ -6635,6 +6640,21 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         if (!result.ok) return props.toast('TTS 测试失败：' + String(result.message || '未知错误'), 'err')
         setTtsFile(String(result.file || ''))
         props.toast('TTS 文件已生成', 'ok')
+      }
+
+      const runImage = async (kind) => {
+        const prompt = imagePrompt.trim()
+        if (!prompt || prompt.length > 1000) return setImageError('提示词必须为 1–1000 字符')
+        if (kind === 'edit' && !imageSource.trim()) return setImageError('请输入源图片的媒体根内相对路径')
+        setBusy(kind)
+        setImageError('')
+        setImageResult('')
+        try {
+          const result = safeObject(await post('/media/image/' + kind, { prompt, size: imageSize, ...(kind === 'edit' ? { path: imageSource.trim() } : {}) }))
+          if (!result.ok) setImageError(String(result.message || '图片操作失败'))
+          else setImageResult(String(result.path || ''))
+        } catch { setImageError('图片操作失败') }
+        finally { setBusy('') }
       }
 
       const upload = (event) => {
@@ -6686,9 +6706,24 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         h('div', { className: 'ob-stat-grid' },
           h(StatTile, { label: '媒体总开关', value: status.enabled ? '已开启' : '已关闭', icon: 'sparkles', tone: status.enabled ? 'ok' : 'muted', hint: '默认关闭，无外部网络请求' }),
           h(StatTile, { label: 'Vision', value: images.configured ? '已配置' : '未配置', icon: 'overview', tone: images.configured ? 'ok' : 'warn', hint: images.visionEnabled ? '功能已启用' : '功能未启用' }),
+          h(StatTile, { label: '生图', value: images.generate?.configured ? '已配置' : '未配置', icon: 'sparkles', tone: images.generate?.configured ? 'ok' : 'warn', hint: images.generate?.enabled ? '功能已启用' : '功能未启用' }),
+          h(StatTile, { label: '改图', value: images.edit?.configured ? '已配置' : '未配置', icon: 'sparkles', tone: images.edit?.configured ? 'ok' : 'warn', hint: images.edit?.enabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'ASR', value: audio.asrConfigured ? '已配置' : '未配置', icon: 'message', tone: audio.asrConfigured ? 'ok' : 'warn', hint: audio.asrEnabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: 'TTS', value: audio.ttsConfigured ? '已配置' : '未配置', icon: 'bolt', tone: audio.ttsConfigured ? 'ok' : 'warn', hint: audio.ttsEnabled ? '功能已启用' : '功能未启用' }),
           h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: stickerStatus.enabled === false ? '功能未启用' : '本地表情包库' }),
+        ),
+        h(Panel, { title: '生图/改图', description: '只生成本地 PNG 文件，不会发送到 QQ。改图仅接受媒体根内相对路径。' },
+          h('div', { className: 'ob-stack' },
+            h('textarea', { className: 'ob-input', 'aria-label': '图片提示词', value: imagePrompt, maxLength: 1000, placeholder: '输入提示词（1–1000 字符）', onChange: (event) => setImagePrompt(event.target.value) }),
+            h('select', { className: 'ob-input', 'aria-label': '图片尺寸', value: imageSize, onChange: (event) => setImageSize(event.target.value) }, ['256x256', '512x512', '1024x1024', '1792x1024', '1024x1792'].map((size) => h('option', { key: size, value: size }, size))),
+            h('input', { className: 'ob-input', 'aria-label': '源图片相对路径', value: imageSource, placeholder: '源图片相对路径（仅改图需要，如 inbound/cat.png）', onChange: (event) => setImageSource(event.target.value) }),
+            h('div', { className: 'ob-row' },
+              h(Btn, { kind: 'primary', disabled: Boolean(busy) || !status.enabled || !images.generate?.enabled, busy: busy === 'generate', onClick: () => runImage('generate') }, '生成图片'),
+              h(Btn, { disabled: Boolean(busy) || !status.enabled || !images.edit?.enabled, busy: busy === 'edit', onClick: () => runImage('edit') }, '编辑图片'),
+            ),
+            imageResult ? h('p', { className: 'ob-note ob-mono' }, '生成路径：' + imageResult) : null,
+            imageError ? h(Banner, { tone: 'err', message: imageError }) : null,
+          ),
         ),
         h(Panel, { title: 'TTS 测试', description: '只生成本地语音文件，不会发送到 QQ。' },
           h('div', { className: 'ob-stack' },
@@ -6810,6 +6845,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const image = safeObject(media.images), audio = safeObject(media.audio)
       const providers = [
         { name: 'Vision', enabled: media.enabled === true && image.visionEnabled === true, base: image.visionBaseUrl, model: image.visionModel, env: image.visionApiKeyEnv },
+        { name: '生图', enabled: media.enabled === true && image.generateEnabled === true, base: image.generateBaseUrl, model: image.generateModel, env: image.generateApiKeyEnv },
+        { name: '改图', enabled: media.enabled === true && image.editEnabled === true, base: image.editBaseUrl || image.generateBaseUrl, model: image.editModel || image.generateModel, env: image.editApiKeyEnv || image.generateApiKeyEnv },
         { name: 'ASR', enabled: media.enabled === true && audio.asrEnabled === true, base: audio.asrBaseUrl, model: audio.asrModel, env: audio.asrApiKeyEnv },
         { name: 'TTS', enabled: media.enabled === true && audio.ttsEnabled === true, base: audio.ttsBaseUrl, model: audio.ttsModel, env: audio.ttsApiKeyEnv },
       ]

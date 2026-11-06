@@ -6,7 +6,7 @@
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.10.0` 未发布分支，320 个测试（316 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.10.0` 未发布分支，332 个测试（328 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
@@ -40,7 +40,7 @@
 | 存储 | I/T/V | `store.js` | `node:sqlite` WAL + FTS5 + 事务/回滚/备份；JSON fallback；schema version；原始 JSONL；WAL checkpoint | 迁移只有 v1；跨大版本升级需补迁移脚本 |
 | 模型协议 | I/T/V | `src/model/**` | OpenAI Chat/Responses、Anthropic、Gemini、Ollama 统一适配；OpenCode Go/Command Code/OpenRouter 预设；自定义 base/header/auth；流式/发现/重试/安全；真实 OpenCode OpenAI+Anthropic 通过；真实认知直连 analysis+compose 成功 | 工具调用/多模态未实现；Azure/Bedrock/Vertex/OAuth 未纳入；Command Code/OpenRouter 无 live chat key；Gemini/Ollama 仅 mock |
 | 可观测 | I/T/V | `pipeline` traces、`overview`、UI | 每阶段 trace、决策候选、计数、API/UI、暂停/演练 | 没有完整分布式追踪/指标导出 |
-| 多模态/媒体（M4-a/M4-b） | I/T/L | `src/media/index.js`、`src/media/stickers.js`、`commands.js`、媒体面板、`gateway/actions.js` | 默认关闭外部媒体；Vision/ASR/TTS 与图片/语音/文件收发；表情包限 PNG/JPG/JPEG/GIF/WebP、默认 5 MiB/张和 200 张、SHA-256 去重/人工标签；安全按 ID 取图；`/tts` `/say` `/sticker` 与媒体面板 | 不自动收集/语境选图/缩放转码，无商城、Agent 媒体工具、自动语音策略、RVC、生图/改图；文件上传依赖网关；尚无真实 QQ/provider V |
+| 多模态/媒体（M4-a/M4-b/M7-c） | I/T/L | `src/media/index.js`、`src/media/stickers.js`、`commands.js`、媒体面板、`gateway/actions.js` | 默认关闭外部媒体；Vision/ASR/TTS 与图片/语音/文件收发；表情包限 PNG/JPG/JPEG/GIF/WebP、默认 5 MiB/张和 200 张、SHA-256 去重/人工标签；安全按 ID 取图；`/tts` `/say` `/sticker` 与媒体面板；默认关闭的生图/兼容 edits、`/draw` `/redraw` `/image`、本地生图改图 API/面板（只落盘）；prompt≤1000、五档尺寸、PNG b64_json/媒体大小/头尺寸上限、根内相对路径/realpath 防逃逸、超时、env 密钥 | 不自动收集/语境选图/缩放转码，无商城、Agent 媒体工具、自动语音策略、RVC；只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；不抓取返回 URL、无任意本地路径；文件上传依赖网关；尚无真实 QQ/provider V |
 | 本地模块（M5-a） | I/T/L | `src/modules/kernel.js`、`commands.js`、模块面板 | 本地 manifest、权限门控、异步 setup/cleanup、热重载/启停、命令/规范化事件/1 MiB JSON 存储、只读认知注册、统一 outbound 发送、错误隔离与路径/符号链接逃逸检查 | 模块仍是同进程任意代码，不是沙箱；无远程安装、依赖解析、签名、自动更新、文件监视、marketplace 或 `.d.ts`；未做真实第三方模块 V |
 | B站公共内容（M5-b） | I/T | `src/content/bilibili.js`、`commands.js`、内容面板 | 默认关闭；公开搜索/热门/BV 详情；`/bili`、2 个 REST 路由与结果卡；标题/作者/播放/时长/链接规范化 | 无 Cookie/WBI、评论/分享/字幕；QQ空间因授权/ToS 未实现；真实 B站未验证 |
 | 本地备份/恢复（M6-a） | I/T/L | `src/ops/backup.js`、REST、备份面板 | 目录快照（无 zip）；默认配置/模型/认知/模块/表情包，可选根内全部媒体；200 MiB/5000 文件/10 份，原子发布/可选清理、路径/符号链接/hash 校验、默认暂存、allowRestore 门控与恢复前备份 | 含密钥需保护；复制 SQLite 前必须停写，恢复后重启；不保证在线一致性或整目录事务；不删除未列出的文件；无加密/云端/自动恢复/迁移（版本检查见 M6-b），未做真实数据恢复 V |

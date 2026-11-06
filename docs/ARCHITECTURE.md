@@ -337,13 +337,13 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 
 ### 3.17 媒体基础（M4-a）
 
-- `src/media/index.js` 的 `createMediaService()` 是媒体唯一入口。`media.enabled=false`，且 Vision/ASR/TTS 各自默认关闭，因此默认配置不发起媒体网络请求。
+- `src/media/index.js` 的 `createMediaService()` 是媒体唯一入口。`media.enabled=false`，且 Vision/生图/改图/ASR/TTS 各自默认关闭，因此默认配置不发起媒体网络请求。
 - `pipeline.handleTurn()` 在主人命令之后、合并转发展开之前调用 `ingestTurn(turn)`；下载后的附件写入 `turn.media`，ASR/视觉文本用「媒体识别内容」分隔后追加到 `turn.text`，因此进入检索、分析、回复 prompt 与记忆。下载/provider 失败只记 debug，不中断轮次。
 - 入站仅下载 `http/https` 的 `image`/`record`/`file` 段及 `message.images`，按 `media.maxBytes` 限制单文件并校验扩展名；默认目录为 `<dataDir>/media/inbound/`。Vision 调 OpenAI 兼容 `/chat/completions`（base64 data URL），ASR 调 `/audio/transcriptions`（multipart）。
 - TTS 调 OpenAI 兼容 `/audio/speech`，MP3 保存到 `<dataDir>/media/outbound/`。API Key 配置只保存环境变量名，密钥从进程环境读取，不进入状态或日志。
 - `sendMedia()` 对图片/语音使用 `base64://` OneBot 消息段，避免网关不能读取 DSH 本地 `file://`；文件使用 `upload_group_file` / `upload_private_file`。发送同样检查总开关、能力开关、大小与扩展名。
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
-- 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 工具、RVC、图片生成/编辑仍未实现；真实网关/provider 兼容性仍需 M7 实机验证。
+- 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 媒体工具、RVC 仍未实现；受限图片生成/编辑见 §3.19；真实网关/provider 兼容性仍需 M7 实机验证。
 
 ### 3.18 本地模块内核（M5-a）
 
@@ -355,18 +355,25 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - host 提供 `onebotModules`，在接受的规范化事件上非阻塞 dispatch；REST 为 `/modules`、`/modules/reload`、`/modules/toggle`，面板提供列表/启停/重载，不提供上传。
 - 安全边界：模块是宿主进程中的任意本地代码，permissions 不是 Node.js 沙箱。M5-a 不含远程下载、依赖安装、签名、marketplace、自动更新或文件监视。详见 `docs/MODULES.md`。
 
-### 3.19 表情包、媒体命令与面板（M4-b）
+### 3.19 表情包、媒体命令与面板（M4-b/M7-c）
 
 - `src/media/stickers.js` 在 `<dataDir>/media/stickers/` 保存图片，以 `<dataDir>/media/stickers.json` 原子维护索引。只接受 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个；SHA-256 去重，索引缺失或损坏按空库容错。HTTP/JSON 只公开 ID、名称、MIME、大小、hash、标签和时间，不公开绝对路径。
-- REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
+- REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/生图/改图/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
 - 主人命令 `/tts <文本>`、`/say <文本>`、`/sticker [标签]` 只作用于当前聊天。`/tts` 默认最多 300 字符；`/sticker` 在匹配标签中随机选择。媒体发送前显式检查 `access.canSend`，之后仍由媒体/出站服务执行能力开关和路径边界。
-- 精确边界：表情包只支持面板手动上传、SHA-256 去重、人工标签和随机按标签发送；不会自动收集聊天图片、按语境/情绪选择、缩放转码或连接商城。无 `/sing`、自动语音策略、RVC、图片生成/编辑、任意本地脚本/路径接口或 Agent 媒体工具；真实 QQ/provider 兼容性仍待 M7。
+- 精确边界：表情包只支持面板手动上传、SHA-256 去重、人工标签和随机按标签发送；不会自动收集聊天图片、按语境/情绪选择、缩放转码或连接商城。无 `/sing`、自动语音策略、RVC、兼容 edits 之外的图片编辑、任意本地脚本/路径接口或 Agent 媒体工具；真实 QQ/provider 兼容性仍待 M7。
+
+M7-c 增加 `generateImage(prompt,{size})` 与 `editImage(prompt,sourceRelativePath,{size})`；默认关闭，生成 POST `/images/generations` JSON，改图 POST `/images/edits` multipart；API Key 只从指定环境变量读取，改图地址/模型/env 留空沿用生成配置。提示词 1–1000 字符，尺寸白名单 256×256 / 512×512 / 1024×1024 / 1792×1024 / 1024×1792。源图复用发送服务的相对路径/realpath/普通文件/扩展名/大小校验；不接受任意本地路径。
+
+结果仅接收受媒体大小限制的 PNG `data[0].b64_json`，JSON 另有 base64 展开加 64 KiB 上限；不获取任意返回 URL、不跟随 HTTP 重定向，不回显 provider 原始错误/字节/密钥。PNG 头尺寸每边≤1792、总像素≤1792×1024；沿用媒体 1–120 秒超时。生成目录也做 realpath 防逃逸，写入 `generated/<uuid>.png`，返回 `{ok:true,path,size}`；`path` 是媒体根内相对路径。
+
+REST `POST /media/image/generate {prompt,size?}` 与 `/media/image/edit {path,prompt,size?}`、媒体页「生图/改图」只落盘并显示路径/错误，不自动发送 QQ，不新增任意图片上传/下载路由。`status.images.generate/edit` 只报 enabled/configured，字段完整不代表真实连接成功。主人命令 `/draw`、`/redraw`、`/image` 先过 access.canSend；前两者生成后调用 sendMedia，后者直接发送已有图片，三者均要求媒体/图片开关，成功不重复回复文本。不挂 Agent 工具。验证使用 fake fetch/FormData/临时文件，无真实 provider 或 QQ 验证；只支持 OpenAI 兼容 edits，无 mask 或其他图片编辑后端。
 
 ### 3.20 B站公共内容（M5-b）
 
 - `src/content/bilibili.js` 只调用 `api.bilibili.com` 的公开搜索、热门与视频详情端点，统一规范化标题、作者、播放量、时长、BV 号与链接；标题会移除搜索高亮 HTML。
 - `content.bilibili.enabled=false`，所以默认配置零网络；超时默认 15000ms，最多返回 5 条。请求只带 User-Agent/Referer，不携带 Cookie、不做 WBI 签名。HTTP、非零 code、登录要求或风控都返回明确错误，绝不伪造结果。
 - 主人命令 `/bili hot|关键词|BV号`；REST 为 `GET /content/bilibili?q=` 与 `GET /content/bilibili/hot`；顶层「内容」页提供搜索、热门和结果卡。
+- B站接口与 §3.19 媒体 provider 独立；内容查询不会触发生图/改图或自动发送图片。
 - 精确边界：不提供 B站评论、分享、字幕或登录态能力。QQ空间需要 QQ 登录授权且涉及平台授权/ToS，本里程碑明确未实现。没有通用动作总线；真实 B站与 QQ 行为仍待受控真机验证。
 
 ## 4. 数据目录
@@ -377,7 +384,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 ├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
-├── media/               # 可选：inbound/、outbound/、stickers/ 与 stickers.json
+├── media/               # 可选：inbound/、outbound/、generated/、stickers/ 与 stickers.json
 ├── modules/             # 操作员安装的本地模块、state.json 与各模块 data.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）

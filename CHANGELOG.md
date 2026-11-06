@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- M7-c：默认关闭的 OpenAI 兼容生图/改图服务、`/draw` `/redraw` `/image` 主人命令、`/media/image/generate|edit` 和媒体页「生图/改图」。prompt 1–1000 字符、五档尺寸、限媒体大小的 PNG b64_json 落盘；不抓返回 URL，改图源限媒体根内相对路径/realpath/扩展名/大小；只支持兼容 edits。面板/API 不发送 QQ；命令先过 access，无新依赖，fake provider 自动化，真实 provider/QQ 未验证，#44/#46 仍为部分实现。
 - M7-b：记录 2026-11-06 明确用户豁免（远端 API 鉴权、QQ空间、模块市场/远程安装、25 页级面板、迁移/离峰），审计新增 exempt 计数与目标校验；其他差距不变。豁免是用户决定，不是实现证据。
 - 新增默认关闭、仅主人/当前会话的资料、群管、精华、撤回和媒体根内文件命令；独立 `cognition.qqAdmin` 配置，踢人强制 confirm、撤回默认确认，消息归属核实与根内 realpath 校验；破坏性动作记录简短元数据审计。仅命令、不新增 Agent 工具或任意 action 透传；真实 QQ 管理/资料/文件动作未验证。
 

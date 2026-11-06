@@ -11,6 +11,7 @@ const MIME_EXT = {
   'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a',
   'text/plain': '.txt', 'application/pdf': '.pdf', 'application/zip': '.zip',
 }
+const IMAGE_SIZES = new Set(['256x256', '512x512', '1024x1024', '1792x1024', '1024x1792'])
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 
 function safeName(value, fallback = 'media') {
@@ -204,13 +205,9 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     return file
   }
 
-  async function sendMedia({ chatType, chatId, kind, filePath, relativePath, name } = {}) {
-    const c = config()
-    if (!c.enabled) throw new Error('媒体功能未启用')
-    if (!['image', 'record', 'file'].includes(kind)) throw new Error('kind 必须是 image、record 或 file')
-    if (!['private', 'group'].includes(chatType) || !String(chatId || '').trim()) throw new Error('chatType/chatId 无效')
+  async function confinedFile(kind, { relativePath, filePath } = {}) {
     const root = rootDir()
-    if (relativePath !== undefined && (typeof relativePath !== 'string' || !relativePath.trim() || isAbsolute(relativePath) || win32.isAbsolute(relativePath) || /^[a-z]:/i.test(relativePath) || relativePath.includes('\\') || relativePath.split('/').includes('..'))) throw new Error('仅支持媒体根内相对路径')
+    if (relativePath !== undefined && (typeof relativePath !== 'string' || !relativePath.trim() || isAbsolute(relativePath) || win32.isAbsolute(relativePath) || /^[a-z]:/i.test(relativePath) || /[\x00-\x1f\x7f\\]/.test(relativePath) || relativePath.split('/').includes('..'))) throw new Error('仅支持媒体根内相对路径')
     const fullPath = relativePath !== undefined ? resolve(root, relativePath) : resolve(String(filePath || ''))
     if (fullPath !== root && !fullPath.startsWith(`${root}${sep}`)) throw new Error('媒体路径必须在媒体目录内')
     const realRoot = await realpath(root)
@@ -222,6 +219,95 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     const ext = extname(fullPath).toLowerCase()
     const allowed = kind === 'image' ? IMAGE_EXTENSIONS : kind === 'record' ? AUDIO_EXTENSIONS : FILE_EXTENSIONS
     if (!allowed.has(ext) || !allowed.has(extname(realFile).toLowerCase())) throw new Error(`${kind} 文件扩展名不在允许列表`)
+    return { realFile, fullPath }
+  }
+
+  function imageSettings(kind) {
+    const c = config()
+    const images = c.images || {}
+    if (!c.enabled || images[`${kind}Enabled`] !== true) throw new Error(kind === 'edit' ? '改图未启用' : '生图未启用')
+    return {
+      base: images[`${kind}BaseUrl`] || (kind === 'edit' ? images.generateBaseUrl : ''),
+      model: images[`${kind}Model`] || images.generateModel || 'gpt-image-1',
+      env: images[`${kind}ApiKeyEnv`] || (kind === 'edit' ? images.generateApiKeyEnv : ''),
+      size: images[`${kind}Size`] || '1024x1024',
+    }
+  }
+
+  function imageInput(prompt, size, fallback) {
+    if (typeof prompt !== 'string' || !prompt.trim() || prompt.trim().length > 1000) throw new Error('prompt 必须为 1–1000 字符')
+    const selected = size === undefined ? fallback : size
+    if (!IMAGE_SIZES.has(selected)) throw new Error('size 不在允许列表（256x256、512x512、1024x1024、1792x1024、1024x1792）')
+    return { prompt: prompt.trim(), size: selected }
+  }
+
+  async function saveImageResponse(url, init) {
+    let response, body
+    try {
+      response = await providerFetch(url, { ...init, redirect: 'error' })
+    } catch (error) {
+      if (['AbortError', 'TimeoutError'].includes(error?.name)) throw new Error('图片 provider 请求超时')
+      throw new Error('图片 provider 请求失败')
+    }
+    if (!response?.ok) throw new Error(`图片 provider HTTP ${Number(response?.status) || 0}`)
+    try {
+      // Bound the JSON too: base64 expands binary by 4/3, plus a small metadata allowance.
+      body = JSON.parse((await responseBuffer(response, Math.ceil(maxBytes() / 3) * 4 + 65536)).toString('utf8'))
+    } catch (error) {
+      if (['AbortError', 'TimeoutError'].includes(error?.name)) throw new Error('图片 provider 请求超时')
+      throw new Error('图片 provider 响应无效或超过大小限制')
+    }
+    const encoded = body?.data?.[0]?.b64_json
+    if (typeof encoded !== 'string' || !encoded || encoded.length > Math.ceil(maxBytes() / 3) * 4 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new Error('图片 provider 必须返回大小限制内的 b64_json（不支持 URL）')
+    const buffer = Buffer.from(encoded, 'base64')
+    if (!buffer.length || buffer.length > maxBytes()) throw new Error('生成图片超过大小限制')
+    if (buffer.length < 33 || !buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) || buffer.readUInt32BE(8) !== 13 || buffer.toString('ascii', 12, 16) !== 'IHDR') throw new Error('图片 provider 必须返回 PNG')
+    const width = buffer.readUInt32BE(16), height = buffer.readUInt32BE(20)
+    if (!width || !height || width > 1792 || height > 1792 || width * height > 1792 * 1024) throw new Error('生成图片尺寸超过限制')
+    const root = rootDir()
+    const dir = join(root, 'generated')
+    await mkdir(dir, { recursive: true })
+    const realRoot = await realpath(root), realDir = await realpath(dir)
+    if (!realDir.startsWith(`${realRoot}${sep}`)) throw new Error('生成目录不能通过符号链接逃逸媒体目录')
+    const name = `${randomUUID()}.png`
+    await writeFile(join(realDir, name), buffer, { flag: 'wx' })
+    return `generated/${name}`
+  }
+
+  async function generateImage(prompt, { size } = {}) {
+    const c = imageSettings('generate')
+    const input = imageInput(prompt, size, c.size)
+    // gpt-image-* always returns base64 and rejects response_format; DALL-E 2/3 need it.
+    const formats = /^gpt-image/i.test(String(c.model)) ? {} : { response_format: 'b64_json' }
+    const path = await saveImageResponse(endpoint(c.base, '/images/generations'), {
+      method: 'POST', headers: { ...apiHeaders(c.env), 'content-type': 'application/json' },
+      body: JSON.stringify({ model: c.model, ...input, n: 1, ...formats }),
+    })
+    return { ok: true, path, size: input.size }
+  }
+
+  async function editImage(prompt, sourceRelativePath, { size } = {}) {
+    const c = imageSettings('edit')
+    const input = imageInput(prompt, size, c.size)
+    if (typeof sourceRelativePath !== 'string' || !sourceRelativePath.trim()) throw new Error('仅支持媒体根内相对路径')
+    const { realFile } = await confinedFile('image', { relativePath: sourceRelativePath })
+    const buffer = await readFile(realFile)
+    if (buffer.length > maxBytes()) throw new Error('源图片超过大小限制')
+    const form = new FormData()
+    const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp' }[extname(realFile).toLowerCase()]
+    form.append('image', new Blob([buffer], { type: mime }), safeName(basename(realFile)))
+    const formats = /^gpt-image/i.test(String(c.model)) ? {} : { response_format: 'b64_json' }
+    for (const [key, value] of Object.entries({ model: c.model, ...input, ...formats })) form.append(key, value)
+    const path = await saveImageResponse(endpoint(c.base, '/images/edits'), { method: 'POST', headers: apiHeaders(c.env), body: form })
+    return { ok: true, path, size: input.size }
+  }
+
+  async function sendMedia({ chatType, chatId, kind, filePath, relativePath, name } = {}) {
+    const c = config()
+    if (!c.enabled) throw new Error('媒体功能未启用')
+    if (!['image', 'record', 'file'].includes(kind)) throw new Error('kind 必须是 image、record 或 file')
+    if (!['private', 'group'].includes(chatType) || !String(chatId || '').trim()) throw new Error('chatType/chatId 无效')
+    const { realFile, fullPath } = await confinedFile(kind, { relativePath, filePath })
     if (kind === 'image' && c.images?.enabled !== true) throw new Error('图片功能未启用')
     if (kind === 'file' && c.files?.enabled !== true) throw new Error('文件功能未启用')
     if (kind === 'file') {
@@ -238,7 +324,11 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     const c = config()
     return {
       enabled: Boolean(c.enabled), maxBytes: maxBytes(), dir: rootDir(),
-      images: { enabled: Boolean(c.images?.enabled), visionEnabled: Boolean(c.images?.visionEnabled), configured: Boolean(c.images?.visionBaseUrl && c.images?.visionModel && c.images?.visionApiKeyEnv) },
+      images: {
+        enabled: Boolean(c.images?.enabled), visionEnabled: Boolean(c.images?.visionEnabled), configured: Boolean(c.images?.visionBaseUrl && c.images?.visionModel && c.images?.visionApiKeyEnv),
+        generate: { enabled: Boolean(c.images?.generateEnabled), configured: Boolean(c.images?.generateBaseUrl && (c.images?.generateModel || 'gpt-image-1') && c.images?.generateApiKeyEnv) },
+        edit: { enabled: Boolean(c.images?.editEnabled), configured: Boolean((c.images?.editBaseUrl || c.images?.generateBaseUrl) && (c.images?.editModel || c.images?.generateModel || 'gpt-image-1') && (c.images?.editApiKeyEnv || c.images?.generateApiKeyEnv)) },
+      },
       audio: { asrEnabled: Boolean(c.audio?.asrEnabled), ttsEnabled: Boolean(c.audio?.ttsEnabled), asrConfigured: Boolean(c.audio?.asrBaseUrl && c.audio?.asrModel && c.audio?.asrApiKeyEnv), ttsConfigured: Boolean(c.audio?.ttsBaseUrl && c.audio?.ttsModel && c.audio?.ttsApiKeyEnv) },
       files: { enabled: Boolean(c.files?.enabled) },
     }
@@ -258,5 +348,5 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     throw new Error('kind 必须是 tts、asr 或 vision')
   }
 
-  return { ingestTurn, sendMedia, synthesize, status, test: testProvider }
+  return { ingestTurn, sendMedia, synthesize, generateImage, editImage, status, test: testProvider }
 }

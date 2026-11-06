@@ -6,7 +6,7 @@
 import { isOwner } from '../core/access.js'
 
 const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -41,6 +41,9 @@ const HELP_TEXT = [
   '/purpose done|drop|pause|resume ID — 更新目的',
   '/purpose progress ID 0-100 — 设置进度',
   '/tts 文本 — 合成语音并发送到当前聊天',
+  '/draw 提示词 — 生图并发送（最多 1000 字符）',
+  '/redraw 相对路径 提示词 — 改图并发送',
+  '/image 相对路径 — 发送媒体根内图片',
   '/say 文本 — 向当前聊天发送文本',
   '/sticker [标签] — 随机发送一个表情包',
   '/bili hot|关键词|BV号 — B站热门、搜索或视频信息',
@@ -336,6 +339,32 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         const result = await outbound.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
         return { handled: true, reply: '', error: result?.ok ? '' : (result?.error || 'SEND_FAILED') }
       } catch (error) { return { handled: true, reply: '', error: String(error?.message || error) } }
+    }
+
+    if (['draw', 'redraw', 'image'].includes(parsed.name)) {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      const cfg = currentConfig().media || {}
+      if (!cfg.enabled || !cfg.images?.enabled) return send(turn, '图片功能未启用。')
+      if (parsed.name === 'draw' && !cfg.images.generateEnabled) return send(turn, '生图未启用。')
+      if (parsed.name === 'redraw' && !cfg.images.editEnabled) return send(turn, '改图未启用。')
+      let path = parsed.args, prompt = parsed.args
+      if (parsed.name === 'redraw') {
+        const match = /^(\S+)\s+([\s\S]+)$/.exec(parsed.args)
+        if (!match) return send(turn, '用法：/redraw 相对路径 提示词')
+        path = match[1]; prompt = match[2].trim()
+      }
+      if (parsed.name !== 'draw' && (!path || /[\x00-\x1f\x7f\\]/.test(path) || /^(?:\/|[a-z]:)/i.test(path) || path.split('/').includes('..'))) return send(turn, '仅支持媒体根内相对路径。')
+      if (parsed.name !== 'image' && (!prompt || prompt.length > 1000)) return send(turn, '提示词必须为 1–1000 字符。')
+      const method = parsed.name === 'draw' ? 'generateImage' : 'editImage'
+      if (!media?.sendMedia || (parsed.name !== 'image' && typeof media?.[method] !== 'function')) return send(turn, '媒体服务不可用。')
+      try {
+        if (parsed.name !== 'image') {
+          const result = parsed.name === 'draw' ? await media.generateImage(prompt) : await media.editImage(prompt, path)
+          path = result.path
+        }
+        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'image', relativePath: path })
+        return { handled: true, reply: '' }
+      } catch { return send(turn, '图片操作失败：请检查 provider 配置、媒体根内相对路径、大小/扩展名及网关权限。') }
     }
 
     if (parsed.name === 'tts') {
