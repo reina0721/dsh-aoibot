@@ -3,6 +3,7 @@
 // 宿主半边（src/host.js 及其依赖）只用到：
 //   - ctx.effect(fn, label)：注册清理函数（插件卸载时逆序执行）；
 //   - ctx.webServer.register({ kind:'exact', path, handler })：注册 REST 路由；
+//   - ctx.webServer.tapIndex(transform)：注册 index HTML 转换与清理；
 //   - ctx.emit(name, ...args) / ctx.on(name, fn)：插件事件总线；
 //   - ctx.logger.info/warn/error/debug：把插件日志转给 DSH 自己的日志器；
 //   - ctx.get(name) / ctx.provide(name, value)：无害的宿主服务查询（本插件暂不需要）。
@@ -58,6 +59,7 @@ function methodOf(value) {
 export function createFakeDsh(options = {}) {
   /** @type {Map<string, { kind: string, path: string, handler: Function }>} */
   const routes = new Map()
+  const indexTaps = new Set()
   /** 由 ctx.effect 登记的清理函数（卸载时逆序执行）。 */
   const disposers = []
   /** 事件监听器：name → Set<fn> */
@@ -129,6 +131,10 @@ export function createFakeDsh(options = {}) {
     },
     /** 网页服务：exact 路由按 path 存一份（与 DSH 的行为一致：同 path 不区分 method）。 */
     webServer: {
+      tapIndex(transform) {
+        indexTaps.add(transform)
+        return () => indexTaps.delete(transform)
+      },
       register(route) {
         const kind = route?.kind === 'prefix' ? 'prefix' : 'exact'
         const full = String(route?.path || '')
@@ -292,12 +298,15 @@ export function createFakeDsh(options = {}) {
     }
     disposers.length = 0
     routes.clear()
+    indexTaps.clear()
     listeners.clear()
   }
 
   return {
     ctx,
     routes,
+    indexTaps,
+    renderIndex: (html = '<html><head></head><body></body></html>') => [...indexTaps].reduce((result, tap) => tap(result), html),
     disposers,
     listeners,
     emitted,

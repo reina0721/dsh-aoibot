@@ -402,6 +402,8 @@ M7-h 新增 `kind=timeline`：JSON 数组、`events/timeline/items/data/records`
 由「人格」页编辑，存在认知 SQLite；旧记录读取时补空 profile。多份人格用 `persona.activeId` setting 记录当前激活项，
 切换后下一轮消息生效；旧 `self` 自动成为默认人格。文本 profile 优先于数值 style，但不能覆盖安全/隐私边界。
 
+当前人格的 `profile.displayName` 同时用作侧栏入口与概览页标题；为空时回退到 QQ 登录昵称，再回退到 `dsh-bot`。显示名称去控制字符、去首尾空白，最多 40 个 Unicode 字符；改名或切换人格后页头随 `/status.brand` 更新，侧栏需刷新网页。
+
 **人格级认知数据**：存储层会用 `persona_<id>:` 前缀隔离记忆/人物/关系/情绪/策略/学习/技能/诊断记录；
 `setting/persona/state/raw_event/turn/audit_log` 保持全局；LLM 用量按人格隔离（迁移说明见上文）。旧数据在启动时迁移到默认人格，
 迁移标记为 `setting.persona.dataMigration.v08`；人格页的「复制数据」调用 `POST /cognition/persona/data/copy`，

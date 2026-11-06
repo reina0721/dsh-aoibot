@@ -21,7 +21,9 @@
 
 ## 1. 安装到 DSH
 
-完整安装、下载、升级和回退步骤统一见[安装指南](INSTALLATION.md)，旧版先阅读[迁移说明](MIGRATION.md)。安装后重启目标 profile，打开带 token 的 DSH 页面，检查侧栏「QQ 连接」及 /onebot-qq/api/health。
+完整安装、下载、升级和回退步骤统一见[安装指南](INSTALLATION.md)，旧版先阅读[迁移说明](MIGRATION.md)。安装后重启目标 profile，打开带 token 的 DSH 页面，检查侧栏 bot 名称入口及 /onebot-qq/api/health。
+
+侧栏入口与概览页标题使用当前人格的 `profile.displayName`；为空时依次回退到已连接 QQ 的登录昵称、`dsh-bot`。名称会去控制字符、去首尾空白并限制为 40 个 Unicode 字符。修改名称或切换人格后，页头随状态刷新更新；侧栏入口需刷新整个网页后更新。「关于」仍显示「关于 dsh-bot」。
 
 ## 2. 准备 QQ 网关
 
@@ -88,7 +90,7 @@
 
 ## 3. 在面板里填地址与 token
 
-侧栏「QQ 连接」→「连接」标签（或「配置」→「连接地址」），逐项填写：
+侧栏 bot 名称入口 →「连接」标签（或「配置」→「连接地址」），逐项填写：
 
 | 字段 | 必填 | 说明 |
 |---|---|---|
@@ -691,7 +693,7 @@ Motion Policy 控制。系统开启「减少动态效果」时，即使这里选
   可在 SnowLuma 里开启 OneBot 网络，或直接用手填地址模式；
 - 注意 `enabled` 字段（不是 `enable`）为 `false` 的服务端不会被使用。
 
-### 5.7 侧栏没有「QQ 连接」/ 面板空白
+### 5.7 侧栏没有 bot 名称入口 / 面板空白
 
 - 插件安装后必须**重启 DSH 进程**（网页半边在启动时加载）；
 - 确认安装的 profile 就是当前启动的 profile；
@@ -811,4 +813,4 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.dsh\plugins-data\dsh-bot"
 ```
 
 如果设置了 `DSH_BOT_DATA_DIR`，数据在它指向的目录里，等价删除即可。
-卸载后重启 DSH，侧栏「QQ 连接」入口会消失。
+卸载后重启 DSH，侧栏 bot 名称入口会消失。

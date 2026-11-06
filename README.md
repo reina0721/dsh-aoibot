@@ -92,7 +92,7 @@ M7 发布候选的强制检查、回滚与声明边界见 [发布检查表](docs
 ## 首次连接
 
 1. 在 QQ 网关启用正向 WebSocket 与 HTTP 服务，设置 access token。
-2. 重启目标 DSH profile，在侧栏「QQ 连接」填写网关地址、token 和机器人 QQ 号。
+2. 重启目标 DSH profile，从侧栏 bot 名称入口填写网关地址、token 和机器人 QQ 号；入口与概览页标题优先使用当前人格 `profile.displayName`，为空时依次回退 QQ 登录昵称、`dsh-bot`，改名或切换人格后刷新网页更新入口。
 3. 保存并连接，确认「已连接」「核验通过」，再到消息页测试收发。
 4. 打开「安全」页检查白名单/主人、备份、raw action、媒体 provider 与本地模块审核状态。
 

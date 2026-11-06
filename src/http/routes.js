@@ -66,10 +66,11 @@ function toInt(value, fallback, min, max) {
  * @param {object} o.gateway gateway manager（见 src/gateway/manager.js）
  * @param {object} o.events 事件缓冲
  * @param {object} o.logger 日志器
+ * @param {() => string} [o.brandName] 当前面板名称
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, upgrade = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, upgrade = null, brandName, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -125,6 +126,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     return {
       ok: true,
       apiVersion: API_VERSION,
+      brand: brandName?.() || 'dsh-bot',
       version,
       dataDir,
       config: publicConfig(cfg),

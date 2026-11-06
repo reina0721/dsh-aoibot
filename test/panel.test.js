@@ -9,6 +9,7 @@ import { DIMENSIONS } from '../src/cognition/relationships.js'
 
 let captured = null
 globalThis.window = {
+  __DSH_BOT_BRAND__: '小葵',
   __ModuleLoader__: {
     load(registration) {
       captured = registration
@@ -433,8 +434,47 @@ test('apply：注册 sidebar.panellist 与 main 两个 slot', () => {
   assert.equal(sidebar.def.id, 'onebot-qq')
   assert.equal(sidebar.def.order, 20)
   assert.equal(typeof sidebar.def.label, 'function')
-  assert.equal(sidebar.def.label(), 'QQ 连接')
+  assert.equal(sidebar.def.label(), '小葵')
   assert.equal(typeof sidebar.component, 'function')
+})
+
+test('面板品牌：初始名称、status 更新、tabs aria 与关于标题', () => {
+  const render = (tab, status) => {
+    stateOverrides = [tab, status, {}]
+    try { return treeNodes(panel.OneBotPage()) } finally { stateOverrides = null }
+  }
+  for (const [status, brand] of [[null, '小葵'], [{ brand: '' }, '小葵'], [{ brand: '葵' }, '葵']]) {
+    const nodes = render('overview', status)
+    const header = nodes.find((node) => node.type?.name === 'PageHeader')
+    assert.equal(header.props.title, brand)
+    assert.equal(header.props.eyebrow, `ONEBOT V11 · ${brand}`)
+    const tabs = nodes.find((node) => node.type?.name === 'Tabs')
+    assert.equal(tabs.type(tabs.props).props['aria-label'], '小葵 面板')
+    assert.doesNotMatch(JSON.stringify(nodes), /QQ 连接/)
+  }
+  assert.equal(render('about', { brand: '葵' }).find((node) => node.type?.name === 'PageHeader').props.title, '关于 dsh-bot')
+})
+
+test('面板品牌：factory 清理注入名称并回退 dsh-bot', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(window, '__DSH_BOT_BRAND__')
+  const sidebarLabel = () => {
+    let label
+    registration.factory(requireShim).apply({ slots: {
+      inject: (_name, register) => register(),
+      register: (def) => { if (def.name === 'sidebar.panellist') label = def.label() },
+    } })
+    return label
+  }
+  try {
+    for (const [value, expected] of [[undefined, 'dsh-bot'], [null, 'dsh-bot'], [{}, 'dsh-bot'], [' \n\u0000 ', 'dsh-bot'], [' \u0000小葵\n\u007f\u0085 ', '小葵'], ['😀'.repeat(41), '😀'.repeat(40)]]) {
+      window.__DSH_BOT_BRAND__ = value
+      assert.equal(sidebarLabel(), expected)
+    }
+    Object.defineProperty(window, '__DSH_BOT_BRAND__', { configurable: true, get() { throw new Error('unavailable') } })
+    assert.equal(sidebarLabel(), 'dsh-bot')
+  } finally {
+    Object.defineProperty(window, '__DSH_BOT_BRAND__', descriptor)
+  }
 })
 
 test('apply：兼容 ctx.slots 写法，缺 slots 时不抛错', () => {

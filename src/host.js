@@ -200,6 +200,41 @@ export function apply(ctx, rowConfig) {
   gatewayRef = gateway
   cognition.gateway = gateway
 
+  function brandName() {
+    const clean = (value) => typeof value === 'string'
+      ? [...value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim()].slice(0, 40).join('').trimEnd()
+      : ''
+    try {
+      const personaName = clean(cognition.services?.persona?.get?.()?.profile?.displayName)
+      if (personaName) return personaName
+    } catch (error) {}
+    try {
+      const nickname = clean(gateway.snapshot()?.login?.nickname)
+      if (nickname) return nickname
+    } catch (error) {}
+    return 'dsh-bot'
+  }
+
+  let disposeBrand = () => {}
+  if (typeof ctx.webServer?.tapIndex === 'function') {
+    const register = () => {
+      const off = ctx.webServer.tapIndex((html) => {
+        const json = JSON.stringify(brandName())
+          .replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
+        return html.replace(/<\/head>/i, () => `<script>window.__DSH_BOT_BRAND__=${json}</script></head>`)
+      })
+      let active = true
+      disposeBrand = () => {
+        if (!active) return
+        active = false
+        if (typeof off === 'function') off()
+      }
+      return disposeBrand
+    }
+    if (typeof ctx.effect === 'function') ctx.effect(register, 'onebot-qq: 面板名称')
+    else register()
+  }
+
   // 对外暴露认知服务；宿主/其它插件可通过 ctx.get('onebotCognition') 读取。
   try {
     ctx.provide?.('onebotCognition', cognition)
@@ -258,6 +293,7 @@ export function apply(ctx, rowConfig) {
     modules,
     backup,
     upgrade,
+    brandName,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -275,6 +311,7 @@ export function apply(ctx, rowConfig) {
   ready.catch(() => {})
 
   function dispose() {
+    disposeBrand()
     try {
       routes.dispose()
     } catch (error) {}

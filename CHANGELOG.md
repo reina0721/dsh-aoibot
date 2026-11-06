@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 面板入口、概览页标题与导航 aria 名称使用 bot 自身名称：当前人格 `profile.displayName` → QQ 登录昵称 → `dsh-bot`，清理控制字符与首尾空白、最多 40 个 Unicode 字符。index 安全注入初始名称，`/status.brand` 更新页头；改名或切换人格后侧栏需刷新网页。面板 ID、其他标签和「关于 dsh-bot」保持不变；补充离线注入/回退/面板测试，未做 live 或真实浏览器验证。
 - LLM 预算支持 `global|persona|both` 三模式，默认 `global`，保留全局 `dailyTokenBudget=300000`；新增 `personaDailyTokenBudget=300000`（1000–5000000）。始终记录全局 `llm_usage` 和人格 `llm_usage_persona`，`both` 的有效剩余取最小；在途调用记入开始时的人格。恢复全局存储语义，移除中间实现的人格迁移，不自动合并已迁移的历史数据；预算计数不复制，删除人格仅清除人格计数。
 - `cog-llm` 字段上方双预算卡片展示模式、两行已用/预算/剩余、UTC 日期、有效剩余、80% 提示与耗尽警告，支持刷新、加载/错误重试及独立确认重置。GET 返回双状态；POST 需 `confirm:true` 与有效 `scope`，只重置服务器当日选定计数，不改配置、不调用模型。补充离线服务/API/React shim 测试及[设计说明](docs/design/llm-budget-card.md)。未部署，未做真实浏览器或 live 验证；parity 矩阵不变，remaining 47。
 

@@ -1,6 +1,6 @@
 // dsh-bot · 网页半边（浏览器端，单文件）
 //
-// 侧栏「QQ 连接」入口 + 整页面板（概览 / 连接 / 消息 / 配置 / 日志 / 关于）。
+// 侧栏 bot 名称入口 + 整页面板（概览 / 连接 / 消息 / 配置 / 日志 / 关于）。
 // 只读写宿主半边的 /onebot-qq/api/* 接口；所有配置项（含默认值、范围、选项）全部来自
 // GET /config 的 groups 字段表，客户端不写死任何默认值。
 //
@@ -16,6 +16,15 @@
 window.__ModuleLoader__.load({
   id: 'dsh-bot',
   factory: (require) => {
+    const FALLBACK_BRAND = 'dsh-bot'
+    const BRAND = (() => {
+      try {
+        const value = window.__DSH_BOT_BRAND__
+        return typeof value === 'string'
+          ? [...value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim()].slice(0, 40).join('').trimEnd() || FALLBACK_BRAND
+          : FALLBACK_BRAND
+      } catch (error) { return FALLBACK_BRAND }
+    })()
     var module = { exports: {} }
     var exports = module.exports
     const React = require('react') || {}
@@ -3099,7 +3108,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 
       return h(
         'nav',
-        { className: 'ob-tabs', 'aria-label': 'QQ 连接面板' },
+        { className: 'ob-tabs', 'aria-label': `${BRAND} 面板` },
         h(
           'div',
           { className: 'ob-tablist', role: 'tablist', ref: listRef, onKeyDown },
@@ -7418,6 +7427,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     }
 
     function pageHeaderFor(tab, status) {
+      const brand = status?.brand || BRAND
       const gateway = safeObject(status && status.gateway)
       const connected = gateway.state === 'connected'
       const connecting = gateway.state === 'connecting'
@@ -7501,8 +7511,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           }
         default:
           return {
-            eyebrow: 'ONEBOT V11 · QQ BRIDGE',
-            title: 'QQ 连接',
+            eyebrow: `ONEBOT V11 · ${brand}`,
+            title: brand,
             description: connected
               ? '连接正常' + (login && login.nickname ? '（登录账号 ' + String(login.nickname) + '）' : '') + '，面板会实时刷新 QQ 事件、核验状态与日志。'
               : connecting
@@ -8006,7 +8016,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (!slots) slots = ctx.slots
       if (!slots || typeof slots.inject !== 'function') return
       slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, OneBotPage))
-      slots.inject('sidebar.panellist', () => slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => 'QQ 连接' }, OneBotIcon))
+      slots.inject('sidebar.panellist', () => slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => BRAND }, OneBotIcon))
     }
 
     // ---- 导出（apply/inject 给 DSH，其余给测试） ----
