@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-06T18:00:00Z",
-  "scope": "dsh-bot 0.11.2 live web profile — partial real smoke, not full M7 acceptance",
+  "at": "2026-11-06T18:35:00Z",
+  "scope": "dsh-bot 0.11.4 live web profile — accepted parity closure, partial real smoke",
   "live": {
     "ok": true,
-    "version": "0.11.3",
+    "version": "0.11.4",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -43,7 +43,7 @@
     "reminder delivery",
     "B站登录/WBI/字幕/发布评论"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.3); GitHub release v0.11.3 published",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.4); GitHub release v0.11.4 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -89,5 +89,10 @@
     "size": 15,
     "mediaRestored": false,
     "note": "Real live API upload/list/download/delete in media/files; media/files disabled again after test."
+  },
+  "closure": {
+    "acceptedBy": "user",
+    "at": "2026-11-06",
+    "note": "User accepted current parity; remaining 47 and 8 exemptions documented; not full parity."
   }
 }
