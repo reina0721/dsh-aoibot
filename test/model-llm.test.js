@@ -34,7 +34,7 @@ function config(overrides = {}) {
       llm: {
         mode: 'direct', fallbackToDsh: true, provider: '', model: '',
         temperature: 0.2, analysisMaxTokens: 300, composeMaxTokens: 300,
-        timeoutMs: 1000, dailyTokenBudget: 100000, ...overrides,
+        timeoutMs: 1000, dailyTokenBudget: 100000, personaDailyTokenBudget: 300000, budgetScope: 'global', ...overrides,
       },
     },
   }
@@ -159,52 +159,116 @@ test('llm 按聊天覆盖：优先当前会话 provider/model，不影响其他�
 })
 
 for (const [budget, used, left, exhausted] of [[500, 120, 380, false], [500, 700, 0, true], [0, 0, 0, true], [-5, -10, 0, true], ['450', '50', 400, false], [undefined, 'invalid', 0, true]]) {
-  test(`llm usageStatus: budget=${budget}, used=${used}`, () => {
+  test(`llm budgetStatus: budget=${budget}, used=${used}`, () => {
     const store = fakeStore(), clock = { now: () => Date.parse('2026-11-06T23:59:59Z') }
     store.put('llm_usage', '2026-11-06', { tokens: used })
     const llm = createLlmClient({ getConfig: () => config({ dailyTokenBudget: budget }), store, clock })
-    assert.deepEqual(llm.usageStatus(), { date: '2026-11-06', budget: Math.max(0, Number(budget) || 0), usageToday: Math.max(0, Number(used) || 0), budgetLeft: left, exhausted, personaScoped: true })
-    assert.deepEqual(llm.usage(), llm.usageStatus())
+    const global = { budget: Math.max(0, Number(budget) || 0), usageToday: Math.max(0, Number(used) || 0), budgetLeft: left, exhausted }
+    assert.deepEqual(llm.usage(), {
+      date: '2026-11-06', scope: 'global', global,
+      persona: { usageToday: 0, budget: 300000, budgetLeft: 300000, exhausted: false, personaScoped: true },
+      effectiveLeft: left, exhausted, binding: 'global',
+    })
+    assert.deepEqual(llm.usageStatus(), llm.budgetStatus())
+    assert.equal(llm.budgetLeft(), left)
     clock.now = () => Date.parse('2026-11-07T00:00:00Z')
-    assert.equal(llm.usageStatus().usageToday, 0)
-    assert.equal(llm.usageStatus().date, '2026-11-07')
+    assert.equal(llm.usage().global.usageToday, 0)
+    assert.equal(llm.usage().date, '2026-11-07')
   })
 }
 
-test('llm resetUsage: removes today only, is idempotent, preserves config and unblocks complete', async () => {
-  const store = fakeStore(), clock = { now: () => Date.parse('2026-11-06T12:00:00Z') }, calls = []
-  const cfg = config({ dailyTokenBudget: 500 }), before = structuredClone(cfg)
-  store.put('llm_usage', '2026-11-06', { tokens: 700 })
-  store.put('llm_usage', '2026-11-05', { tokens: 200 })
-  const llm = createLlmClient({ ctx: fakeCtx({ calls }), models: modelStub('ok', { calls }), getConfig: () => cfg, store, clock })
-  assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
-  assert.deepEqual(llm.resetUsage(), { reset: true, removed: true, date: '2026-11-06', budget: 500, usageToday: 0, budgetLeft: 500, exhausted: false, personaScoped: true })
-  assert.equal(store.get('llm_usage', '2026-11-06'), null)
-  assert.equal(store.get('llm_usage', '2026-11-05').tokens, 200)
-  assert.equal(llm.resetUsage().removed, false)
-  assert.deepEqual(calls, [], 'status/reset must not resolve a model or call a network')
-  assert.deepEqual(cfg, before)
-  assert.equal((await llm.complete()).ok, true)
-  assert.equal(llm.usageStatus().usageToday, 3)
+for (const scope of ['global', 'persona', 'both']) {
+  test(`llm ${scope}: enforce selected limits, always record both counters`, async () => {
+    const store = fakeStore(), clock = { now: () => 1000 }, calls = []
+    const cfg = config({ budgetScope: scope, dailyTokenBudget: 500, personaDailyTokenBudget: 200 })
+    const llm = createLlmClient({ models: modelStub('ok', { calls }), getConfig: () => cfg, store, clock })
+    store.put('llm_usage', dayKey(clock.now()), { tokens: 100 })
+    store.put('llm_usage_persona', dayKey(clock.now()), { tokens: 50 })
+    assert.equal(llm.budgetLeft(), scope === 'global' ? 400 : 150)
+    assert.equal(llm.usage().binding, scope === 'global' ? 'global' : 'persona')
+    assert.equal((await llm.complete()).ok, true)
+    assert.equal(llm.todayUsage(), 103)
+    assert.equal(llm.personaUsage(), 53)
+    const status = await llm.status()
+    assert.equal(status.usageToday, 103)
+    assert.equal(status.budget, 500)
+    assert.equal(status.budgetLeft, llm.budgetLeft())
+    assert.deepEqual(status.usage, llm.usage())
+    // An exhausted inactive limit must not block a call.
+    cfg.cognition.llm.dailyTokenBudget = scope === 'persona' ? 0 : 500
+    cfg.cognition.llm.personaDailyTokenBudget = scope === 'global' ? 0 : 200
+    assert.equal((await llm.complete()).ok, true)
+    cfg.cognition.llm[scope === 'persona' ? 'personaDailyTokenBudget' : 'dailyTokenBudget'] = 0
+    assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
+    assert.equal(calls.length, 2)
+  })
+}
+
+test('llm both: minimum can bind global, persona or both; invalid mode falls back to global', () => {
+  const cfg = config({ budgetScope: 'both', dailyTokenBudget: 500, personaDailyTokenBudget: 800 })
+  const llm = createLlmClient({ getConfig: () => cfg, store: fakeStore(), clock: { now: () => 1000 } })
+  assert.equal(llm.usage().binding, 'global')
+  cfg.cognition.llm.personaDailyTokenBudget = 500
+  assert.equal(llm.usage().binding, 'both')
+  cfg.cognition.llm.personaDailyTokenBudget = 0
+  assert.equal(llm.usage().binding, 'persona')
+  assert.equal(llm.usage().exhausted, true)
+  cfg.cognition.llm.budgetScope = 'invalid'
+  assert.equal(llm.usage().scope, 'global')
+  assert.equal(llm.budgetLeft(), 500)
 })
 
-test('llm resetUsage: store without remove writes zero and zero budget stays exhausted', async () => {
+for (const scope of ['global', 'persona', 'both']) {
+  test(`llm resetUsage ${scope}: only today's selected keys, idempotent, no config or model changes`, async () => {
+    const store = fakeStore(), clock = { now: () => Date.parse('2026-11-06T12:00:00Z') }, calls = []
+    const cfg = config({ budgetScope: 'both', dailyTokenBudget: 500, personaDailyTokenBudget: 500 }), before = structuredClone(cfg)
+    for (const kind of ['llm_usage', 'llm_usage_persona']) {
+      store.put(kind, '2026-11-06', { tokens: 700 })
+      store.put(kind, '2026-11-05', { tokens: 200 })
+    }
+    const llm = createLlmClient({ ctx: fakeCtx({ calls }), models: modelStub('ok', { calls }), getConfig: () => cfg, store, clock })
+    assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
+    const result = llm.resetUsage({ scope })
+    const removed = { global: scope !== 'persona', persona: scope !== 'global' }
+    assert.deepEqual(result, { ...llm.usage(), reset: true, removed })
+    for (const [name, kind] of [['global', 'llm_usage'], ['persona', 'llm_usage_persona']]) {
+      assert.equal(store.get(kind, '2026-11-06')?.tokens ?? 0, removed[name] ? 0 : 700)
+      assert.equal(store.get(kind, '2026-11-05').tokens, 200)
+    }
+    assert.deepEqual(llm.resetUsage({ scope }).removed, { global: false, persona: false })
+    assert.deepEqual(calls, [], 'usage/reset must not resolve or call a model')
+    assert.deepEqual(cfg, before)
+    llm.resetUsage({ scope: 'both' })
+    assert.equal((await llm.complete()).ok, true)
+    assert.equal(llm.todayUsage(), 3)
+    assert.equal(llm.personaUsage(), 3)
+  })
+}
+
+test('llm resetUsage: invalid scope rejected before writes, zero budget remains exhausted', async () => {
+  const store = fakeStore(), clock = { now: () => 1000 }
+  store.put('llm_usage', dayKey(clock.now()), { tokens: 15 })
+  const llm = createLlmClient({ getConfig: () => config({ dailyTokenBudget: 0 }), store, clock })
+  for (const scope of [undefined, '', 'invalid', null, 1]) assert.throws(() => llm.resetUsage({ scope }), /scope/)
+  assert.equal(llm.todayUsage(), 15)
+  llm.resetUsage({ scope: 'both' })
+  assert.equal(llm.usage().exhausted, true)
+  assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
+})
+
+test('llm resetUsage: store without remove writes zero', () => {
   const store = fakeStore(), clock = { now: () => 1000 }
   delete store.remove
   store.put('llm_usage', dayKey(clock.now()), { tokens: 15 })
-  const llm = createLlmClient({ getConfig: () => config({ dailyTokenBudget: 0 }), store, clock })
+  const llm = createLlmClient({ getConfig: () => config(), store, clock })
   for (let i = 0; i < 2; i++) {
-    const result = llm.resetUsage()
-    assert.equal(result.reset, true)
-    assert.equal(result.removed, false)
-    assert.equal(result.usageToday, 0)
-    assert.equal(result.exhausted, true)
-    assert.deepEqual(store.get('llm_usage', dayKey(clock.now())), { tokens: 0, updatedAt: 1000 })
+    assert.deepEqual(llm.resetUsage({ scope: 'both' }).removed, { global: false, persona: false })
+    assert.equal(llm.todayUsage(), 0)
+    assert.equal(llm.personaUsage(), 0)
   }
-  assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
 })
 
-test('llm usage: a pending completion stays charged to its starting persona after a switch', async () => {
+test('llm usage: pending completion charges global and starting persona; switch/reset isolate persona only', async () => {
   const base = fakeStore(), clock = { now: () => 1000 }
   let active = 'a', release, started
   const ready = new Promise((resolve) => { started = resolve })
@@ -215,11 +279,16 @@ test('llm usage: a pending completion stays charged to its starting persona afte
   const completion = llm.complete()
   await ready
   active = 'b'
-  store.put('llm_usage', dayKey(clock.now()), { tokens: 20 })
+  store.put('llm_usage_persona', dayKey(clock.now()), { tokens: 20 })
   release()
   assert.equal((await completion).ok, true)
-  assert.equal(llm.usageStatus().usageToday, 20)
-  llm.resetUsage()
+  assert.equal(llm.todayUsage(), 3)
+  assert.equal(llm.personaUsage(), 20)
+  llm.resetUsage({ scope: 'persona' })
+  assert.equal(llm.todayUsage(), 3)
   active = 'a'
-  assert.equal(llm.usageStatus().usageToday, 3)
+  assert.equal(llm.personaUsage(), 3)
+  llm.resetUsage({ scope: 'global' })
+  assert.equal(llm.todayUsage(), 0)
+  assert.equal(llm.personaUsage(), 3)
 })

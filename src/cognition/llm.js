@@ -30,6 +30,8 @@ function routeKey(route) {
 
 export function createLlmClient({ ctx, models = null, getConfig, store, clock, log } = {}) {
   const cfg = () => getConfig()?.cognition || {}
+  const baseStore = store?.base || store
+  const personaKind = () => store?.scopedKind?.('llm_usage_persona') || 'llm_usage_persona'
   let serviceWarning = ''
   let lastFailure = null
   // OpenCode Go 等 DSH provider 需要 x-opencode-session；手工 one-shot 也必须带稳定 sessionId。
@@ -159,38 +161,57 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
   }
 
   function todayUsage() {
-    const key = dayKey(clock.now())
-    return Number(store?.get('llm_usage', key)?.tokens || 0)
+    return Math.max(0, Number(baseStore?.get('llm_usage', dayKey(clock.now()))?.tokens) || 0)
   }
 
-  function usageStatus() {
-    const date = dayKey(clock.now())
-    const budget = Math.max(0, Number(cfg().llm?.dailyTokenBudget) || 0)
-    const usageToday = Math.max(0, todayUsage() || 0)
-    return { date, budget, usageToday, budgetLeft: Math.max(0, budget - usageToday), exhausted: usageToday >= budget, personaScoped: true }
+  function personaUsage() {
+    return Math.max(0, Number(baseStore?.get(personaKind(), dayKey(clock.now()))?.tokens) || 0)
   }
 
-  function resetUsage() {
-    const date = dayKey(clock.now())
-    let removed = false
-    if (typeof store?.remove === 'function') {
-      removed = Boolean(store.get('llm_usage', date))
-      store.remove('llm_usage', date)
-    } else {
-      store.put('llm_usage', date, { tokens: 0, updatedAt: clock.now() })
+  function budgetStatus() {
+    const c = cfg().llm || {}
+    const scope = ['global', 'persona', 'both'].includes(c.budgetScope) ? c.budgetScope : 'global'
+    const counter = (usageToday, limit) => {
+      const budget = Math.max(0, Number(limit) || 0)
+      return { usageToday, budget, budgetLeft: Math.max(0, budget - usageToday), exhausted: usageToday >= budget }
     }
-    return { reset: true, removed, ...usageStatus() }
+    const global = counter(todayUsage(), c.dailyTokenBudget)
+    const persona = { ...counter(personaUsage(), c.personaDailyTokenBudget ?? 300000), personaScoped: true }
+    const effectiveLeft = scope === 'both' ? Math.min(global.budgetLeft, persona.budgetLeft)
+      : (scope === 'persona' ? persona : global).budgetLeft
+    const binding = scope === 'both'
+      ? (global.budgetLeft === persona.budgetLeft ? 'both' : global.budgetLeft < persona.budgetLeft ? 'global' : 'persona')
+      : scope
+    return { date: dayKey(clock.now()), scope, global, persona, effectiveLeft, exhausted: effectiveLeft <= 0, binding }
   }
 
-  function recordUsage(tokens, usageStore, usageKind) {
-    if (!usageStore) return
+  function resetUsage({ scope } = {}) {
+    if (!['global', 'persona', 'both'].includes(scope)) throw new Error('LLM 用量重置 scope 必须为 global、persona 或 both')
+    const date = dayKey(clock.now())
+    const removed = { global: false, persona: false }
+    for (const [name, kind] of [['global', 'llm_usage'], ['persona', personaKind()]]) {
+      if (scope !== 'both' && scope !== name) continue
+      if (typeof baseStore?.remove === 'function') {
+        removed[name] = Boolean(baseStore.get(kind, date))
+        baseStore.remove(kind, date)
+      } else {
+        baseStore?.put(kind, date, { tokens: 0, updatedAt: clock.now() })
+      }
+    }
+    return { ...budgetStatus(), reset: true, removed }
+  }
+
+  function recordUsage(tokens, usageKind = personaKind()) {
+    if (!baseStore) return
     const key = dayKey(clock.now())
-    const prev = Number(usageStore.get(usageKind, key)?.tokens || 0)
-    usageStore.put(usageKind, key, { tokens: prev + Math.max(0, Number(tokens) || 0), updatedAt: clock.now() })
+    for (const kind of ['llm_usage', usageKind]) {
+      const prev = Math.max(0, Number(baseStore.get(kind, key)?.tokens) || 0)
+      baseStore.put(kind, key, { tokens: prev + Math.max(0, Number(tokens) || 0), updatedAt: clock.now() })
+    }
   }
 
   function budgetLeft() {
-    return usageStatus().budgetLeft
+    return budgetStatus().effectiveLeft
   }
 
   async function callDsh(route, { system, user, maxTokens, temperature, timeoutMs, purpose }) {
@@ -302,8 +323,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     if (tokensLeft <= 0) return { ok: false, error: 'BUDGET_EXHAUSTED', message: '今日 LLM token 预算已用完', degraded: true }
     const budget = Math.max(64, Math.min(Number(maxTokens || (purpose === 'compose' ? c.composeMaxTokens : c.analysisMaxTokens) || 700), tokensLeft))
     // 固定本次调用的记账人格；等待模型期间切换人格不能把用量记到新人格。
-    const usageKind = store?.scopedKind?.('llm_usage') || 'llm_usage'
-    const usageStore = store?.base || store
+    const usageKind = personaKind()
     const attempts = await buildAttempts(chat)
     if (!attempts.length) {
       return {
@@ -326,7 +346,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       }
       const tokens = Number(result.tokens || result.usage?.total || 0)
         || estimateTokens(system) + estimateTokens(user) + estimateTokens(result.text || '')
-      if (tokens) recordUsage(tokens, usageStore, usageKind)
+      if (tokens) recordUsage(tokens, usageKind)
       if (result.ok && String(result.text || '').trim()) {
         lastFailure = null
         return result
@@ -394,6 +414,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       usageToday: todayUsage(),
       budget: Number(cfg().llm?.dailyTokenBudget || 0),
       budgetLeft: budgetLeft(),
+      usage: budgetStatus(),
       lastFailure,
     }
   }
@@ -407,5 +428,5 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return attempts[0] || null
   }
 
-  return { complete, completeJson, test, resolveRoute, currentRoute, status, usage: usageStatus, usageStatus, resetUsage, budgetLeft, todayUsage, buildAttempts }
+  return { complete, completeJson, test, resolveRoute, currentRoute, status, usage: budgetStatus, usageStatus: budgetStatus, budgetStatus, resetUsage, recordUsage, budgetLeft, todayUsage, personaUsage, buildAttempts }
 }

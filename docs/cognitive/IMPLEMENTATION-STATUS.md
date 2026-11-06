@@ -1,6 +1,8 @@
 # 实现状态（v0.11.5 发布后，M7-v 工作区）
 
-M7 预算可视化/重置（未发布，I/T）：`cog-llm` 卡片显示当前人格的 UTC 当日已用/预算/剩余，80% 提醒、耗尽、加载和错误状态；用量 GET 与 `confirm:true` 重置 POST 仅访问本地计数，不改配置。LLM 用量改为人格隔离，旧全局计数幂等迁至升级启动时当前人格；预算仍由既有字段编辑。仅离线测试，未做 live/真实浏览器验收；见[设计](../design/llm-budget-card.md)。
+Bot 名称面板（未发布，I/T）：侧栏入口、概览页头与导航 aria 使用当前人格 `profile.displayName`，空值回退到 QQ 登录昵称 / `dsh-bot`；名称去控制字符/首尾空白，最多 40 个 Unicode 字符。index 安全注入初始名称，`/status.brand` 驱动页头更新，侧栏改名需刷新网页；保留 `onebot-qq` ID 与「关于 dsh-bot」。离线覆盖解析、注入转义/清理、缺少 tapIndex 的宿主和 React shim；未做 live / 真实浏览器验证，parity 矩阵与计数不变。
+
+M7 双预算可视化/重置（未发布，I/T）：始终跟踪全局 `llm_usage` 与当前人格 `llm_usage_persona`；`budgetScope=global|persona|both`，默认 global，两个限额默认各 300000，both 有效剩余取最小。恢复全局存储并移除中间迁移，不自动重建已迁移历史。`cog-llm` 双行卡片提供模式/有效剩余、80%/耗尽、加载/错误/重试，分别确认重置全局或当前人格今日用量；GET/需 `confirm:true` 和有效 scope 的 POST 只访问本地计数，不改配置、不调用模型。在途调用归起始人格；计数不复制，删除人格仅清除人格用量。仅离线测试，未做 live/真实浏览器验收；parity 矩阵不变，remaining 47。见[设计](../design/llm-budget-card.md)。
 
 0.11.3 已发布并 live，M7-v 为尚未发布的工作区改动；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记，不代表全量验收。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 

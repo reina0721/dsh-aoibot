@@ -223,6 +223,8 @@ export const DEFAULTS = {
       composeMaxTokens: 800,
       timeoutMs: 20000,
       dailyTokenBudget: 300000,
+      budgetScope: 'global',
+      personaDailyTokenBudget: 300000,
       maxConcurrency: 2,
       retry: 1,
       cache: true,
@@ -714,7 +716,9 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.llm.analysisMaxTokens', label: '分析输出上限', type: 'number', default: 1800, min: 128, max: 8192, step: 64, unit: 'tokens' },
       { path: 'cognition.llm.composeMaxTokens', label: '回复输出上限', type: 'number', default: 800, min: 128, max: 4096, step: 64, unit: 'tokens' },
       { path: 'cognition.llm.timeoutMs', label: '单次调用超时', type: 'number', default: 20000, min: 1000, max: 120000, step: 1000, unit: 'ms' },
-      { path: 'cognition.llm.dailyTokenBudget', label: '每日 token 预算', type: 'number', default: 300000, min: 1000, max: 5000000, step: 1000 },
+      { path: 'cognition.llm.dailyTokenBudget', label: '全局每日 token 预算', type: 'number', default: 300000, min: 1000, max: 5000000, step: 1000 },
+      { path: 'cognition.llm.budgetScope', label: '预算作用域', type: 'select', default: 'global', options: [{ value: 'global', label: '全局' }, { value: 'persona', label: '按人格' }, { value: 'both', label: '两者取最小' }] },
+      { path: 'cognition.llm.personaDailyTokenBudget', label: '人格每日 token 预算', type: 'number', default: 300000, min: 1000, max: 5000000, step: 1000 },
       { path: 'cognition.llm.maxConcurrency', label: '并发上限', type: 'number', default: 2, min: 1, max: 8, step: 1 },
       { path: 'cognition.llm.retry', label: '解析/瞬时错误重试', type: 'number', default: 1, min: 0, max: 3, step: 1 },
       { path: 'cognition.modelRouting.privateDefault', label: '私聊默认模型', type: 'text', default: '', placeholder: 'provider/model，留空用全局路由', help: '只影响认知分析/生成，不改变 DSH 面板默认模型。' },
@@ -1258,6 +1262,14 @@ export function normalizeConfig(raw) {
 function normalizeCognition(raw, rawCognition = {}, issues = []) {
   const src = isPlainObject(raw) ? raw : {}
   const d = DEFAULTS.cognition
+  const budgetScope = rawCognition.llm?.budgetScope
+  if (budgetScope !== undefined && !['global', 'persona', 'both'].includes(budgetScope)) {
+    issues.push('cognition.llm.budgetScope 必须为 global、persona 或 both，已回退默认值')
+  }
+  const personaBudget = rawCognition.llm?.personaDailyTokenBudget
+  const validPersonaBudget = personaBudget === undefined || ((typeof personaBudget === 'number' || typeof personaBudget === 'string')
+    && String(personaBudget).trim() !== '' && Number.isFinite(Number(personaBudget)) && Number(personaBudget) >= 1000 && Number(personaBudget) <= 5000000)
+  if (!validPersonaBudget) issues.push('cognition.llm.personaDailyTokenBudget 必须为 1000–5000000，已回退默认值')
   const traits = {}
   for (const [key, def] of Object.entries(d.persona.traits)) {
     traits[key] = pickNumber(src.persona?.traits?.[key], def, { min: 0.1, max: 0.9 })
@@ -1372,6 +1384,8 @@ function normalizeCognition(raw, rawCognition = {}, issues = []) {
       composeMaxTokens: pickNumber(src.llm?.composeMaxTokens, d.llm.composeMaxTokens, { min: 128, max: 4096, integer: true }),
       timeoutMs: pickNumber(src.llm?.timeoutMs, d.llm.timeoutMs, { min: 1000, max: 120000, integer: true }),
       dailyTokenBudget: pickNumber(src.llm?.dailyTokenBudget, d.llm.dailyTokenBudget, { min: 1000, max: 5000000, integer: true }),
+      budgetScope: pickEnum(src.llm?.budgetScope, d.llm.budgetScope, ['global', 'persona', 'both']),
+      personaDailyTokenBudget: pickNumber(validPersonaBudget ? src.llm?.personaDailyTokenBudget : undefined, d.llm.personaDailyTokenBudget, { min: 1000, max: 5000000, integer: true }),
       maxConcurrency: pickNumber(src.llm?.maxConcurrency, d.llm.maxConcurrency, { min: 1, max: 8, integer: true }),
       retry: pickNumber(src.llm?.retry, d.llm.retry, { min: 0, max: 3, integer: true }),
       cache: pickBool(src.llm?.cache, d.llm.cache),

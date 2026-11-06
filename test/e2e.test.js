@@ -141,7 +141,7 @@ function endpointConfig(mock, extra = {}) {
  * @param {(mock: object) => void|Promise<void>} [options.prepareMock] 在 apply 前修改 mock 状态（如 loginUserId）
  * @param {object|((mock: object) => object)} [options.rowConfig] 首次生成 config.json 的初始配置
  */
-async function boot(t, { mockOptions = {}, prepareMock, rowConfig } = {}) {
+async function boot(t, { mockOptions = {}, prepareMock, rowConfig, tapIndex = true } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'onebot-qq-e2e-'))
   const previousDataDir = process.env.DSH_BOT_DATA_DIR
   process.env.DSH_BOT_DATA_DIR = dir
@@ -171,6 +171,7 @@ async function boot(t, { mockOptions = {}, prepareMock, rowConfig } = {}) {
     mock = await startMockOneBot({ selfId: MOCK_SELF_ID, nickname: MOCK_NICKNAME, ...mockOptions })
     if (prepareMock) await prepareMock(mock)
     fake = createFakeDsh()
+    if (!tapIndex) delete fake.ctx.webServer.tapIndex
     const host = await import(HOST_URL)
     const resolvedRowConfig = typeof rowConfig === 'function' ? rowConfig(mock) : (rowConfig || {})
     const handle = host.apply(fake.ctx, resolvedRowConfig)
@@ -185,11 +186,53 @@ async function boot(t, { mockOptions = {}, prepareMock, rowConfig } = {}) {
 const configFileOf = (dir) => join(dir, 'config.json')
 
 test('product rename preserves OneBot API and config event contract', async (t) => {
-  const { fake } = await boot(t, { rowConfig: {} })
+  const { fake } = await boot(t, { rowConfig: {}, tapIndex: false })
   const health = await getJson(fake, '/health')
   assert.ok(health)
   await patchConfig(fake, { enabled: false })
   assert.ok(fake.emitted.some(event => event.name === 'onebot-qq/config'))
+  assert.equal((await getJson(fake, '/status')).brand, 'dsh-bot')
+})
+
+test('面板名称：人格优先、QQ 昵称回退、安全 index 注入与卸载清理', async (t) => {
+  const { fake, handle, mock } = await boot(t, { rowConfig: endpointConfig })
+  await waitForLoginCheck(fake, 'ok')
+  const persona = handle.cognition.services.persona
+  const originalGet = persona.get
+  t.after(() => { persona.get = originalGet })
+  const setName = (displayName) => { persona.get = () => ({ profile: { displayName } }) }
+  const injectedBrand = () => {
+    const html = fake.renderIndex()
+    const match = /<script>window\.__DSH_BOT_BRAND__=(.*?)<\/script><\/head>/s.exec(html)
+    assert.ok(match, '名称脚本应在 </head> 前')
+    assert.doesNotMatch(match[1], /[<\u2028\u2029]/)
+    assert.ok(!html.includes(mock.token), 'index 不应包含网关 token')
+    return JSON.parse(match[1])
+  }
+  const checkName = async (expected) => {
+    const status = await getJson(fake, '/status')
+    assert.equal(status.brand, expected)
+    assert.ok(!status.brand.includes(mock.token), 'brand 不应包含网关 token')
+    assert.equal(injectedBrand(), expected)
+  }
+  assert.equal(fake.indexTaps.size, 1)
+  await checkName(MOCK_NICKNAME)
+  setName(' \u0000小葵\n\u007f\u0085 ')
+  await checkName('小葵')
+  setName('  </script><script>"&\u2028\u2029葵  ')
+  await checkName('</script><script>"&\u2028\u2029葵')
+  setName('😀'.repeat(41))
+  await checkName('😀'.repeat(40))
+  for (const value of ['', ' \n\u0000 ', null, {}]) {
+    setName(value)
+    await checkName(MOCK_NICKNAME)
+  }
+  persona.get = () => { throw new Error('persona unavailable') }
+  await checkName(MOCK_NICKNAME)
+  handle.gateway.stop()
+  await checkName('dsh-bot')
+  handle.dispose()
+  assert.equal(fake.indexTaps.size, 0)
 })
 
 test('媒体表情包 API：上传、列表与按 ID 读取图片', async (t) => {
@@ -278,6 +321,8 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   const persisted = await getJson(fake, '/cognition/persona')
   assert.equal(persisted.persona.profile.displayName, 'E2E 小Q')
   assert.equal(persisted.activeId, firstId)
+  assert.equal((await getJson(fake, '/status')).brand, 'E2E 小Q')
+  assert.match(fake.renderIndex(), /window\.__DSH_BOT_BRAND__="E2E 小Q"/)
 
   const created = await postJson(fake, '/cognition/persona/create', { name: 'E2E 第二人格' })
   assert.equal(created.persona.profile.displayName, 'E2E 第二人格')
@@ -286,6 +331,7 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   assert.ok(created.personas.some((item) => item.id === created.persona.id && item.active === true))
   const afterCreate = await getJson(fake, '/cognition/persona')
   assert.equal(afterCreate.persona.profile.displayName, 'E2E 第二人格')
+  assert.equal((await getJson(fake, '/status')).brand, 'E2E 第二人格')
 
   const dataAll = await getJson(fake, '/cognition/persona/data?personaId=all')
   assert.ok(Array.isArray(dataAll.items) && dataAll.items.length >= 2)
@@ -303,6 +349,7 @@ test('人格 profile API：读取默认、编辑持久化、群聊模式写入 c
   const switched = await postJson(fake, '/cognition/persona/switch', { personaId: firstId })
   assert.equal(switched.activeId, firstId)
   assert.equal(switched.persona.profile.displayName, 'E2E 小Q')
+  assert.equal((await getJson(fake, '/status')).brand, 'E2E 小Q')
 
   const deleted = await postJson(fake, '/cognition/persona/delete', { personaId: created.persona.id })
   assert.equal(deleted.activeId, firstId)
@@ -351,6 +398,8 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   // /status：状态快照 + 统计 + 最近事件
   const status = await getJson(fake, '/status')
   assert.equal(status.apiVersion, 1)
+  const persona = await getJson(fake, '/cognition/persona')
+  assert.equal(status.brand, persona.persona.profile.displayName || status.gateway.login?.nickname || 'dsh-bot')
   assert.equal(status.dataDir, dir)
   assert.equal(status.gateway.state, health.state)
   assert.equal(typeof status.gateway.state, 'string')
@@ -967,54 +1016,73 @@ test('B站 API：默认关闭零网络，公开评论 limit/错误及离线分�
   assert.equal(wrongMethod.status, 405)
 })
 
-test('e2e: LLM budget usage/reset is confirmed, UTC/persona scoped and leaves config/secrets untouched', async (t) => {
+test('e2e: dual LLM usage/reset validates scope and confirmation, isolates personas and preserves config/secrets', async (t) => {
   const secret = 'budget-test-secret-123456'
-  const { fake, handle, dir } = await boot(t, { rowConfig: { cognition: { llm: { dailyTokenBudget: 4321 } }, onebot: { wsToken: secret } } })
+  const { fake, handle, dir } = await boot(t, { rowConfig: { cognition: { llm: { dailyTokenBudget: 4321, personaDailyTokenBudget: 2000, budgetScope: 'both' } }, onebot: { wsToken: secret } } })
   const initial = await getJson(fake, '/cognition/llm/usage')
-  assert.deepEqual(Object.keys(initial).sort(), ['ok', 'date', 'budget', 'usageToday', 'budgetLeft', 'exhausted', 'personaScoped', 'personaId'].sort())
+  assert.deepEqual(Object.keys(initial).sort(), ['ok', 'date', 'scope', 'global', 'persona', 'effectiveLeft', 'exhausted', 'binding', 'personaId'].sort())
   assert.equal(initial.date, new Date().toISOString().slice(0, 10))
-  assert.equal(initial.budget, 4321)
-  assert.equal(initial.usageToday, 0)
-  assert.equal(initial.budgetLeft, 4321)
+  assert.equal(initial.scope, 'both')
+  assert.deepEqual(initial.global, { budget: 4321, usageToday: 0, budgetLeft: 4321, exhausted: false })
+  assert.deepEqual(initial.persona, { budget: 2000, usageToday: 0, budgetLeft: 2000, exhausted: false, personaScoped: true })
+  assert.equal(initial.effectiveLeft, 2000)
+  assert.equal(initial.binding, 'persona')
   assert.equal(initial.exhausted, false)
-  assert.equal(initial.personaScoped, true)
   assert.ok(initial.personaId)
   const { scopedStore } = handle.cognition.state
-  scopedStore.put('llm_usage', initial.date, { tokens: 5000 })
-  scopedStore.put('llm_usage', '2000-01-01', { tokens: 99 })
+  for (const kind of ['llm_usage', 'llm_usage_persona']) {
+    scopedStore.put(kind, initial.date, { tokens: 5000 })
+    scopedStore.put(kind, '2000-01-01', { tokens: 99 })
+  }
   const beforeConfig = await readFile(configFileOf(dir), 'utf8')
   const fullConfig = (await getJson(fake, '/config')).config
-  for (const body of [{}, { confirm: false }, { confirm: 'true' }, null]) {
+  for (const body of [{}, { confirm: false, scope: 'global' }, { confirm: 'true', scope: 'both' }, null,
+    { confirm: true }, { confirm: true, scope: 'invalid' }, { confirm: true, scope: null }, { confirm: true, scope: ['global'] }]) {
     const failed = await fake.call(API + '/cognition/llm/usage/reset', body, { method: 'POST' })
     assert.equal(failed.json.ok, false)
-    assert.equal(failed.json.message, '重置今日 LLM 用量需要 confirm: true')
-    assert.equal((await getJson(fake, '/cognition/llm/usage')).usageToday, 5000)
+    assert.match(failed.json.message, body?.confirm === true ? /scope/ : /confirm: true/)
+    assert.equal((await getJson(fake, '/cognition/llm/usage')).global.usageToday, 5000)
+    assert.equal((await getJson(fake, '/cognition/llm/usage')).persona.usageToday, 5000)
     assert.doesNotMatch(JSON.stringify(failed.json), new RegExp(secret))
   }
+  assert.throws(() => handle.cognition.resetLlmUsage('bad'), /scope/)
   const second = await postJson(fake, '/cognition/persona/create', { name: '预算隔离测试' })
-  assert.equal((await getJson(fake, '/cognition/llm/usage')).usageToday, 0)
-  scopedStore.put('llm_usage', initial.date, { tokens: 250 })
+  const switched = await getJson(fake, '/cognition/llm/usage')
+  assert.equal(switched.global.usageToday, 5000)
+  assert.equal(switched.persona.usageToday, 0)
+  scopedStore.put('llm_usage_persona', initial.date, { tokens: 250 })
   await postJson(fake, '/cognition/persona/switch', { personaId: initial.personaId })
   const exhausted = await getJson(fake, '/cognition/llm/usage?date=2000-01-01&personaId=' + second.activeId)
-  assert.equal(exhausted.usageToday, 5000)
+  assert.equal(exhausted.personaId, initial.personaId)
+  assert.equal(exhausted.global.usageToday, 5000)
+  assert.equal(exhausted.persona.usageToday, 5000)
   assert.equal(exhausted.exhausted, true)
-  assert.equal(exhausted.budgetLeft, 0)
-  const reset = await postJson(fake, '/cognition/llm/usage/reset', { confirm: true, date: '2000-01-01', personaId: second.activeId, tokens: 999 })
-  assert.deepEqual(reset, { ...initial, reset: true, removed: true })
-  assert.equal(scopedStore.get('llm_usage', initial.date), null)
-  assert.equal(scopedStore.get('llm_usage', '2000-01-01').tokens, 99)
-  assert.equal((await postJson(fake, '/cognition/llm/usage/reset', { confirm: true })).removed, false)
+  assert.equal(exhausted.effectiveLeft, 0)
+  const reset = await postJson(fake, '/cognition/llm/usage/reset', { confirm: true, scope: 'global', date: '2000-01-01', personaId: second.activeId, tokens: 999 })
+  assert.deepEqual(reset.removed, { global: true, persona: false })
+  assert.deepEqual(reset.global, initial.global)
+  assert.equal(reset.persona.usageToday, 5000)
+  assert.equal(reset.exhausted, true)
+  const resetPersona = await postJson(fake, '/cognition/llm/usage/reset', { confirm: true, scope: 'persona', date: '2000-01-01', personaId: second.activeId, tokens: 999 })
+  assert.deepEqual(resetPersona, { ...initial, reset: true, removed: { global: false, persona: true } })
+  for (const kind of ['llm_usage', 'llm_usage_persona']) {
+    assert.equal(scopedStore.get(kind, initial.date), null)
+    assert.equal(scopedStore.get(kind, '2000-01-01').tokens, 99)
+  }
+  assert.deepEqual((await postJson(fake, '/cognition/llm/usage/reset', { confirm: true, scope: 'both' })).removed, { global: false, persona: false })
   assert.deepEqual((await getJson(fake, '/config')).config, fullConfig)
   assert.equal(await readFile(configFileOf(dir), 'utf8'), beforeConfig)
   await postJson(fake, '/cognition/persona/switch', { personaId: second.activeId })
-  assert.equal((await getJson(fake, '/cognition/llm/usage')).usageToday, 250)
-  for (const response of [initial, exhausted, reset]) {
+  assert.equal((await getJson(fake, '/cognition/llm/usage')).persona.usageToday, 250)
+  scopedStore.put('llm_usage', initial.date, { tokens: 123 })
+  assert.deepEqual((await postJson(fake, '/cognition/llm/usage/reset', { confirm: true, scope: 'both' })).removed, { global: true, persona: true })
+  for (const response of [initial, exhausted, reset, resetPersona]) {
     assert.doesNotMatch(JSON.stringify(response), new RegExp(secret))
     assert.doesNotMatch(JSON.stringify(response), /apiKey|wsToken|httpToken|provider|messages/)
   }
   handle.cognition.services.llm = null
   assert.equal(handle.cognition.llmUsage(), null)
-  const unavailable = await fake.call(API + '/cognition/llm/usage/reset', { confirm: true }, { method: 'POST' })
+  const unavailable = await fake.call(API + '/cognition/llm/usage/reset', { confirm: true, scope: 'global' }, { method: 'POST' })
   assert.equal(unavailable.json.ok, false)
   assert.equal(unavailable.json.message, 'LLM 用量服务不可用')
 })
