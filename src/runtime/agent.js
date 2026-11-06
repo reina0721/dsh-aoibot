@@ -86,6 +86,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     listenerOff: null,
     stats: {
       composes: 0,
+      steers: 0,
       ok: 0,
       failed: 0,
       timeouts: 0,
@@ -196,7 +197,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
         await controller.rename({ sessionId, title })
       }
     } catch (error) {
-      log.debug?.('会话改名失败：', error.message)
+      log.debug?.('会话改名失败')
     }
     log.info?.(`已为 ${turn.chatType}:${turn.chatId} 新建 DSH 会话（${preset}/${level}）`)
     return sessionId
@@ -251,7 +252,12 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     }
   }
 
-  async function sessionFor(turn) {
+  function sessionFor(turn) {
+    // Serialize session resolution only; steer must not wait for compose's turn/end.
+    return withLock(`session:${turn.chatType}:${turn.chatId}`, () => resolveSessionFor(turn))
+  }
+
+  async function resolveSessionFor(turn) {
     const key = `${turn.chatType}:${turn.chatId}`
     const level = levelFor(turn)
     const preset = presetFor(level)
@@ -263,7 +269,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
       try {
         agent = await resolveAgent(sessionId)
       } catch (error) {
-        log.warn?.(`会话 ${sessionId} 恢复失败（${error.message}），将新建`)
+        log.warn?.(`会话 ${sessionId} 恢复失败，将新建`)
         sessionId = ''
         agent = null
       }
@@ -403,6 +409,29 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     }
   }
 
+  /** Explicit owner command entry; normal turns continue to use compose/followup. */
+  async function steer(turn, text) {
+    if (!active()) return { ok: false, error: 'RUNTIME_INACTIVE' }
+    if (!['private', 'group'].includes(turn?.chatType)
+      || !/^[1-9]\d*$/.test(String(turn?.chatId || ''))
+      || !Number.isSafeInteger(Number(turn.chatId))) return { ok: false, error: 'INVALID_TURN' }
+    if (typeof text !== 'string' || !text.trim() || Array.from(text).length > 1000) {
+      return { ok: false, error: 'INVALID_TEXT' }
+    }
+    try {
+      const { agent, sessionId } = await sessionFor(turn)
+      if (typeof agent.steer !== 'function') return { ok: false, error: 'STEER_UNAVAILABLE' }
+      await agent.steer({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+      state.stats.steers += 1
+      state.stats.lastAt = Date.now()
+      return { ok: true, sessionId }
+    } catch {
+      state.stats.lastError = 'STEER_FAILED'
+      state.stats.lastAt = Date.now()
+      return { ok: false, error: 'STEER_FAILED' }
+    }
+  }
+
   function summary() {
     const s = services()
     return {
@@ -467,6 +496,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
     levelFor,
     presetFor,
     compose,
+    steer,
     summary,
     sessions,
     dispose,

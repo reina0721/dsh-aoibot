@@ -72,7 +72,7 @@ function harness(overrides = {}, services = {}) {
     outbound,
     llm,
     memory,
-    runtime,
+    runtime: services.runtime === undefined ? runtime : services.runtime,
     qqActions: services.qqActions || qqActions,
     purpose,
     requests: services.requests,
@@ -683,4 +683,64 @@ test('reminder commands add repeat/ISO, list at most ten and cancel with current
   assert.match((await h.service.handle(turn('/forgetreminder rem_abc', context))).reply, /已取消/)
   assert.deepEqual(calls[3], ['cancel', 'rem_abc', { ...context, operatorId: '10001' }])
   assert.ok(h.sent.every((p) => p.source === 'command'))
+})
+
+
+test('steer command: owner private/group payload, Unicode text and no config writes', async () => {
+  const calls = []
+  const runtime = { active: () => true, async steer(...args) { calls.push(args); return { ok: true, sessionId: 's1' } } }
+  const h = harness({}, { runtime })
+  for (const input of [turn('/steer 先说结论'), turn('/steer ' + '😀'.repeat(1000), { chatType: 'group', chatId: '20001' })]) {
+    assert.match((await h.service.handle(input)).reply, /已向当前会话插话/)
+    assert.deepEqual(calls.at(-1), [input, input.text.slice(7)])
+  }
+  assert.equal(h.configWrites.length, 0)
+  assert.equal(h.sent.length, 2)
+  assert.match(h.service.help, /\/steer 文本/)
+  assert.throws(() => h.service.registerCommand('steer', () => {}), /已注册/)
+})
+
+test('steer command: no args, inactive/oneshot or missing steer never dispatch', async () => {
+  let calls = 0
+  const steer = async () => { calls++; return { ok: true } }
+  const h = harness({}, { runtime: { active: () => true, steer } })
+  for (const command of ['/steer', '/steer   ', '/steer ' + '😀'.repeat(1001)]) {
+    assert.match((await h.service.handle(turn(command))).reply, /用法：\/steer/)
+  }
+  for (const runtime of [null, {}, { active: () => true }, { active: () => false, steer }]) {
+    const inactive = harness({}, { runtime })
+    assert.equal((await inactive.service.handle(turn('/steer hello'))).reply, '当前不是 agent 运行时，无法插话')
+    assert.equal(inactive.configWrites.length, 0)
+  }
+  assert.equal(calls, 0)
+})
+
+test('steer command: non-owner silent in private/group; access and deny list stop steer', async () => {
+  let calls = 0
+  const runtime = { active: () => { calls++; return true }, steer: async () => { calls++; return { ok: true } } }
+  const h = harness({}, { runtime })
+  for (const chat of [{}, { chatType: 'group', chatId: '20001' }]) {
+    assert.deepEqual(await h.service.handle(turn('/steer injected text', { ...chat, senderId: '10002' })), { handled: true, reply: '' })
+  }
+  assert.equal(h.sent.length, 0)
+  const blocked = harness({}, { runtime, allowSend: false })
+  assert.equal((await blocked.service.handle(turn('/steer hello'))).error, 'ACCESS_DENIED')
+  assert.equal(blocked.sent.length, 0)
+  const denied = harness({ cognition: { permissions: { deniedCommands: ['steer'] } } }, { runtime })
+  assert.match((await denied.service.handle(turn('/StEeR hello'))).reply, /已被操作员禁用/)
+  assert.equal(calls, 0)
+  for (const entry of [h, blocked, denied]) assert.equal(entry.configWrites.length, 0)
+})
+
+test('steer command: unavailable, inactive race and runtime failures produce safe replies', async () => {
+  for (const [error, expected] of [['STEER_UNAVAILABLE', /不支持插话/], ['RUNTIME_INACTIVE', /当前不是 agent 运行时/], ['STEER_FAILED', /插话失败/], ['secret-provider-error', /插话失败/]]) {
+    const h = harness({}, { runtime: { active: () => true, steer: async () => ({ ok: false, error, message: 'raw-secret' }) } })
+    const { reply } = await h.service.handle(turn('/steer hello'))
+    assert.match(reply, expected)
+    assert.doesNotMatch(reply, /raw-secret|secret-provider-error/)
+  }
+  const h = harness({}, { runtime: { active: () => true, steer: async () => { throw new Error('raw-secret') } } })
+  const { reply } = await h.service.handle(turn('/steer hello'))
+  assert.match(reply, /插话失败/)
+  assert.doesNotMatch(reply, /raw-secret/)
 })

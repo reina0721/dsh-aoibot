@@ -281,6 +281,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
   available(), active(), engine(),
   levelFor(turn), presetFor(level),
   compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
+  steer(turn, text),               // -> { ok:true, sessionId } | { ok:false, error }
   summary(), sessions(), dispose(),
 }
 ```
@@ -292,6 +293,8 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本仍走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
 - 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
 - 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
+- 显式插话（M7-o）：主人 `/steer 文本` 经命令身份/禁用列表/访问闸门调用 `runtime.steer(turn,text)`；要求 active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。通过 `sessionFor(turn)` 复用或创建 Session，调用 `agent.steer({content:[{type:'text',text}],source:{kind:'user'}})`，不写配置或直接调用模型。Session 解析单独串行以避免与 compose 并发创建；steer 不等待 compose 的 turn/end。
+- 插话结果：缺方法返回 `STEER_UNAVAILABLE`，异常只返回/记录固定 `STEER_FAILED`，不回显原始异常/文本；成功累加 `summary().stats.steers` 并更新 lastAt。普通回合仍只用 followup，不自动 steer，无非主人插话、typing/`set_input_status` 或插话面板/API；fake agent 离线测试，真实 DSH/QQ 未验证，#9 partial。
 - 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
 - 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华、撤回或文件 Agent 工具；真实 QQ 工具调用仍待真机验证。
 

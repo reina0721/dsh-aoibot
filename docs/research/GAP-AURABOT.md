@@ -60,7 +60,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 6 | 每聊天 DSH Session | `sessionController` + preset + 映射文件 | `src/runtime/agent.js`：Session 映射、preset、followup、超时、oneshot 回退 | 部分（M1-b） | M1 剩余：真机验证/工具面 |
 | 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | private preset 内置 fs/fs-search/web；full/主人私聊另挂 3 个当前会话 QQ 工具；无 MCP/子智能体 | 部分（M5-b） | M1/M2 |
 | 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | M7-l 默认关闭的主人本地固定文本提醒；一次/重复、人格与聊天隔离、统一 outbound、延迟安全重试；离线测试 | 部分（M7-l） | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
-| 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | 无 | 无 | M1 |
+| 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | M7-o 主人显式 `/steer 文本`，1–1000 Unicode 字符；复用/创建当前聊天 Session、固定 user payload、安全错误与 steers 统计；仅离线测试 | 部分（M7-o，仅 steer） | M1 剩余：typing/set_input_status 未实现，真实 DSH/QQ 未验证 |
 | 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | `cognition.modelRouting`：私聊/群默认 + 会话覆盖；`/model` 写回 | 部分（M1-c，仅认知 LLM） | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；非主人静默 | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
 
@@ -410,3 +410,10 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 `cognition.permissions.deniedCommands=[]` 默认保持原行为。仅数组、每项严格小写命令名 `^[a-z][a-z0-9_-]{0,31}$`，去重后最多保留 100 个，非法项/非数组/超限报告 issue；`cog-permissions` 配置组提供「禁用命令」string-list。现有身份检查后、内置或模块命令派发前检查解析后的小写名，主人收到固定禁用提示、非主人静默，不调用处理服务/handler 或写配置。未知命令与帮助保持原样；未禁用的公开模块命令保留既有行为，动态策略后续命令即生效。
 
 证据：[config.test.js](../../test/config.test.js)、[commands.test.js](../../test/commands.test.js)，全部为离线规范化与 fake 服务测试，覆盖默认/格式/边界/字段、内置与模块/大小写/静默/无副作用/未知命令/动态更新。无新增依赖或外部调用。仅命令入口 deny-list，不覆盖 API、直接服务、Agent 工具或模块同进程代码；仍无所有服务/工具逐项 allow/deny 矩阵和统一审批。#14 保持 partial、remaining 47，#31/#42/#49/#50 矩阵行逐字不变。
+
+
+### M7-o 主人会话插话（#9 partial，仅 steer）
+
+主人 `/steer 文本` 经命令身份/禁用列表/访问检查后调用 `runtime.steer(turn,text)`；active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。`sessionFor(turn)` 复用或创建当前 Session，向 `agent.steer` 传入 text content 与 user source；缺方法返回 STEER_UNAVAILABLE，异常返回固定 STEER_FAILED，不回显原始异常/文本；成功更新 steers/lastAt。Session 解析串行防并发新建，插话不等待普通 compose 的 turn/end。
+
+普通回合仍走 followup，不自动 steer；非主人私聊/群聊静默，不允许群成员通过此命令注入插话。无新配置/依赖，不写配置或直接调用模型，无插话面板/API。typing/`set_input_status` 未实现；仅 fake agent 离线服务/命令测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial（38 partial / 2 none），remaining 47；#31/#42/#49/#50 保持原状态与豁免。

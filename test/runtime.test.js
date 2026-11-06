@@ -6,13 +6,14 @@ import { join } from 'node:path'
 
 import { createAgentRuntime, PRIVATE_PRESET, SOCIAL_PRESET } from '../src/runtime/agent.js'
 
-function fakeEnv({ reply = '你好呀', emitText = true, delay = 0, onFollowup = null } = {}) {
+function fakeEnv({ reply = '你好呀', emitText = true, delay = 0, onFollowup = null, onSteer = null, steerAvailable = true } = {}) {
   const listeners = new Set()
   const agents = new Map()
   const created = []
   const workspaces = []
   const contexts = new Map()
   const inbox = []
+  const steers = []
   let seq = 0
 
   const registryAgents = { get: (id) => agents.get(id) || undefined }
@@ -59,8 +60,12 @@ function fakeEnv({ reply = '你好呀', emitText = true, delay = 0, onFollowup =
           emit(agent.session, { type: 'turn/end', turn: 1, reason: { kind: 'stop' } })
         }, delay)
       },
-      steer() {},
+      steer(message) {
+        steers.push({ sessionId, message })
+        return onSteer?.({ agent, message })
+      },
     }
+    if (!steerAvailable) delete agent.steer
     agents.set(sessionId, agent)
     return agent
   }
@@ -94,7 +99,7 @@ function fakeEnv({ reply = '你好呀', emitText = true, delay = 0, onFollowup =
     },
   }
 
-  return { ctx, created, workspaces, contexts, inbox, agents, controller, registry, emit }
+  return { ctx, created, workspaces, contexts, inbox, steers, agents, controller, registry, emit }
 }
 
 function config(extra = {}) {
@@ -130,6 +135,7 @@ test('runtime：engine=oneshot 时不可用，compose 直接返回 RUNTIME_INACT
   const result = await runtime.compose({ turn: { chatType: 'private', chatId: '10001', senderId: '10001' }, system: 's', user: 'u' })
   assert.equal(result.ok, false)
   assert.equal(result.error, 'RUNTIME_INACTIVE')
+  assert.deepEqual(await runtime.steer({ chatType: 'private', chatId: '10001' }, '插话'), { ok: false, error: 'RUNTIME_INACTIVE' })
 })
 
 test('runtime：agent 引擎创建 Session、挂上下文、取最终回复并复用会话', async (t) => {
@@ -158,6 +164,8 @@ test('runtime：agent 引擎创建 Session、挂上下文、取最终回复并�
   const summary = runtime.summary()
   assert.equal(summary.active, true)
   assert.equal(summary.sessions, 1)
+  assert.equal(summary.stats.steers, 0)
+  assert.equal(env.steers.length, 0, '普通 compose 不自动 steer')
   assert.equal(summary.stats.composes, 2)
   assert.equal(summary.stats.ok, 2)
 })
@@ -285,4 +293,90 @@ test('buildComposePrompt：人格、记忆、对方消息与内部机制禁令�
   assert.match(prompt.user, /小红/)
   assert.match(prompt.user, /今天吃什么/)
   assert.match(prompt.user, /不要提及/)
+})
+
+
+test('runtime steer: exact user payload, Unicode limits, session reuse/isolation and stats', async (t) => {
+  const { runtime, env } = withRuntime(t)
+  const turn = { chatType: 'private', chatId: '10001', senderId: '10001' }
+  const before = Date.now()
+  const first = await runtime.steer(turn, '先说结论😀')
+  assert.deepEqual(first, { ok: true, sessionId: 'session-1' })
+  assert.deepEqual(env.steers, [{ sessionId: first.sessionId, message: {
+    content: [{ type: 'text', text: '先说结论😀' }], source: { kind: 'user' },
+  } }])
+  const text = '😀'.repeat(1000)
+  assert.deepEqual(await runtime.steer(turn, text), first)
+  assert.equal(env.steers[1].message.content[0].text, text)
+  const group = await runtime.steer({ ...turn, chatType: 'group', chatId: 20001 }, '群内插话')
+  assert.equal(group.sessionId, 'session-2')
+  assert.deepEqual(env.created.map((entry) => entry.agentPreset), [PRIVATE_PRESET, SOCIAL_PRESET])
+  assert.equal(env.inbox.length, 0, 'steer 不调用 followup')
+  const { stats } = runtime.summary()
+  assert.equal(stats.steers, 3)
+  assert.equal(stats.composes, 0)
+  assert.ok(stats.lastAt >= before && stats.lastAt <= Date.now())
+})
+
+test('runtime steer: invalid chat/text is rejected before creating sessions', async (t) => {
+  const { runtime, env } = withRuntime(t)
+  const turn = { chatType: 'private', chatId: '10001', senderId: '10001' }
+  for (const invalid of [null, {}, { ...turn, chatType: 'channel' }, ...['', 'abc', '0', '-1', '1.5', '9007199254740992'].map((chatId) => ({ ...turn, chatId }))]) {
+    assert.deepEqual(await runtime.steer(invalid, 'hello'), { ok: false, error: 'INVALID_TURN' })
+  }
+  for (const text of [undefined, null, 123, {}, '', ' \n ', '长'.repeat(1001), '😀'.repeat(1001)]) {
+    assert.deepEqual(await runtime.steer(turn, text), { ok: false, error: 'INVALID_TEXT' })
+  }
+  assert.equal(env.created.length, 0)
+  assert.equal(env.steers.length, 0)
+  assert.equal(runtime.summary().stats.steers, 0)
+  assert.equal(runtime.summary().stats.lastAt, 0)
+})
+
+test('runtime steer: inactive/missing services and agents without steer fail safely', async (t) => {
+  const { runtime, env } = withRuntime(t, { envOptions: { steerAvailable: false } })
+  const turn = { chatType: 'group', chatId: '20001', senderId: '10001' }
+  assert.deepEqual(await runtime.steer(turn, 'hello'), { ok: false, error: 'STEER_UNAVAILABLE' })
+  assert.equal(runtime.summary().stats.steers, 0)
+  assert.equal(env.inbox.length, 0)
+  const inactive = createAgentRuntime({ ctx: {}, getConfig: () => config() })
+  t.after(() => inactive.dispose())
+  assert.deepEqual(await inactive.steer(turn, 'hello'), { ok: false, error: 'RUNTIME_INACTIVE' })
+})
+
+test('runtime steer: sync/async and session errors are sanitized', async (t) => {
+  const turn = { chatType: 'private', chatId: '10001', senderId: '10001' }
+  const secret = 'raw-owner-text sk-secret-provider'
+  for (const onSteer of [() => { throw new Error(secret) }, async () => { throw new Error(secret) }]) {
+    const { runtime } = withRuntime(t, { envOptions: { onSteer } })
+    assert.deepEqual(await runtime.steer(turn, 'raw-owner-text'), { ok: false, error: 'STEER_FAILED' })
+    assert.equal(runtime.summary().stats.steers, 0)
+    assert.equal(runtime.summary().stats.lastError, 'STEER_FAILED')
+    assert.doesNotMatch(JSON.stringify(runtime.summary()), /raw-owner-text|sk-secret-provider/)
+  }
+  const { runtime, env } = withRuntime(t)
+  env.controller.create = async () => { throw new Error(secret) }
+  assert.deepEqual(await runtime.steer(turn, 'raw-owner-text'), { ok: false, error: 'STEER_FAILED' })
+  assert.equal(runtime.summary().stats.lastError, 'STEER_FAILED')
+})
+
+test('runtime steer: shares session creation with compose and reaches an unfinished turn', { timeout: 2000 }, async (t) => {
+  let followed
+  const started = new Promise((resolve) => { followed = resolve })
+  const { runtime, env } = withRuntime(t, { envOptions: { onFollowup: followed } })
+  const turn = { chatType: 'group', chatId: '20001', senderId: '10001' }
+  const composing = runtime.compose({ turn, user: '普通群消息' })
+  const steering = runtime.steer(turn, '主人明确插话')
+  const { agent, emit } = await started
+  const result = await steering
+  assert.equal(result.ok, true)
+  assert.equal(env.created.length, 1)
+  assert.equal(env.steers.length, 1)
+  assert.equal(result.sessionId, env.inbox[0].sessionId)
+  await runtime.steer(turn, '继续插话')
+  assert.equal(env.steers.length, 2)
+  emit(agent.session, { type: 'assistant/message', message: { content: [{ type: 'text', text: '收到' }] } })
+  emit(agent.session, { type: 'turn/end' })
+  assert.equal((await composing).text, '收到')
+  assert.equal(runtime.summary().stats.steers, 2)
 })

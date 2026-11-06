@@ -261,6 +261,8 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 `agent` 需要宿主提供 `sessionController` / `workspaceRegistry` / `agents`；缺失或失败自动回退 `oneshot`。
 `oneshot` 下配置不影响现有回复链路。
 
+M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Session 服务，不新增配置字段，也不写配置。文本 1–1000 Unicode 字符，注入当前私聊/群聊 Session；oneshot/服务缺失时不可用，宿主必须提供 `agent.steer`。可用现有 `cognition.permissions.deniedCommands` 的 `steer` 禁用此命令。没有自动插话、typing/`set_input_status` 或面板/API；真实 DSH/QQ 未验证，#9 仅 partial。
+
 ### 3.12 内部字段
 
 | 路径 | 类型 | 默认值 | 作用 | 面板 |

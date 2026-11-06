@@ -9,7 +9,7 @@ import { redactText } from '../core/leak-guard.js'
 const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
 const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
 const REMINDER_COMMANDS = ['remind', 'reminders', 'forgetreminder']
-const COMMANDS = [...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const COMMANDS = [...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -28,6 +28,7 @@ function oneLine(text, max = 300) {
 const HELP_TEXT = [
   '可用命令：',
   '/status — 当前模式、运行时、群聊参与、会话数',
+  '/steer 文本 — 向当前 agent 会话插话（1–1000 Unicode 字符，仅主人）',
   '/quiet — 群聊只回应点名，关闭主动',
   '/active — 群聊按概率参与，开启主动',
   '/model — 查看当前会话模型',
@@ -348,6 +349,19 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return send(turn, HELP_TEXT + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
     }
     if (parsed.name === 'status') return send(turn, await statusText(turn))
+
+    if (parsed.name === 'steer') {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (!parsed.args || Array.from(parsed.args).length > 1000) return send(turn, '用法：/steer 文本（1–1000 Unicode 字符）')
+      try {
+        if (typeof runtime?.steer !== 'function' || !runtime.active?.()) return send(turn, '当前不是 agent 运行时，无法插话')
+        const result = await runtime.steer(turn, parsed.args)
+        if (result?.ok) return send(turn, '已向当前会话插话。')
+        if (result?.error === 'RUNTIME_INACTIVE') return send(turn, '当前不是 agent 运行时，无法插话')
+        if (result?.error === 'STEER_UNAVAILABLE') return send(turn, '当前 agent 不支持插话。')
+        return send(turn, '插话失败：请检查当前会话与 agent 状态。')
+      } catch { return send(turn, '插话失败：请检查当前会话与 agent 状态。') }
+    }
 
     if (parsed.name === 'bili') {
       if (currentConfig().content?.bilibili?.enabled !== true) return send(turn, 'B站内容未启用')
