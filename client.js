@@ -3056,6 +3056,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'content', label: '内容', icon: 'play' },
       { id: 'modules', label: '模块', icon: 'layout' },
       { id: 'backup', label: '备份', icon: 'shield' },
+      { id: 'security', label: '安全', icon: 'shield' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'persona', label: '人格', icon: 'sparkles' },
       { id: 'models', label: '模型', icon: 'bolt' },
@@ -6766,6 +6767,107 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function SecurityPage(props) {
+      const [data, setData] = useState(null)
+      const [loading, setLoading] = useState(true)
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const refresh = useCallback(async () => {
+        setLoading(true)
+        const paths = ['/status', '/access/stats', '/backup', '/upgrade']
+        const results = await Promise.allSettled(paths.map(async (path) => {
+          const result = safeObject(await get(path))
+          if (result.ok !== true) throw new Error(result.message || '读取失败')
+          return result
+        }))
+        const next = {}, errors = []
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') next[['status', 'access', 'backup', 'upgrade'][index]] = result.value
+          else errors.push(paths[index] + '：' + String(result.reason?.message || result.reason))
+        })
+        setData(next)
+        setError(errors.join('；'))
+        setLoading(false)
+      }, [])
+      useEffect(() => { refresh() }, [refresh])
+      const check = async () => {
+        setBusy(true)
+        try {
+          const result = safeObject(await post('/upgrade/check', { force: true }))
+          if (result.ok !== true) throw new Error(result.message || '升级检查失败')
+          await refresh()
+          props.toast?.(result.updateAvailable ? '发现新版本：' + result.latest : '检查完成，暂无更新', 'ok')
+        } catch (requestError) { setError(String(requestError.message || requestError)) }
+        finally { setBusy(false) }
+      }
+      const status = safeObject(data?.status)
+      const cfg = safeObject(status.config)
+      const access = safeObject(data?.access)
+      const backup = safeObject(data?.backup?.status)
+      const upgrade = safeObject(data?.upgrade)
+      const latest = safeObject(upgrade.cached)
+      const media = safeObject(cfg.media)
+      const image = safeObject(media.images), audio = safeObject(media.audio)
+      const providers = [
+        { name: 'Vision', enabled: media.enabled === true && image.visionEnabled === true, base: image.visionBaseUrl, model: image.visionModel, env: image.visionApiKeyEnv },
+        { name: 'ASR', enabled: media.enabled === true && audio.asrEnabled === true, base: audio.asrBaseUrl, model: audio.asrModel, env: audio.asrApiKeyEnv },
+        { name: 'TTS', enabled: media.enabled === true && audio.ttsEnabled === true, base: audio.ttsBaseUrl, model: audio.ttsModel, env: audio.ttsApiKeyEnv },
+      ]
+      const checklist = [
+        ['网关已连接', status.gateway?.state === 'connected', 'connect'],
+        ['allowlist 模式并设置主人 QQ', access.mode === 'allowlist' && Boolean(access.ownerQQ), 'config'],
+        ['至少一份本地备份', Number(backup.snapshotCount) > 0, 'backup'],
+        ['任意 OneBot action 已关闭', cfg.security?.allowRawAction === false, 'config'],
+        ['媒体 provider 已关闭或已填写 URL / 模型 / 环境变量名', typeof media.enabled === 'boolean' && providers.every((provider) => !provider.enabled || (provider.base && provider.model && provider.env)), 'config'],
+        ['模块已人工审核：请逐一确认本地代码与权限（无法自动判定）', false, null],
+      ]
+      const goButton = (tab, label) => h(Btn, { small: true, kind: 'secondary', onClick: () => props.go?.(tab) }, label)
+      return h('div', { className: 'ob-stack' },
+        h(Banner, { tone: 'muted', message: '安全页依赖 DSH 本机信任边界；这里只读展示设置与审计，升级按钮只查询版本。' }),
+        error ? h(Banner, { tone: 'err', message: error }) : null,
+        h('div', { className: 'ob-row' }, h(Btn, { kind: 'secondary', icon: 'refresh', disabled: loading || busy, onClick: refresh }, '刷新安全状态')),
+        loading ? h(PanelSkeleton, { rows: 4 }) : h('div', { className: 'ob-grid two' },
+          h(Panel, { title: '访问控制', description: '白名单限制 QQ 触发与自动出站，不改变管理 API 鉴权。', actions: goButton('config', '前往配置') },
+            h(KV, { rows: [
+              ['模式', access.mode || '未知'], ['主人 QQ', access.ownerQQ || '未设置'],
+              ['私聊 / 群白名单', String(access.allow?.private ?? '未知') + ' / ' + String(access.allow?.groups ?? '未知')],
+              ['入站 / 出站拦截', String(access.counters?.inboundBlocked ?? '未知') + ' / ' + String(access.counters?.outboundBlocked ?? '未知')],
+            ] }),
+            h('p', { className: 'ob-small ob-muted' }, '最近 5 条审计（进程内元数据，重启清空）'),
+            safeArray(access.recent).length ? h('ul', { className: 'ob-list' }, safeArray(access.recent).slice(-5).reverse().map((entry, index) =>
+              h('li', { key: index, className: 'ob-small' }, formatDateTime(entry.at) + ' · ' + (entry.direction === 'in' ? '入站' : '出站') + ' · ' + String(entry.chatType || '') + ':' + String(entry.chatId || '') + ' · ' + String(entry.senderId || '') + ' · ' + String(entry.reason || '')),
+            )) : h('p', { className: 'ob-small ob-muted' }, '暂无审计记录'),
+          ),
+          h(Panel, { title: '危险面', description: '本地模块在同一进程执行任意代码，权限门控不是沙箱；仅加载可信、已审核的模块。' },
+            h(KV, { rows: [
+              ['任意 OneBot action', cfg.security ? (cfg.security.allowRawAction ? '开启' : '关闭') : '未知'],
+              ['备份应用恢复', typeof backup.allowRestore === 'boolean' ? (backup.allowRestore ? '允许' : '禁用') : '未知'],
+              ...providers.map((provider) => [provider.name + ' 环境变量名', String(provider.env || '未设置')]),
+            ] }),
+            h('p', { className: 'ob-small ob-muted' }, '只展示 provider 环境变量名，不读取密钥值；填写完整不代表环境变量已设置或服务可用。'),
+          ),
+          h(Panel, { title: '上线检查', description: '首次连接后的检查清单；警告项需操作员处理。模块审核始终保留人工提醒。' },
+            h('ul', { className: 'ob-list' }, checklist.map(([label, pass, tab]) => h('li', { key: label, className: 'ob-row' },
+              h(Badge, { tone: pass ? 'ok' : 'warn' }, pass ? '通过' : '待检查'),
+              h('span', { className: 'ob-small', style: { flex: '1 1 180px' } }, label),
+              !pass && tab ? goButton(tab, tab === 'connect' ? '前往连接' : tab === 'backup' ? '前往备份' : '前往配置') : null,
+            ))),
+          ),
+          h(Panel, { title: '升级', description: '手动查询 GitHub Releases；beta 仅允许结果包含预发布版。', actions: h(Btn, { small: true, kind: 'primary', disabled: busy || upgrade.enabled !== true, onClick: check }, busy ? '检查中…' : '检查更新') },
+            h(KV, { rows: [
+              ['当前版本', upgrade.current || status.version || '未知'], ['通道', upgrade.channel || '未知'],
+              ['检查开关', upgrade.enabled === true ? '已启用' : '未启用'], ['最新版本', latest.latest || '尚未检查'],
+              ['可用更新', typeof latest.updateAvailable === 'boolean' ? (latest.updateAvailable ? '有新版本' : '暂无更新') : '未知'],
+              ['检查时间', upgrade.checkedAt ? formatDateTime(upgrade.checkedAt) : '尚未检查'],
+            ] }),
+            latest.url ? h('a', { href: latest.url, target: '_blank', rel: 'noopener noreferrer' }, '查看 Release') : null,
+            latest.notes ? h('p', { className: 'ob-small', style: { whiteSpace: 'pre-wrap' } }, latest.notes) : null,
+            h('p', { className: 'ob-small ob-muted' }, '默认关闭，不自动检查、下载或安装。未认证 GitHub API 通常每 IP 每小时 60 次请求；启用和缓存设置见配置。'),
+          ),
+        ),
+      )
+    }
+
     function BackupPage(props) {
       const [data, setData] = useState(null)
       const [loading, setLoading] = useState(true)
@@ -6955,6 +7057,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             title: '模块',
             description: '管理操作员放入本地数据目录的 JavaScript 模块。模块是任意本地代码；此页只支持查看、启停和热重载。',
           }
+        case 'security':
+          return { eyebrow: 'SECURITY & LAUNCH', title: '安全', description: '查看访问控制、危险面与上线检查清单，并按需查询 GitHub Release 版本。' }
         case 'backup':
           return { eyebrow: 'BACKUP & SECURITY', title: '备份', description: '创建、查看和删除本地目录快照；恢复默认暂存，检查后停止 DSH 再替换文件并重启。备份含密钥，请保护好数据目录。' }
         case 'config':
@@ -7387,6 +7491,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'content') body = h(ContentPage, tabProps)
       else if (tab === 'modules') body = h(ModulesPage, tabProps)
       else if (tab === 'backup') body = h(BackupPage, tabProps)
+      else if (tab === 'security') body = h(SecurityPage, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'persona') body = h(PersonaTab, tabProps)
       else if (tab === 'models') body = h(ModelTab, tabProps)
@@ -7527,6 +7632,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
     exports.BackupPage = BackupPage
+    exports.SecurityPage = SecurityPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。

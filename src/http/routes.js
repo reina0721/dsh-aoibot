@@ -69,7 +69,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, upgrade = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -132,6 +132,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       events: events.stats(),
       logs: logger.stats(),
       access: access?.summary?.() || { mode: 'open', configured: false },
+      upgrade: upgrade?.status() || null,
       runtime: cognition?.runtimeStats?.() || null,
       purpose: cognition?.purposeSummary?.() || null,
       consolidation: cognition?.consolidationStats?.() || null,
@@ -149,6 +150,14 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return bilibili.search(keyword)
     })
     route('GET', '/content/bilibili/hot', async () => bilibili.hot())
+  }
+
+  if (upgrade) {
+    route('GET', '/upgrade', async () => ({ ok: true, ...upgrade.status() }))
+    route('POST', '/upgrade/check', async (req) => {
+      const body = await readBody(req)
+      return upgrade.check({ force: body?.force ?? false })
+    })
   }
 
   if (backup) {

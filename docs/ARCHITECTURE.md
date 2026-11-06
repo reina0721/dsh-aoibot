@@ -124,7 +124,9 @@ export function normalizeEvent(raw, cfg) -> null | {
 
 | Method | Path | 说明 |
 |---|---|---|
-| GET | `/status` | 状态快照 + 统计 + 最近事件(条数可配) + `access` 摘要 |
+| GET | `/status` | 状态快照 + 统计 + 最近事件(条数可配) + `access`、`upgrade` 内存摘要（不联网） |
+| GET | `/upgrade` | `{ok:true,...upgrade.status()}`，不联网 |
+| POST | `/upgrade/check` | `{force?:false}`，显式启用后手动查询 GitHub Releases |
 | GET | `/access/stats` | 访问控制模式、名单数量、计数与最近审计 |
 | POST | `/access/check` | body `{ chatType, chatId, senderId }`，返回判定与中文原因 |
 | GET | `/config` | `{ config, defaults, groups, dataDir, version }`（含面板字段表） |
@@ -175,7 +177,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 无障碍与响应式：统一 `:focus-visible` 焦点环、tab 方向键/Home/End 导航、toast `aria-live`、
   reduced-motion 合规；190–390px 单列、tab/设置分类可横向滚动、无横向溢出；动效只使用
   opacity/transform/width，不动画高度或滚动容器。
-- 标签页：**概览 / 连接 / 消息 / 配置 / 系统设置 / 日志 / 关于**。
+- 15 个顶层标签：**概览 / 连接 / 消息 / 媒体 / 内容 / 模块 / 备份 / 安全 / 配置 / 人格 / 模型 / 系统设置 / 认知 / 日志 / 关于**。
 - 配置页字段按分组渲染（左侧分组导航 + 右侧仅当前分组），支持保存、撤销、恢复默认、Ctrl+S；
   所有配置来自 `GET /config`，不得在客户端写死默认值。`ui` 分组只由系统设置页消费，配置页过滤掉。
 - 未保存改动要有 dirty 提示（页头徽标 + 吸底保存条，仅配置页）；保存失败要有可读错误。
@@ -242,7 +244,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.9 认知 REST 与 UI
 
 - 路由前缀仍为 `/onebot-qq/api/cognition/*`，响应 `{ok:true,...}` / `{ok:false,message}`；GET 无副作用。
-- 面板第 7 个顶层标签「人格」是文本人设 + 群聊参与工作台；第 10 个「认知」仍提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置，
+- 面板「人格」标签是文本人设 + 群聊参与工作台；「认知」标签仍提供状态/人物/关系/记忆/情绪/策略/学习/技能/元认知/设置，
   以及同源的数值人格编辑入口。概览和认知状态页显示最近 turn 的 outcome/reason 诊断。
 - 认知 API 不可用时页面显示 degraded/空态，不影响平台连接与配置页。
 
@@ -257,7 +259,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 - 认证：bearer / x-api-key / 自定义 header / none；禁止跨源重定向转发认证头；错误/日志/trace 脱敏。
 - 路由：`cognition.llm.mode = auto|dsh|fixed|direct|chain`；直连 selected + fallback，最后可回退 DSH；
   空文本、只有 reasoning、bad JSON 都不算成功。
-- REST：`/onebot-qq/api/models/*`；UI 第 8 个顶层标签「模型」；详细矩阵见
+- REST：`/onebot-qq/api/models/*`；UI「模型」标签；详细矩阵见
   `docs/MODEL-GATEWAY.md`。
 
 ### 3.11 访问控制与统一出站
@@ -414,4 +416,17 @@ API 均位于 `/onebot-qq/api`：
 
 **SQLite 与运维边界**：服务不 checkpoint、不锁库，也不协调认知/模块等写入；在线文件复制不保证 SQLite/WAL 一致性。应先停止所有写入，再创建快照。推荐在面板暂存和检查，停止目标 DSH profile 后手动复制回原数据根，再启动；`apply=true` 仅适用于已停写的维护环境，应用后必须立即重启。自动化只用临时根和离线文件，未覆盖正在运行的 SQLite。
 
-备份保留原始配置/模型密钥和认知隐私，必须按秘密保护；新建目录/文件尽可能使用 0700/0600（受平台权限语义影响），不做加密。面板继续使用 DSH 本地访问边界，本里程碑不新增 API 鉴权。无 zip、云端上传/下载、自动恢复、升级检查、beta 通道、工作区迁移或离峰省钱策略。
+备份保留原始配置/模型密钥和认知隐私，必须按秘密保护；新建目录/文件尽可能使用 0700/0600（受平台权限语义影响），不做加密。面板继续使用 DSH 本地访问边界，本里程碑不新增 API 鉴权。备份无 zip、云端上传/下载、自动恢复、工作区迁移或离峰省钱策略；手动版本检查由 M6-b 独立服务提供。
+
+
+### 3.22 安全页、上线清单与升级检查（M6-b）
+
+`src/ops/upgrade.js` 的 `createUpgradeService({getConfig,logger,currentVersion,fetchImpl=globalThis.fetch})` 由 host 用 package.json 的 VERSION 创建、注入 routes 并暴露句柄；dispose 为 no-op。服务无启动请求、定时器、文件写入、下载或安装。`status()` 同步返回 `{enabled,channel,repo,current,cached,checkedAt}`，初始 cached/checkedAt 为 null；`GET /upgrade` 和 `/status.upgrade` 只读取它。
+
+`ops.upgrade` 默认 `{enabled:false,channel:'stable',repo:'reina0721/dsh-bot',timeoutMs:10000,cacheMinutes:60}`，全部纳入默认值、规范化及面板字段表。`POST /upgrade/check` 调用 check({force=false})；禁用抛出「升级检查未启用」。启用后以 Node fetch、User-Agent/Referer 和 AbortSignal.timeout 请求固定 `https://api.github.com/repos/<repo>/releases?per_page=10`。stable 只接受 draft=false/prerelease=false，beta 仅放宽 prerelease 过滤；在这 10 条里选择版本最大项，无历史分页。tag/current 需满足 `v?x.y.z(-pre)?`，数字主/次/补丁比较、预发布标识排序、同版本预发布低于稳定版；不支持 build metadata。结果含 ok/enabled/channel/current/latest/updateAvailable/publishedAt/url 与可选 notes（最多 2000 字符）。
+
+只缓存成功结果和 ISO checkedAt，内存缓存按 repo/channel/current 隔离，force 绕过，重启丢失；配置缓存分钟数对下一次请求生效。失败抛出真实 HTTP/超时/响应/版本错误，保留上次成功结果及时间，不延长有效期。状态读取不会触发刷新。无 token 支持，未认证 GitHub API 通常每 IP 每小时 60 次请求。
+
+`SecurityPage` 进入页面或手动刷新时只读 `/status`、`/access/stats`、`/backup`、`/upgrade`，分别处理失败；唯一 POST 是手动升级检查（force=true）。四张卡为访问控制（名单数量/拦截计数/最近 5 条审计）、危险面（raw action、allowRestore、同进程模块警告、媒体环境变量名）、上线检查（连接、allowlist+owner、备份、raw 关闭、媒体配置、人工模块审核）和版本信息。只按已保存配置检查媒体字段，不读取密钥或探测连通性；模块审核恒为人工待检查，不写入“已审核”状态。清单内按钮只导航 connect/config/backup，复用原有视觉组件，无独立向导。
+
+精确边界：无自动检查/更新、下载/安装、云服务、工作区/格式迁移或离峰省钱；beta 仅改变 release 过滤。保留 DSH 本机信任边界，不改变 API 鉴权，也不新增本机-only/CSRF/可信反代机制。测试均使用注入 fetch 或禁网替身，没有真实 GitHub/QQ/浏览器验证。

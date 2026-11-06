@@ -26,6 +26,7 @@ import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
 import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
+import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
 import { personaProfileText } from './cognition/persona.js'
 
@@ -59,6 +60,7 @@ export function apply(ctx, rowConfig) {
   const getConfig = () => configState.current
 
   const backup = createBackupService({ dataDir: dataDir(), getConfig, logger })
+  const upgrade = createUpgradeService({ getConfig, logger, currentVersion: VERSION })
 
   const events = createEventStore({ getConfig, log: eventLog })
 
@@ -255,6 +257,7 @@ export function apply(ctx, rowConfig) {
     access,
     modules,
     backup,
+    upgrade,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -276,6 +279,7 @@ export function apply(ctx, rowConfig) {
       routes.dispose()
     } catch (error) {}
     backup.dispose()
+    upgrade.dispose()
     modules.dispose().catch(() => {})
     try {
       gateway.dispose()
@@ -318,6 +322,7 @@ export function apply(ctx, rowConfig) {
     modules,
     modulesReady,
     backup,
+    upgrade,
     access,
     logger,
     routes,

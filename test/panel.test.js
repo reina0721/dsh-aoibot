@@ -119,7 +119,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'backup', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'backup', 'security', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
   )
 })
 
@@ -227,7 +227,7 @@ test('全部标签页：无数据与有数据都能渲染（不依赖真实网�
     retryPrefSave: noop,
     prefStatus: { saving: false, error: '', savedAt: 0 },
   }
-  const tabNames = ['Overview', 'Connect', 'Messages', 'MediaPage', 'ModulesPage', 'ContentPage', 'BackupPage', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
+  const tabNames = ['Overview', 'Connect', 'Messages', 'MediaPage', 'ModulesPage', 'ContentPage', 'BackupPage', 'SecurityPage', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
   for (const name of tabNames) {
     assert.equal(typeof panel[name], 'function', name + ' 应该导出')
     assert.doesNotThrow(() => panel[name](baseProps), name + ' 空数据应可渲染')
@@ -928,5 +928,51 @@ test('BackupPage: status/list render, staged restore defaults false and apply re
     assert.equal(permitted.props.disabled, false)
     await permitted.props.onClick()
     assert.ok(calls.some((call) => call.path.endsWith('/restore') && call.body.apply === true))
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('SecurityPage: read-only launch checklist, last five audit rows, manual upgrade check', async () => {
+  const calls = [], visited = []
+  const originalFetch = globalThis.fetch
+  const data = {
+    status: { version: '0.10.0', gateway: { state: 'connected' }, config: { security: { allowRawAction: false }, media: { enabled: true, images: { visionEnabled: true, visionBaseUrl: 'https://example.test/v1', visionModel: 'vision', visionApiKeyEnv: 'VISION_KEY' }, audio: { asrEnabled: false, ttsEnabled: false } } } },
+    access: { mode: 'allowlist', ownerQQ: '123456', allow: { private: 2, groups: 3 }, counters: { inboundBlocked: 7, outboundBlocked: 8 }, recent: Array.from({ length: 7 }, (_, index) => ({ at: index + 1, direction: 'in', chatType: 'private', chatId: 'u' + index, reason: 'audit-' + index })) },
+    backup: { status: { snapshotCount: 1, allowRestore: false } },
+    upgrade: { enabled: true, current: '0.10.0', channel: 'beta', checkedAt: '2026-11-06T00:00:00Z', cached: { latest: 'v0.11.0-beta.1', updateAvailable: true, notes: 'Release note', url: 'https://github.com/reina0721/dsh-bot/releases/tag/v0.11.0-beta.1' } },
+  }
+  const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children), ...nodes(tree.props?.actions)]
+  const render = (loaded = data) => {
+    stateOverrides = [loaded, false, false, '']
+    try { return panel.SecurityPage({ go: (id) => visited.push(id) }) } finally { stateOverrides = null }
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : null })
+    const name = path.replace(panel.API_PREFIX, '')
+    const values = { '/status': data.status, '/access/stats': data.access, '/backup': data.backup, '/upgrade': data.upgrade }
+    return { ok: true, json: async () => name === '/upgrade/check' ? { ok: true, latest: 'v0.11.0-beta.1', updateAvailable: true } : { ok: true, ...values[name] } }
+  }
+  try {
+    const tree = render(), json = JSON.stringify(tree)
+    assert.equal(panel.TABS.length, 15)
+    assert.deepEqual(panel.TABS.find((tab) => tab.id === 'security'), { id: 'security', label: '安全', icon: 'shield' })
+    for (const text of ['访问控制', '危险面', '上线检查', '升级', '123456', 'VISION_KEY', '人工审核', '不是沙箱', 'v0.11.0-beta.1', '不自动检查、下载或安装']) assert.ok(json.includes(text), text)
+    assert.doesNotMatch(json, /audit-0|audit-1/)
+    assert.match(json, /audit-2/)
+    assert.match(json, /audit-6/)
+    assert.equal(nodes(tree).filter((node) => node.children?.includes('通过')).length, 5)
+    assert.equal(nodes(tree).filter((node) => node.children?.includes('待检查')).length, 1)
+    assert.ok(!nodes(tree).some((node) => ['input', 'select', 'textarea'].includes(node.type)))
+    const warningData = { ...data, status: { config: { security: { allowRawAction: true }, media: { enabled: true, audio: { ttsEnabled: true } } } }, access: { mode: 'open' }, backup: { status: { snapshotCount: 0 } } }
+    const warnings = nodes(render(warningData))
+    assert.equal(warnings.filter((node) => node.children?.includes('待检查')).length, 6)
+    for (const label of ['前往连接', '前往配置', '前往备份']) warnings.find((node) => node.children?.includes(label)).props.onClick()
+    assert.deepEqual(visited, ['connect', 'config', 'backup'])
+    const unknown = nodes(render({}))
+    assert.equal(unknown.filter((node) => node.children?.includes('通过')).length, 0)
+    assert.equal(unknown.find((node) => node.children?.includes('检查更新')).props.disabled, true)
+    await nodes(tree).find((node) => node.children?.includes('检查更新')).props.onClick()
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/upgrade/check', method: 'POST', body: { force: true } })
+    assert.deepEqual(calls.slice(1).map((call) => call.path).sort(), ['/status', '/access/stats', '/backup', '/upgrade'].map((path) => panel.API_PREFIX + path).sort())
+    assert.ok(calls.slice(1).every((call) => call.method === 'GET'))
   } finally { globalThis.fetch = originalFetch }
 })

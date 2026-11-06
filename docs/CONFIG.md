@@ -415,7 +415,7 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 | `enabled`、`gateway`、`botQQ`、`accountCheck`、`verification.enabled` | 需要重建连接（正在运行时自动重连） |
 | `onebot.*`（wsUrl/httpUrl/wsToken/httpToken/httpAuth） | 需要重建连接 |
 | `snowluma.*`（autoDetect/dir/uin） | 需要重建连接 |
-| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`media.*`、`content.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
+| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`media.*`、`content.*`、`ops.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
 | `enabled: false` → `true`（保存时） | 自动建立连接（与「启用并自动连接」字段语义一致） |
 | `enabled: false` | 断开连接并停止自动重连 |
 
@@ -459,7 +459,7 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 
 ## 本地备份与运维（`ops.backup`，M6-a）
 
-配置页「备份与运维」分组提供全部字段，保存后影响后续操作。备份为本地目录，含配置/模型密钥与认知隐私，请按秘密保护；没有 zip、加密、云端传输、自动恢复、升级检查或迁移。
+配置页「备份与运维」分组提供全部字段，保存后影响后续操作。备份为本地目录，含配置/模型密钥与认知隐私，请按秘密保护；没有 zip、加密、云端传输、自动恢复或迁移；版本检查见下方 `ops.upgrade`。
 
 | 路径 | 类型 | 默认值 | 范围 / 作用 |
 |---|---|---|---|
@@ -474,3 +474,20 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 默认内容：`config.json`、`models.json`、全部 `cognition/` 普通文件、`modules/`（清单/代码/状态/数据）、`media/stickers.json` 和 `media/stickers/`。`includeMedia=true` 只额外包含数据根内全部 `media/`，不会跟随外部 `media.dir`。任意层级日志目录、backups、restore-*、临时文件、符号链接、特殊文件和根外文件始终排除。临时文件包括 .tmp/.temp/.swp/.swo/.part/.partial（及带后缀版本）、~ 开头/结尾、编辑器 # 文件和 .staging-*。
 
 复制 SQLite 前必须停止所有写入，在线快照不保证数据库一致性。恢复不热应用配置；推荐暂存后停 DSH、手动复制、再启动。应用需先在停写维护环境开启 allowRestore，服务先创建恢复前备份；覆盖中途失败可能只恢复部分文件，需用安全快照离线处理。详见[用户手册](USER-MANUAL.md#备份)。
+
+
+## 手动升级检查（`ops.upgrade`，M6-b）
+
+配置页「备份与运维」分组提供全部字段；默认关闭，不安排轮询，不下载/安装。`GET /onebot-qq/api/upgrade` 与 `/status` 中的 `upgrade` 只读内存状态，即使启用也不联网。仅 `POST /onebot-qq/api/upgrade/check` 发起检查，body 可为 `{ "force": true }` 绕过缓存；禁用时返回 `ok:false` / `升级检查未启用`。
+
+| 路径 | 类型 | 默认值 | 说明 / 范围 |
+|---|---|---|---|
+| `ops.upgrade.enabled` | boolean | `false` | 允许手动检查；默认零升级网络请求 |
+| `ops.upgrade.channel` | enum | `stable` | stable 排除 draft/prerelease；beta 仅允许预发布 release，不改变运行行为 |
+| `ops.upgrade.repo` | string | `reina0721/dsh-bot` | GitHub `owner/repo`，只允许仓库名字符；非法值回退默认仓库 |
+| `ops.upgrade.timeoutMs` | integer | `10000` | 1000–120000 ms；Node fetch + AbortSignal.timeout |
+| `ops.upgrade.cacheMinutes` | integer | `60` | 0–10080 分钟，0 不复用；只缓存成功结果，重启丢失 |
+
+请求固定 GitHub API `/repos/<repo>/releases?per_page=10`，在返回的最近 10 条里按通道过滤，再按版本取最大值；没有分页扫描全部历史。只接受 `v?x.y.z(-pre)?`，比较数字主/次/补丁与预发布标识（预发布低于同版本稳定版）；不支持 build metadata。notes 最多 2000 字符，不执行内容。无 token 支持，未认证 GitHub API 通常每 IP 每小时 60 次请求，手动强制检查也计入。HTTP、超时、空列表、非法版本均返回真实错误，不产生伪造结果；失败后仍保留上次成功结果及其时间，不刷新缓存有效期。更换 repo/channel 后旧结果不显示，按当前缓存分钟数判断是否复用。
+
+状态形状为 `{enabled,channel,repo,current,cached,checkedAt}`；初始 cached/checkedAt 为 null，checkedAt 是最近成功检查的 ISO 时间。cached 为检查结果 `{ok:true,enabled:true,channel,current,latest,updateAvailable,publishedAt,url,notes?}`，latest 保留 release tag 的 v 前缀。安全页只展示媒体 provider 环境变量名；配置完整性不验证密钥是否存在或 provider 能否连通。面板/API 保持 DSH 本机信任边界，不新增 API 鉴权或远端访问防护，不提供自动更新、工作区迁移或离峰省钱策略。

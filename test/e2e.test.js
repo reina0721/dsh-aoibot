@@ -746,3 +746,47 @@ test('POST /disconnect 关闭连接；GET /logs 可拉取、POST /logs/clear 可
   }, { label: '日志清空' })
   assert.equal(cleared.items.length, 0)
 })
+
+test('升级 API：默认零联网、手动检查、缓存/force 与真实错误', async (t) => {
+  const originalFetch = globalThis.fetch
+  let calls = 0, response = null
+  globalThis.fetch = async () => { calls++; if (!response) throw new Error('unexpected network'); return response }
+  t.after(() => { globalThis.fetch = originalFetch })
+  const { fake } = await boot(t, { rowConfig: { enabled: false } })
+  const upgrade = await getJson(fake, '/upgrade')
+  assert.equal(upgrade.enabled, false)
+  assert.equal(upgrade.channel, 'stable')
+  assert.equal(upgrade.repo, 'reina0721/dsh-bot')
+  assert.equal(upgrade.cached, null)
+  assert.equal(upgrade.checkedAt, null)
+  const status = await getJson(fake, '/status')
+  assert.equal(upgrade.current, status.version)
+  const { ok, ...upgradeStatus } = upgrade
+  assert.deepEqual(status.upgrade, upgradeStatus)
+  const result = await fake.call(API + '/upgrade/check', { force: true }, { method: 'POST' })
+  assert.equal(result.json.ok, false)
+  assert.match(result.json.message, /升级检查未启用/)
+  assert.equal(calls, 0)
+
+  await patchConfig(fake, { ops: { upgrade: { enabled: true, channel: 'beta' } } })
+  assert.equal((await getJson(fake, '/upgrade')).enabled, true)
+  assert.equal((await getJson(fake, '/status')).upgrade.cached, null)
+  assert.equal(calls, 0, '启用与状态读取也不联网')
+  response = { ok: true, json: async () => [{ draft: false, prerelease: true, tag_name: 'v0.11.0-beta.1', published_at: '2026-11-06T00:00:00Z', body: 'release notes' }] }
+  const checked = await postJson(fake, '/upgrade/check', {})
+  assert.equal(checked.latest, 'v0.11.0-beta.1')
+  assert.equal(checked.updateAvailable, true)
+  assert.equal(checked.channel, 'beta')
+  assert.deepEqual((await getJson(fake, '/upgrade')).cached, checked)
+  assert.deepEqual((await getJson(fake, '/status')).upgrade.cached, checked)
+  await postJson(fake, '/upgrade/check', {})
+  assert.equal(calls, 1, 'GET 状态和缓存命中均无新请求')
+  await postJson(fake, '/upgrade/check', { force: true })
+  assert.equal(calls, 2)
+  response = { ok: false, status: 403 }
+  const failed = await fake.call(API + '/upgrade/check', { force: true }, { method: 'POST' })
+  assert.equal(failed.json.ok, false)
+  assert.match(failed.json.message, /GitHub HTTP 403/)
+  assert.deepEqual((await getJson(fake, '/upgrade')).cached, checked, '错误不会伪造或替换上次成功结果')
+  assert.equal(calls, 3)
+})

@@ -96,6 +96,7 @@ export const DEFAULTS = {
     allowRawAction: false,
   },
   ops: {
+    upgrade: { enabled: false, channel: 'stable', repo: 'reina0721/dsh-bot', timeoutMs: 10000, cacheMinutes: 60 },
     backup: { enabled: true, includeMedia: false, maxSnapshots: 10, maxBytes: 209715200, maxFiles: 5000, prune: true, allowRestore: false },
   },
   // 媒体能力总开关；provider 均默认关闭，默认配置不会产生任何媒体网络请求。
@@ -344,6 +345,11 @@ export const CONFIG_GROUPS = [
     id: 'ops', title: '备份与运维',
     description: '本地目录快照，含密钥与认知隐私；默认只暂存恢复。应用前停止写入，完成后重启。',
     fields: [
+      { path: 'ops.upgrade.enabled', label: '启用手动升级检查', type: 'switch', default: false },
+      { path: 'ops.upgrade.channel', label: 'Release 通道', type: 'select', default: 'stable', options: [{ value: 'stable', label: '稳定版' }, { value: 'beta', label: '含预发布版' }] },
+      { path: 'ops.upgrade.repo', label: 'GitHub 仓库（owner/repo）', type: 'text', default: 'reina0721/dsh-bot' },
+      { path: 'ops.upgrade.timeoutMs', label: '升级检查超时', type: 'number', default: 10000, min: 1000, max: 120000, step: 1000, unit: 'ms' },
+      { path: 'ops.upgrade.cacheMinutes', label: '检查缓存分钟数', type: 'number', default: 60, min: 0, max: 10080, step: 1 },
       { path: 'ops.backup.enabled', label: '启用本地备份', type: 'switch', default: true },
       { path: 'ops.backup.includeMedia', label: '面板默认包含全部媒体', type: 'switch', default: false },
       { path: 'ops.backup.maxSnapshots', label: '最多保留快照', type: 'number', default: 10, min: 1, max: 1000, step: 1 },
@@ -1056,6 +1062,13 @@ export function normalizeConfig(raw) {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
     },
     ops: {
+      upgrade: {
+        enabled: pickBool(merged.ops?.upgrade?.enabled, DEFAULTS.ops.upgrade.enabled),
+        channel: pickEnum(merged.ops?.upgrade?.channel, DEFAULTS.ops.upgrade.channel, ['stable', 'beta']),
+        repo: typeof merged.ops?.upgrade?.repo === 'string' && !merged.ops.upgrade.repo.includes('..') && /^[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+$/.test(merged.ops.upgrade.repo) ? merged.ops.upgrade.repo : DEFAULTS.ops.upgrade.repo,
+        timeoutMs: pickNumber(merged.ops?.upgrade?.timeoutMs, DEFAULTS.ops.upgrade.timeoutMs, { min: 1000, max: 120000, integer: true }),
+        cacheMinutes: pickNumber(merged.ops?.upgrade?.cacheMinutes, DEFAULTS.ops.upgrade.cacheMinutes, { min: 0, max: 10080, integer: true }),
+      },
       backup: {
         enabled: pickBool(merged.ops?.backup?.enabled, DEFAULTS.ops.backup.enabled),
         includeMedia: pickBool(merged.ops?.backup?.includeMedia, DEFAULTS.ops.backup.includeMedia),
