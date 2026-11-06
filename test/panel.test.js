@@ -47,6 +47,48 @@ await import('../client.js')
 const registration = captured
 const panel = registration ? registration.factory(requireShim) : null
 
+test('CogMemories: import panel scopes, file size gate, payload, counts/error and refresh', async () => {
+  const calls = [], originalFetch = globalThis.fetch
+  const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children)]
+  const file = { size: 100, text: async () => '[{"text":"old archive"}]' }
+  const render = ({ archiveFile = file, scope = 'global', scopeId = '', result = null, error = '' } = {}) => {
+    stateOverrides = ['query', 'semantic', { items: [] }, false, '', archiveFile, scope, scopeId, false, result, error]
+    try { return panel.CogMemories({ toast() {} }) } finally { stateOverrides = null }
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : undefined })
+    return { ok: true, json: async () => ({ ok: true, imported: 1, skipped: 0, invalid: 0, bytes: 100, items: [] }) }
+  }
+  try {
+    const tree = render(), all = nodes(tree), json = JSON.stringify(tree)
+    assert.match(json, /导入旧档案/); assert.match(json, /当前人格/); assert.match(json, /幂等/); assert.match(json, /不上传到外部服务/)
+    const input = all.find((node) => node.props?.type === 'file')
+    assert.equal(input.props.accept, '.json,.jsonl,.txt')
+    const select = all.find((node) => node.props?.['aria-label'] === '导入作用域')
+    assert.equal(select.props.value, 'global')
+    assert.deepEqual(nodes(select).filter((node) => node.type === 'option').map((node) => node.props.value), ['global', 'private', 'group'])
+    assert.equal(all.some((node) => node.props?.['aria-label'] === '导入作用域 ID'), false)
+    await all.find((node) => node.children?.includes('导入')).props.onClick()
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/cognition/import', method: 'POST', body: { format: 'auto', content: '[{"text":"old archive"}]', scopeType: 'global', scopeId: '' } })
+    assert.equal(calls[1].method, 'GET')
+    assert.match(calls[1].path, /query=query&type=semantic/)
+    for (const scope of ['private', 'group']) {
+      const scoped = nodes(render({ scope, scopeId: '12345' }))
+      assert.equal(scoped.find((node) => node.props?.['aria-label'] === '导入作用域 ID').props.value, '12345')
+      await scoped.find((node) => node.children?.includes('导入')).props.onClick()
+      assert.equal(calls.at(-2).body.scopeType, scope)
+      assert.equal(calls.at(-2).body.scopeId, '12345')
+    }
+    const previous = calls.length
+    for (const options of [{ archiveFile: { size: 5242881, text: () => { throw new Error('must not read oversized file') } } }, { scope: 'group', scopeId: 'bad' }, { archiveFile: null }]) {
+      await nodes(render(options)).find((node) => node.children?.includes('导入')).props.onClick()
+    }
+    assert.equal(calls.length, previous)
+    assert.match(JSON.stringify(render({ result: { imported: 3, skipped: 2, invalid: 1, bytes: 100 } })), /导入 3 · 跳过 2 · 无效 1 · 字节 100/)
+    assert.match(JSON.stringify(render({ error: '导入旧档案已禁用' })), /导入旧档案已禁用/)
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('module loader：id 与 factory 形状正确', () => {
   assert.ok(registration, 'client.js 应该调用 window.__ModuleLoader__.load')
   assert.equal(registration.id, 'dsh-bot')

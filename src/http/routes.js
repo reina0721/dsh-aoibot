@@ -352,6 +352,15 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       if (!q.id) throw new Error('缺少 id')
       return { ok: true, ...cognition.memoryDetail(q.id) }
     })
+    route('POST', '/cognition/import', async (req) => {
+      const body = await readBody(req, 6 * 1024 * 1024)
+      if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('导入请求体必须是对象')
+      return cognition.importArchive({
+        format: body.format,
+        content: body.content,
+        scope: { scopeType: body.scopeType === undefined ? 'global' : body.scopeType, scopeId: body.scopeId === undefined ? '' : body.scopeId },
+      })
+    })
     route('POST', '/cognition/memory/action', async (req) => {
       const body = await readBody(req)
       if (!body?.id || !body?.action) throw new Error('缺少 id/action')

@@ -27,6 +27,7 @@
 - 「安全」页：只读访问审计与危险面、上线检查清单；默认关闭的手动 GitHub Release 版本检查，stable/beta 仅改变发布过滤，不自动更新、下载或安装。保持 DSH 本机信任边界，不改变 API 鉴权；不提供工作区迁移或离峰省钱，见[安全与上线检查](docs/USER-MANUAL.md#安全与上线检查)。
 - 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；每日记忆整理与按作用域反思；时间轴只读回忆日志。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
+- 旧档案导入：认知记忆页/API 将通用 JSON/JSONL 导入当前人格，默认最多 5 MiB/5000 项，按作用域/人物/正文幂等去重，本地处理。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。
 - 连接、消息、人格、模型、认知、日志及系统设置面板。
 
@@ -66,6 +67,8 @@ sh install.sh --profile desktop --version 0.10.0
 M7-c 生图/改图与普通图片发送已接入服务、主人命令和媒体面板。生成/改图默认关闭，仅接收受大小/尺寸限制的 PNG base64，不抓取返回 URL；源图限媒体根内相对路径，realpath 防符号链接逃逸。改图只支持 OpenAI 兼容 edits；面板/API 只落盘，QQ 命令先检查 access。自动化使用 fake provider，真实 provider/QQ 生图改图未验证，#44/#46 仍保留差距。配置和限制见 [CONFIG 媒体](docs/CONFIG.md#39-媒体media) 与 [用户手册](docs/USER-MANUAL.md#37-媒体与表情包m4-am4-bm7-c)。
 
 M7-b 新增默认关闭的主人 QQ 管理命令：资料、当前群管理、精华/撤回与媒体根内文件上传。需启用 `cognition.qqAdmin.enabled`，踢人始终 `confirm`、撤回默认确认；群管需机器人具备权限，无任意 action 透传或新增 Agent 工具，真实 QQ 管理/资料/文件动作尚未验证。用法见 [用户手册](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人)，配置见 [CONFIG](docs/CONFIG.md)。2026-11-06 用户批准的发布门槛豁免见 [GAP §8.1](docs/research/GAP-AURABOT.md#81-用户批准豁免)，其他差距继续跟踪。
+
+M7-d 提供通用 JSON/JSONL 旧档案导入：记忆页选文件，或调用 `POST /cognition/import`，内容写入当前人格并幂等去重，不联网、不自动发送 QQ。无 Aurabot 专用迁移、向量或时间轴事件导入，尚无真实旧档案样本验证，#30 仍 partial。格式与用法见 [用户手册](docs/USER-MANUAL.md#36-目的与记忆整理)，开关和限额见 [CONFIG](docs/CONFIG.md#导入旧档案cognitionimportm7-d)。
 
 ## 首次连接
 

@@ -5686,6 +5686,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [result, setResult] = useState(null)
       const [loading, setLoading] = useState(false)
       const [expanded, setExpanded] = useState('')
+      const [archiveFile, setArchiveFile] = useState(null)
+      const [importScope, setImportScope] = useState('global')
+      const [importScopeId, setImportScopeId] = useState('')
+      const [importing, setImporting] = useState(false)
+      const [importResult, setImportResult] = useState(null)
+      const [importError, setImportError] = useState('')
       const search = useCallback(async (q = query, t = type) => {
         setLoading(true)
         const parsed = parseApiResponse(await get('/cognition/memories?query=' + encodeURIComponent(q || '') + '&type=' + encodeURIComponent(t || '') + '&limit=80'))
@@ -5699,6 +5705,25 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         if (action === 'delete' && !window.confirm('彻底删除这条记忆？删除后不可恢复；「遗忘」只是降低检索权重。')) return
         const response = await cogPost(props, '/cognition/memory/action', { id: item.id, action })
         if (response) { props.toast(action === 'forget' ? '已遗忘（可重新激活）' : action === 'delete' ? '记忆已删除' : '记忆已激活', 'ok'); search() }
+      }
+      const importArchive = async () => {
+        setImportError('')
+        setImportResult(null)
+        if (!archiveFile) { setImportError('请先选择 JSON/JSONL 文件'); return }
+        if (archiveFile.size > 5 * 1024 * 1024) { setImportError('文件超过 5 MiB 上限'); return }
+        if (importScope !== 'global' && !/^[0-9]+$/.test(importScopeId)) { setImportError('私聊/群 ID 必须是非空数字字符串'); return }
+        setImporting(true)
+        try {
+          const content = await archiveFile.text()
+          const parsed = parseApiResponse(await post('/cognition/import', { format: 'auto', content, scopeType: importScope, scopeId: importScope === 'global' ? '' : importScopeId }))
+          if (!parsed.ok) { setImportError(parsed.message); return }
+          setImportResult(parsed.data)
+          await search()
+        } catch {
+          setImportError('读取文件或导入失败，请检查文件及本地服务状态')
+        } finally {
+          setImporting(false)
+        }
       }
       return h(
         'div',
@@ -5725,6 +5750,28 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               expanded === item.id ? h('div', { className: 'ob-cog-detail' }, h(KV, { rows: [['ID', item.id], ['创建', String(new Date(item.createdAt || Date.now()).toLocaleString())], ['来源', String((item.sourceEventIds || []).length) + ' 个事件'], ['置信', Number(item.confidence || 0).toFixed(2)], ['效价/唤醒', Number(item.valence || 0).toFixed(2) + ' / ' + Number(item.arousal || 0).toFixed(2)]] })) : null,
             ),
           )) : h(CogEmpty, { title: '没有匹配记忆', description: '记忆在完整轮次结束后写入；试试清空搜索或改变类型。', icon: 'memory' }),
+        ),
+        h(Panel, { title: '导入旧档案', description: '内容存入当前人格；导入幂等，相同作用域/人物/正文会跳过。仅支持 JSON/JSONL，不上传到外部服务。' },
+          h('div', { className: 'ob-stack', style: { gap: '10px' } },
+            h('input', { type: 'file', accept: '.json,.jsonl,.txt', disabled: importing, 'aria-label': '旧档案文件', onChange: (event) => {
+              const file = event.target.files?.[0] || null
+              setImportResult(null)
+              setImportError(file && file.size > 5 * 1024 * 1024 ? '文件超过 5 MiB 上限' : '')
+              setArchiveFile(file && file.size <= 5 * 1024 * 1024 ? file : null)
+            } }),
+            h('div', { className: 'ob-row' },
+              h('select', { className: 'ob-select', value: importScope, disabled: importing, 'aria-label': '导入作用域', onChange: (event) => { setImportScope(event.target.value); setImportScopeId('') } },
+                h('option', { value: 'global' }, '全局'),
+                h('option', { value: 'private' }, '当前人格私聊'),
+                h('option', { value: 'group' }, '群'),
+              ),
+              importScope !== 'global' ? h('input', { className: 'ob-input', value: importScopeId, disabled: importing, inputMode: 'numeric', placeholder: importScope === 'private' ? '私聊 QQ 号' : '群号', 'aria-label': '导入作用域 ID', onChange: (event) => setImportScopeId(event.target.value) }) : null,
+              h(Btn, { disabled: importing || !archiveFile, onClick: importArchive }, importing ? '导入中…' : '导入'),
+            ),
+            importError ? h(Banner, { tone: 'err', message: importError }) : null,
+            importResult ? h('p', { role: 'status', className: 'ob-small' }, '导入 ' + importResult.imported + ' · 跳过 ' + importResult.skipped + ' · 无效 ' + importResult.invalid + ' · 字节 ' + importResult.bytes) : null,
+            h('p', { className: 'ob-field-help' }, '最多 5 MiB、5000 项（配置可调低）；档案内各项可指定作用域，未指定时使用上方选择。不会自动发送到 QQ。'),
+          ),
         ),
       )
     }
@@ -7678,6 +7725,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.SettingsShell = SettingsShell
     exports.ModelTab = ModelTab
     exports.CognitionTab = CognitionTab
+    exports.CogMemories = CogMemories
     exports.PersonaTab = PersonaTab
     exports.COG_SECTIONS = COG_SECTIONS
     exports.Logs = Logs

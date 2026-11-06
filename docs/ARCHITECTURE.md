@@ -355,6 +355,14 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - host 提供 `onebotModules`，在接受的规范化事件上非阻塞 dispatch；REST 为 `/modules`、`/modules/reload`、`/modules/toggle`，面板提供列表/启停/重载，不提供上传。
 - 安全边界：模块是宿主进程中的任意本地代码，permissions 不是 Node.js 沙箱。M5-a 不含远程下载、依赖安装、签名、marketplace、自动更新或文件监视。详见 `docs/MODULES.md`。
 
+### 旧档案导入（M7-d）
+
+`src/cognition/archive-import.js` 的 `createArchiveImportService({store,getConfig,clock,logger})` 在 memory 服务之后组装，store 使用 `state.scopedStore`。同步导入期间不切换人格；确定性 SHA-256 ID 由作用域类型/ID、personId、正文的 JSON 元组生成，按当前人格检查已有记录和批内重复，不覆盖旧值。
+
+`POST /cognition/import` 用 6 MiB 请求体限制接收 format/content/scopeType/scopeId，入口检查 `cognition.import.enabled` 和存储就绪状态；服务按 UTF-8 大小（默认 5 MiB）与项数（默认 5000）验证。先解析/规范化整批，再在 store 事务中写入 memory，并把规范化后的 createdAt/updatedAt 传给 `put` 的时间戳选项，保留 SQLite 排序和 FTS/词法检索。JSONL 非空坏行计 invalid，整份 JSON 解析失败或零有效项报错。正文最多 4000 Unicode 字符、私聊/群作用域数字 ID、人物 64 字符、类型白名单和安全时间戳；source/status 与记忆默认值固定，不透传任意字段。
+
+面板 `CogMemories` 在列表后提供文件选择、作用域/ID 与导入结果，成功刷新检索。服务只记录计数，错误不包含档案正文；不读取任意路径、不调用网络/模型、不自动发送 QQ，不新增命令/鉴权/依赖。范围是通用 JSON/JSONL 记忆，导入后的记忆可被既有时间轴聚合，但不是时间轴事件导入；不提供 Aurabot 专用转换或向量工作，无真实旧档案样本验证，#30 仍 partial。
+
 ### 3.19 表情包、媒体命令与面板（M4-b/M7-c）
 
 - `src/media/stickers.js` 在 `<dataDir>/media/stickers/` 保存图片，以 `<dataDir>/media/stickers.json` 原子维护索引。只接受 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个；SHA-256 去重，索引缺失或损坏按空库容错。HTTP/JSON 只公开 ID、名称、MIME、大小、hash、标签和时间，不公开绝对路径。

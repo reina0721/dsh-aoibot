@@ -275,6 +275,22 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
 
+### 导入旧档案（cognition.import，M7-d）
+
+「配置 / 认知设置 → 导入旧档案」（`cog-import`）提供以下字段：
+
+| 字段 | 默认值 | 范围/作用 |
+|---|---|---|
+| `cognition.import.enabled` | `true` | 允许面板/API 导入；关闭后返回明确错误 |
+| `cognition.import.maxBytes` | `5242880` | 1–5242880 字节，按档案字符串 UTF-8 大小计算；面板固定最多 5 MiB |
+| `cognition.import.maxItems` | `5000` | 1–5000 项；包括无效项与重复项；JSONL 按非空行计数 |
+
+`POST /onebot-qq/api/cognition/import` 接收 `{format?:"auto"或"json"或"jsonl", content:字符串, scopeType?:"global"或"private"或"group", scopeId?:字符串}`；HTTP 请求体上限 6 MiB。默认全局作用域，但始终属于**当前人格**；各项可覆盖作用域，私聊/群 ID 必须是非空 ASCII 数字字符串。接口沿用现有本机 API 信任边界，不新增鉴权或 QQ 命令。
+
+正文依次读取 `text/content/summary/memory` 中第一个字符串，去除首尾空白后限 1–4000 Unicode 字符；`personId` 可选字符串，最多 64 字符。类型限 `episodic/semantic/emotional/social/procedural/self`，未知类型用 episodic；数值 importance 限制到 0–1，默认 0.5。createdAt/updatedAt 支持毫秒时间戳或 ISO 日期，非正数/无效/未来时间回退，updatedAt 不早于 createdAt。固定 source=import、status=active、stability/salience=0.5、confidence=1，不保留其他字段。旧档案格式与操作示例见 [用户手册](USER-MANUAL.md#36-目的与记忆整理)。
+
+导入服务不联网、不调用模型、不自动发送 QQ；错误不回显内容，日志仅计数。只支持通用 JSON/JSONL，无 Aurabot 专用迁移、向量或时间轴事件导入；尚无真实旧档案样本验证。
+
 按聊天选模型：`cognition.modelRouting.privateDefault` / `groupDefault` 为 `provider/model`；`routes` 是
 `QQ号或群号=provider/model` 的字符串数组，优先于默认项。只影响认知分析与回复生成（oneshot / agent compose），
 不修改 DSH 面板默认模型；`/model` 命令会写这个数组。provider 在直连 provider 列表里时走直连，否则走 DSH。

@@ -29,6 +29,28 @@ const API = '/onebot-qq/api'
 const MOCK_SELF_ID = '20000002'
 const MOCK_NICKNAME = '测试机器人'
 
+test('e2e: archive import API accepts JSON, dedupes, validates bodies and disabled config', async (t) => {
+  const { fake } = await boot(t)
+  const body = { content: '[{"text":"archive API 旧档案"}]', scopeType: 'private', scopeId: '12345' }
+  const imported = await postJson(fake, '/cognition/import', body)
+  assert.equal(imported.imported, 1)
+  assert.equal(imported.format, 'json')
+  assert.equal((await postJson(fake, '/cognition/import', body)).skipped, 1)
+  const memories = await getJson(fake, '/cognition/memories?query=archive&scopeType=private&scopeId=12345')
+  assert.equal(memories.items.length, 1)
+  assert.equal(memories.items[0].source, 'import')
+  for (const invalid of [null, [], { content: {} }, { content: 'secret-marker broken JSON' }, { ...body, scopeId: 'bad' }, { ...body, scopeType: null }, { ...body, scopeId: null }, { ...body, format: 'xml' }]) {
+    const response = await fake.call(API + '/cognition/import', invalid, { method: 'POST' })
+    assert.equal(response.json.ok, false)
+    assert.ok(response.json.message)
+    assert.doesNotMatch(response.json.message, /secret-marker/)
+  }
+  await patchConfig(fake, { cognition: { import: { enabled: false } } })
+  const disabled = await fake.call(API + '/cognition/import', body, { method: 'POST' })
+  assert.equal(disabled.json.ok, false)
+  assert.match(disabled.json.message, /禁用/)
+})
+
 // ---------------------------------------------------------------------------
 // 通用辅助
 // ---------------------------------------------------------------------------

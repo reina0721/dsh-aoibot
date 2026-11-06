@@ -197,6 +197,7 @@ export const DEFAULTS = {
       injectPrompt: true,
       promptLimit: 3,
     },
+    import: { enabled: true, maxBytes: 5242880, maxItems: 5000 },
     consolidation: {
       enabled: true,
       hour: 4,
@@ -829,6 +830,16 @@ export const CONFIG_GROUPS = [
     ],
   },
   {
+    id: 'cog-import',
+    title: '导入旧档案',
+    description: '将通用 JSON/JSONL 记忆导入当前人格；本地处理，重复内容跳过。',
+    fields: [
+      { path: 'cognition.import.enabled', label: '导入旧档案', type: 'switch', default: true },
+      { path: 'cognition.import.maxBytes', label: '导入大小上限', type: 'number', default: 5242880, min: 1, max: 5242880, step: 1, unit: '字节' },
+      { path: 'cognition.import.maxItems', label: '导入条数上限', type: 'number', default: 5000, min: 1, max: 5000, step: 1, unit: '条' },
+    ],
+  },
+  {
     id: 'cog-policy',
     title: '行为策略',
     description: '候选行为、效用、风险、沉默/等待与反馈学习。',
@@ -1248,6 +1259,11 @@ function normalizeCognition(raw, rawCognition = {}) {
       maxActive: pickNumber(src.purpose?.maxActive, d.purpose.maxActive, { min: 1, max: 20, integer: true }),
       injectPrompt: pickBool(src.purpose?.injectPrompt, d.purpose.injectPrompt),
       promptLimit: pickNumber(src.purpose?.promptLimit, d.purpose.promptLimit, { min: 0, max: 10, integer: true }),
+    },
+    import: {
+      enabled: pickBool(src.import?.enabled, d.import.enabled),
+      maxBytes: pickNumber(src.import?.maxBytes, d.import.maxBytes, { min: 1, max: 5242880, integer: true }),
+      maxItems: pickNumber(src.import?.maxItems, d.import.maxItems, { min: 1, max: 5000, integer: true }),
     },
     consolidation: {
       enabled: pickBool(src.consolidation?.enabled, d.consolidation.enabled),

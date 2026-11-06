@@ -12,6 +12,7 @@ import { createRelationshipService } from './relationships.js'
 import { createEmotionService } from './emotion.js'
 import { createPersonaService } from './persona.js'
 import { createMemoryService } from './memory.js'
+import { createArchiveImportService } from './archive-import.js'
 import {
   createPersonaScopedStore,
   migrateLegacyPersonaData,
@@ -104,6 +105,7 @@ export function createCognition({
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
       state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
+      state.services.archiveImport = createArchiveImportService({ store: state.scopedStore, getConfig, clock, logger: log })
       state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
       state.services.timeline = createTimelineService({ store: state.store, scopedStore: personaStore, clock })
       state.services.consolidation = createConsolidationService({
@@ -454,6 +456,11 @@ export function createCognition({
   function memoryDetail(id) {
     return state.services.memory?.get?.(id) || null
   }
+  function importArchive(input) {
+    if (cfg().import?.enabled === false) throw new Error('导入旧档案已禁用')
+    if (!state.ready || !state.services.archiveImport) throw new Error('认知存储尚未就绪，无法导入旧档案')
+    return state.services.archiveImport.importArchive(input)
+  }
   function memoryAction(id, action) {
     if (action === 'activate') return state.services.memory?.activate?.(id) || null
     if (action === 'forget') return state.services.memory?.forget?.(id) || null
@@ -623,6 +630,7 @@ export function createCognition({
     adjustRelationship,
     memories,
     memoryDetail,
+    importArchive,
     memoryAction,
     emotionState,
     adjustEmotion,
