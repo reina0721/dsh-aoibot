@@ -49,6 +49,7 @@ export function createCognition({
   models = null,
   access = null,
   setConfig = null,
+  media = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -171,6 +172,7 @@ export function createCognition({
         runtime: state.services.runtime,
         commands: state.services.commands,
         purpose: state.services.purpose,
+        media,
         turnAggregator: null,
       })
       state.services.aggregator = createTurnAggregator({

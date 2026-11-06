@@ -68,7 +68,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, access = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, access = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -128,6 +128,22 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  if (media) {
+    route('GET', '/media/status', async () => ({ ok: true, ...media.status() }))
+    route('POST', '/media/test', async (req) => {
+      const body = await readBody(req)
+      const kind = String(body?.kind || '')
+      if (!['tts', 'asr', 'vision'].includes(kind)) throw new Error('kind 必须是 tts、asr 或 vision')
+      return { ok: true, ...(await media.test(kind)) }
+    })
+    route('POST', '/media/tts', async (req) => {
+      const body = await readBody(req)
+      const text = String(body?.text || '').trim()
+      if (!text) throw new Error('缺少 text')
+      return { ok: true, file: await media.synthesize(text) }
+    })
+  }
 
   // ---- 访问控制：面板/诊断只读接口 ----
   if (access) {

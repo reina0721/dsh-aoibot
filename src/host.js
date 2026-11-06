@@ -22,6 +22,7 @@ import { normalizeEvent } from './gateway/normalize.js'
 import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
 import { createModelGateway } from './model/index.js'
+import { createMediaService } from './media/index.js'
 import { personaProfileText } from './cognition/persona.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -59,6 +60,16 @@ export function apply(ctx, rowConfig) {
   const models = createModelGateway({ dataRoot: dataDir(), logger, env: process.env })
 
   let gatewayRef = null
+  const mediaGateway = {
+    get actions() {
+      return {
+        sendMessage: (...args) => gatewayRef?.actions?.sendMessage(...args),
+        uploadGroupFile: (...args) => gatewayRef?.actions?.uploadGroupFile(...args),
+        uploadPrivateFile: (...args) => gatewayRef?.actions?.uploadPrivateFile(...args),
+      }
+    },
+  }
+  const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const cognition = createCognition({
     ctx,
     getConfig,
@@ -77,6 +88,7 @@ export function apply(ctx, rowConfig) {
     dataRoot: dataDir('cognition'),
     access,
     setConfig,
+    media,
   })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
@@ -216,6 +228,7 @@ export function apply(ctx, rowConfig) {
     logger,
     cognition,
     models,
+    media,
     access,
     version: VERSION,
     dataDir: dataDir(),
@@ -271,6 +284,7 @@ export function apply(ctx, rowConfig) {
     events,
     cognition,
     models,
+    media,
     access,
     logger,
     routes,

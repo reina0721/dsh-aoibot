@@ -254,6 +254,18 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 **仍未做**：导入旧档案、人物/群档案的完整编辑页、向量检索；见 GAP 矩阵。
 
+### 3.7 媒体基础（M4-a）
+
+媒体默认完全关闭。在「配置 → 媒体」先开 `media.enabled`，再按需开启图片、Vision、ASR、TTS 或文件。Provider 使用 OpenAI 兼容接口；配置里只填 API Key 的环境变量名，密钥本身放在启动 DSH 的进程环境中。
+
+- 图片：下载入站图片；可选 Vision 会把一句 `[图片：描述]` 追加到本轮上下文。图片发送的底层服务使用 `base64://`，但本里程碑没有新增 QQ 命令或面板发送控件。
+- 语音：开启 ASR 后下载 record 并转写，追加 `[语音转写：…]`；TTS 只生成 `<数据目录>/media/outbound/*.mp3`，不会自动发到 QQ。
+- 文件：下载允许扩展名的文件；底层支持 OneBot `upload_group_file` / `upload_private_file`，但没有任意路径上传 API。
+- 所有媒体受 `media.maxBytes`（默认 10 MiB）和扩展名白名单限制；失败只在 debug 日志记录，不会让普通消息处理失败。
+- 诊断接口：`GET /onebot-qq/api/media/status`；`POST /onebot-qq/api/media/test` 只接受 `tts`、`asr`、`vision` 并使用内置样本；`POST /onebot-qq/api/media/tts` 只接受文本并返回本地生成文件路径。
+
+当前不包含媒体面板、表情包市场、RVC/翻唱、图片生成或编辑；真实 OneBot/provider 兼容性需在自己的测试号上验证。
+
 ---
 
 ## 4. 面板十个标签

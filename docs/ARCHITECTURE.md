@@ -332,6 +332,16 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - `src/cognition/timeline.js`：只读聚合 turn/memory/decision，支持 `before` 分页、types 与 scope 过滤；面板「时间轴」按类型筛选。
 - 边界：目的不执行工具、不自动发消息；导入旧档案/人物档案编辑/向量检索仍在 M3 剩余。
 
+### 3.17 媒体基础（M4-a）
+
+- `src/media/index.js` 的 `createMediaService()` 是媒体唯一入口。`media.enabled=false`，且 Vision/ASR/TTS 各自默认关闭，因此默认配置不发起媒体网络请求。
+- `pipeline.handleTurn()` 在主人命令之后、合并转发展开之前调用 `ingestTurn(turn)`；下载后的附件写入 `turn.media`，ASR/视觉文本用「媒体识别内容」分隔后追加到 `turn.text`，因此进入检索、分析、回复 prompt 与记忆。下载/provider 失败只记 debug，不中断轮次。
+- 入站仅下载 `http/https` 的 `image`/`record`/`file` 段及 `message.images`，按 `media.maxBytes` 限制单文件并校验扩展名；默认目录为 `<dataDir>/media/inbound/`。Vision 调 OpenAI 兼容 `/chat/completions`（base64 data URL），ASR 调 `/audio/transcriptions`（multipart）。
+- TTS 调 OpenAI 兼容 `/audio/speech`，MP3 保存到 `<dataDir>/media/outbound/`。API Key 配置只保存环境变量名，密钥从进程环境读取，不进入状态或日志。
+- `sendMedia()` 对图片/语音使用 `base64://` OneBot 消息段，避免网关不能读取 DSH 本地 `file://`；文件使用 `upload_group_file` / `upload_private_file`。发送同样检查总开关、能力开关、大小与扩展名。
+- REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
+- 边界：没有媒体面板、QQ 媒体命令/Agent 工具、表情包市场、RVC、图片生成/编辑；真实网关/provider 兼容性仍需 M7 实机验证。
+
 ## 4. 数据目录
 
 ```
@@ -340,6 +350,7 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 ├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
+├── media/               # 可选：inbound/ 下载与 outbound/ TTS 输出
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）

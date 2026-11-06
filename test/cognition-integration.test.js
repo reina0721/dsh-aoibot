@@ -13,7 +13,7 @@ function fakeLlm(capture = null, composeText = '测试回复：我在听。') {
   return {
     async *stream(options) {
       const system = options.system || options.messages?.find((message) => message.role === 'system')?.content?.[0]?.text || ''
-      if (Array.isArray(capture)) capture.push(system)
+      if (Array.isArray(capture)) capture.push(`${system}\n${JSON.stringify(options.messages || [])}`)
       const text = system.includes('认知分析器')
         ? JSON.stringify({ intent: 'chat', confidence: 0.8, novelty: 0.2, risk: 0, serious: false, appraisal: { desirability: 0.3, relevance: 0.7, intensity: 0.5, novelty: 0.2, control: 0.5, agency: 'other', norm: 0 }, unknownCandidates: [], replyGoal: '自然回应', rationale: 'test' })
         : composeText
@@ -25,7 +25,7 @@ function fakeLlm(capture = null, composeText = '测试回复：我在听。') {
   }
 }
 
-function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm() }) {
+function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm(), media = null }) {
   const cfg = normalizeConfig({
     cognition: {
       enabled: true,
@@ -43,7 +43,7 @@ function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm()
     },
     emit() {},
   }
-  return createCognition({ ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir })
+  return createCognition({ ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir, media })
 }
 
 function privateEvent(id, text, userId = '10001') {
@@ -488,6 +488,39 @@ test('M3-a：活跃目的注入回复上下文，完成/删除后不再注入', 
     await flush(60)
     assert.equal(sent.length, 2)
     assert.ok(!capture.some((system) => system.includes('学会做面包')), '完成后的目的不应再注入')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('M4-a：媒体识别文本进入 LLM prompt 与记忆，媒体失败不打断轮次', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-media-'))
+  const scheduler = createFakeScheduler()
+  const capture = []
+  const sent = []
+  let fail = false
+  const media = {
+    async ingestTurn() {
+      if (fail) throw new Error('fake media failure')
+      return { text: '[图片：一只白猫]', attachments: [{ kind: 'image', file: '/safe/inbound/cat.png' }] }
+    },
+  }
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 900 } } } }
+  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(capture), media })
+  try {
+    cog.observe(privateEvent(1, '看看这个'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.equal(sent.length, 1)
+    assert.ok(capture.some((prompt) => prompt.includes('一只白猫')), '媒体文本应进入分析/compose prompt')
+    assert.ok(cog.services.memory.list({ query: '白猫' }).some((item) => String(item.content || item.summary || '').includes('白猫')), '媒体文本应写入记忆')
+
+    fail = true
+    cog.observe(privateEvent(2, '失败也继续'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.equal(sent.length, 2, '媒体异常不应中断认知回复')
   } finally {
     cog.dispose()
     rmSync(dir, { recursive: true, force: true })

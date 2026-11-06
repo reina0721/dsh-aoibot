@@ -93,3 +93,15 @@ test('raw 透传：校验 action 非空；opts 原样透传', async () => {
 test('createActions 缺少 call 直接失败', () => {
   assert.throws(() => createActions({}), /需要 call/)
 })
+
+test('文件上传 actions 校验并映射 OneBot 参数', async () => {
+  const calls = []
+  const actions = createActions({ call: async (action, params) => { calls.push({ action, params }); return {} } })
+  await actions.uploadGroupFile('123', '/tmp/a.txt', 'a.txt')
+  await actions.uploadPrivateFile('456', '/tmp/b.txt', 'b.txt')
+  assert.deepEqual(calls, [
+    { action: 'upload_group_file', params: { group_id: 123, file: '/tmp/a.txt', name: 'a.txt' } },
+    { action: 'upload_private_file', params: { user_id: 456, file: '/tmp/b.txt', name: 'b.txt' } },
+  ])
+  assert.throws(() => actions.uploadGroupFile('', '/tmp/a.txt', 'a.txt'), /群号 不能为空/)
+})

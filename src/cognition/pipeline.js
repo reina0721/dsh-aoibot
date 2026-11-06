@@ -14,6 +14,7 @@ export function createPipeline({
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
+  media = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -543,6 +544,19 @@ export function createPipeline({
         }
       } catch (error) {
         log.warn?.('命令处理失败：', error.message)
+      }
+    }
+    if (media && typeof media.ingestTurn === 'function') {
+      try {
+        const ingested = await media.ingestTurn(turn)
+        turn.media = Array.isArray(ingested?.attachments) ? ingested.attachments : []
+        const mediaText = String(ingested?.text || '').trim()
+        if (mediaText) turn.text = `${String(turn.text || '').trim()}\n【媒体识别内容】\n${mediaText}`.trim()
+        trace(turn.id, 'media_ingest', { text: `${turn.media.length} attachments`, data: { attachments: turn.media.length, addedText: Boolean(mediaText) } })
+      } catch (error) {
+        turn.media = []
+        log.debug?.('媒体摄取失败：', error.message)
+        trace(turn.id, 'media_ingest', { text: 'failed', data: { attachments: 0 } }, { error: error.message })
       }
     }
     await expandForwardTurn(turn)

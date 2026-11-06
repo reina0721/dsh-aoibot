@@ -165,7 +165,27 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 |---|---|---|---|---|---|
 | `security.allowRawAction` | switch | `false` | `true`/`false` | 允许面板通过 `POST /onebot-qq/api/action` 透传任意 OneBot action；仅调试用，默认关闭 | ✅ |
 
-### 3.9 访问控制（`access`）
+### 3.9 媒体（`media`）
+
+媒体和全部外部 provider 默认关闭；只有总开关及对应子开关同时开启才会下载或调用网络。API Key 字段填写的是环境变量名（如 `OPENAI_API_KEY`），不是密钥。
+
+| 路径 | 默认值 | 作用 |
+|---|---|---|
+| `media.enabled` | `false` | 媒体总开关 |
+| `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、TTS 输出和发送均检查 |
+| `media.dir` | `""` | 留空为 `<数据目录>/media`；可指定自定义目录 |
+| `media.images.enabled` | `false` | 允许图片入站下载与 `sendMedia` 发送 |
+| `media.images.visionEnabled` | `false` | 调用 OpenAI 兼容 `/chat/completions` 生成简短图片描述 |
+| `media.images.visionBaseUrl/visionModel/visionApiKeyEnv` | `""` | Vision 根地址、模型、API Key 环境变量名 |
+| `media.audio.asrEnabled` | `false` | 下载 record 并调用 `/audio/transcriptions`；默认模型 `whisper-1` |
+| `media.audio.asrBaseUrl/asrModel/asrApiKeyEnv` | `""` / `"whisper-1"` / `""` | ASR 根地址、模型、API Key 环境变量名 |
+| `media.audio.ttsEnabled` | `false` | 调用 `/audio/speech`，输出 MP3；不自动发送 |
+| `media.audio.ttsBaseUrl/ttsModel/ttsVoice/ttsApiKeyEnv` | `""` / `"tts-1"` / `"alloy"` / `""` | TTS 根地址、模型、音色、API Key 环境变量名 |
+| `media.files.enabled` | `false` | 允许白名单扩展名的文件入站下载和 OneBot 文件上传 |
+
+允许扩展名：图片 `jpg/jpeg/png/gif/webp/bmp`；语音 `mp3/wav/ogg/m4a/aac/amr/silk`；文件 `txt/md/json/csv/pdf/doc/docx/xls/xlsx/ppt/pptx/zip/7z/rar`。网络超时沿用 `timeouts.callMs`。
+
+### 3.10 访问控制（`access`）
 
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
 |---|---|---|---|---|---|
@@ -179,7 +199,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `access` 是增量字段，老配置由 `deepMerge` 自动补齐，不需要迁移脚本；默认 `open` 保证升级后行为不变。
 `allowlist` 但 `ownerQQ` 为空时不会出现「人人可私聊」：私聊只按白名单放行，且 `normalizeConfig` 会给出 issue。
 
-### 3.10 会话运行时（`runtime`）
+### 3.11 会话运行时（`runtime`）
 
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
 |---|---|---|---|---|---|
@@ -190,13 +210,13 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `agent` 需要宿主提供 `sessionController` / `workspaceRegistry` / `agents`；缺失或失败自动回退 `oneshot`。
 `oneshot` 下配置不影响现有回复链路。
 
-### 3.11 内部字段
+### 3.12 内部字段
 
 | 路径 | 类型 | 默认值 | 作用 | 面板 |
 |---|---|---|---|---|
 | `version` | number | `2` | 配置版本号，用于升级时补齐默认值；不要手改 | — |
 
-### 3.12 认知（`cognition`）
+### 3.13 认知（`cognition`）
 
 认知字段按功能分为 11 个面板组（`GET /config` 的 `groups` 中 id 为 `cog-*`），全部持久化、可恢复默认、
 即时生效，不需要重连。完整字段/类型/范围/默认值以 `GET /onebot-qq/api/config` 的 `groups[].fields` 为准；
@@ -252,7 +272,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `{name, profile, traits, style, values, locked, source, activate}`；服务端重新 sanitize/截断，
 设置为 active；不覆盖 `self`。`scripts/import-aoi-persona.mjs` 用于把外部蒸馏包转换成该格式。
 
-### 3.13 模型网关（`models.json`）
+### 3.14 模型网关（`models.json`）
 
 模型 provider 与密钥**不放在 `config.json`**，避免 `/config` 回传；它们存在单独的文件，由「模型」页
 和 `/onebot-qq/api/models/*` 管理：
@@ -345,6 +365,14 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
   },
   "security": {
     "allowRawAction": false
+  },
+  "media": {
+    "enabled": false,
+    "maxBytes": 10485760,
+    "dir": "",
+    "images": { "enabled": false, "visionEnabled": false, "visionBaseUrl": "", "visionModel": "", "visionApiKeyEnv": "" },
+    "audio": { "asrEnabled": false, "asrBaseUrl": "", "asrModel": "whisper-1", "asrApiKeyEnv": "", "ttsEnabled": false, "ttsBaseUrl": "", "ttsModel": "tts-1", "ttsVoice": "alloy", "ttsApiKeyEnv": "" },
+    "files": { "enabled": false }
   }
 }
 ```
@@ -361,7 +389,7 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 | `enabled`、`gateway`、`botQQ`、`accountCheck`、`verification.enabled` | 需要重建连接（正在运行时自动重连） |
 | `onebot.*`（wsUrl/httpUrl/wsToken/httpToken/httpAuth） | 需要重建连接 |
 | `snowluma.*`（autoDetect/dir/uin） | 需要重建连接 |
-| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
+| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`media.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
 | `enabled: false` → `true`（保存时） | 自动建立连接（与「启用并自动连接」字段语义一致） |
 | `enabled: false` | 断开连接并停止自动重连 |
 

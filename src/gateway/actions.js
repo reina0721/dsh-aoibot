@@ -89,6 +89,22 @@ export function createActions({ call }) {
     sendPrivate,
     sendGroup,
     sendMessage,
+    /** 上传群文件（OneBot v11 路径由网关进程读取）。 */
+    uploadGroupFile(groupId, filePath, name, opts = {}) {
+      return call('upload_group_file', {
+        group_id: idParam(requireText(groupId, '群号')),
+        file: requireText(filePath, '文件路径'),
+        name: requireText(name, '文件名'),
+      }, opts)
+    },
+    /** 上传私聊文件（部分 OneBot 实现扩展了此 v11 action）。 */
+    uploadPrivateFile(userId, filePath, name, opts = {}) {
+      return call('upload_private_file', {
+        user_id: idParam(requireText(userId, 'QQ 号')),
+        file: requireText(filePath, '文件路径'),
+        name: requireText(name, '文件名'),
+      }, opts)
+    },
     /** 登录号信息：{ user_id, nickname } */
     getLoginInfo(opts = {}) {
       return call('get_login_info', {}, opts)

@@ -95,6 +95,31 @@ export const DEFAULTS = {
     // 面板「高级」里透传任意 OneBot action（调试用，默认关）
     allowRawAction: false,
   },
+  // 媒体能力总开关；provider 均默认关闭，默认配置不会产生任何媒体网络请求。
+  media: {
+    enabled: false,
+    maxBytes: 10 * 1024 * 1024,
+    dir: '',
+    images: {
+      enabled: false,
+      visionEnabled: false,
+      visionBaseUrl: '',
+      visionModel: '',
+      visionApiKeyEnv: '',
+    },
+    audio: {
+      asrEnabled: false,
+      asrBaseUrl: '',
+      asrModel: 'whisper-1',
+      asrApiKeyEnv: '',
+      ttsEnabled: false,
+      ttsBaseUrl: '',
+      ttsModel: 'tts-1',
+      ttsVoice: 'alloy',
+      ttsApiKeyEnv: '',
+    },
+    files: { enabled: false },
+  },
   // 访问控制：open 保持现状；allowlist 只允许主人 + 白名单触发回复/主动行为。
   access: {
     mode: 'open',
@@ -306,6 +331,31 @@ export const DEFAULTS = {
  * type: switch | text | secret | number | select | string-list | number-list | textarea
  */
 export const CONFIG_GROUPS = [
+  {
+    id: 'media',
+    title: '媒体',
+    description: '图片、语音与文件基础能力。默认全部关闭；API Key 只填写环境变量名，不填写密钥本身。',
+    fields: [
+      { path: 'media.enabled', label: '启用媒体基础能力', type: 'switch', default: false },
+      { path: 'media.maxBytes', label: '单个媒体大小上限', type: 'number', default: 10485760, min: 1024, max: 104857600, step: 1048576, unit: 'bytes' },
+      { path: 'media.dir', label: '媒体目录', type: 'text', default: '', placeholder: '留空使用数据目录 media/' },
+      { path: 'media.images.enabled', label: '接收/发送图片', type: 'switch', default: false },
+      { path: 'media.images.visionEnabled', label: '图片理解', type: 'switch', default: false, help: '调用 OpenAI 兼容 chat/completions；默认关闭。' },
+      { path: 'media.images.visionBaseUrl', label: 'Vision Base URL', type: 'text', default: '', placeholder: 'https://api.example.com/v1' },
+      { path: 'media.images.visionModel', label: 'Vision 模型', type: 'text', default: '' },
+      { path: 'media.images.visionApiKeyEnv', label: 'Vision API Key 环境变量名', type: 'text', default: '', placeholder: 'OPENAI_API_KEY' },
+      { path: 'media.audio.asrEnabled', label: '语音转写 ASR', type: 'switch', default: false },
+      { path: 'media.audio.asrBaseUrl', label: 'ASR Base URL', type: 'text', default: '', placeholder: 'https://api.example.com/v1' },
+      { path: 'media.audio.asrModel', label: 'ASR 模型', type: 'text', default: 'whisper-1' },
+      { path: 'media.audio.asrApiKeyEnv', label: 'ASR API Key 环境变量名', type: 'text', default: '', placeholder: 'OPENAI_API_KEY' },
+      { path: 'media.audio.ttsEnabled', label: '语音合成 TTS', type: 'switch', default: false },
+      { path: 'media.audio.ttsBaseUrl', label: 'TTS Base URL', type: 'text', default: '', placeholder: 'https://api.example.com/v1' },
+      { path: 'media.audio.ttsModel', label: 'TTS 模型', type: 'text', default: 'tts-1' },
+      { path: 'media.audio.ttsVoice', label: 'TTS 音色', type: 'text', default: 'alloy' },
+      { path: 'media.audio.ttsApiKeyEnv', label: 'TTS API Key 环境变量名', type: 'text', default: '', placeholder: 'OPENAI_API_KEY' },
+      { path: 'media.files.enabled', label: '接收/上传文件', type: 'switch', default: false },
+    ],
+  },
   {
     id: 'basic',
     title: '基本',
@@ -968,6 +1018,30 @@ export function normalizeConfig(raw) {
     cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}),
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
+    },
+    media: {
+      enabled: pickBool(merged.media?.enabled, DEFAULTS.media.enabled),
+      maxBytes: pickNumber(merged.media?.maxBytes, DEFAULTS.media.maxBytes, { min: 1024, max: 104857600, integer: true }),
+      dir: pickString(merged.media?.dir, DEFAULTS.media.dir, { max: 1024 }),
+      images: {
+        enabled: pickBool(merged.media?.images?.enabled, DEFAULTS.media.images.enabled),
+        visionEnabled: pickBool(merged.media?.images?.visionEnabled, DEFAULTS.media.images.visionEnabled),
+        visionBaseUrl: normalizeUrl(merged.media?.images?.visionBaseUrl, DEFAULTS.media.images.visionBaseUrl, ['http:', 'https:'], (msg) => issues.push(`Vision: ${msg}`)),
+        visionModel: pickString(merged.media?.images?.visionModel, DEFAULTS.media.images.visionModel, { max: 200 }),
+        visionApiKeyEnv: pickString(merged.media?.images?.visionApiKeyEnv, DEFAULTS.media.images.visionApiKeyEnv, { max: 128 }).replace(/[^A-Za-z0-9_]/g, ''),
+      },
+      audio: {
+        asrEnabled: pickBool(merged.media?.audio?.asrEnabled, DEFAULTS.media.audio.asrEnabled),
+        asrBaseUrl: normalizeUrl(merged.media?.audio?.asrBaseUrl, DEFAULTS.media.audio.asrBaseUrl, ['http:', 'https:'], (msg) => issues.push(`ASR: ${msg}`)),
+        asrModel: pickString(merged.media?.audio?.asrModel, DEFAULTS.media.audio.asrModel, { max: 200 }),
+        asrApiKeyEnv: pickString(merged.media?.audio?.asrApiKeyEnv, DEFAULTS.media.audio.asrApiKeyEnv, { max: 128 }).replace(/[^A-Za-z0-9_]/g, ''),
+        ttsEnabled: pickBool(merged.media?.audio?.ttsEnabled, DEFAULTS.media.audio.ttsEnabled),
+        ttsBaseUrl: normalizeUrl(merged.media?.audio?.ttsBaseUrl, DEFAULTS.media.audio.ttsBaseUrl, ['http:', 'https:'], (msg) => issues.push(`TTS: ${msg}`)),
+        ttsModel: pickString(merged.media?.audio?.ttsModel, DEFAULTS.media.audio.ttsModel, { max: 200 }),
+        ttsVoice: pickString(merged.media?.audio?.ttsVoice, DEFAULTS.media.audio.ttsVoice, { max: 100 }),
+        ttsApiKeyEnv: pickString(merged.media?.audio?.ttsApiKeyEnv, DEFAULTS.media.audio.ttsApiKeyEnv, { max: 128 }).replace(/[^A-Za-z0-9_]/g, ''),
+      },
+      files: { enabled: pickBool(merged.media?.files?.enabled, DEFAULTS.media.files.enabled) },
     },
     access: normalizeAccess(merged.access, issues),
     runtime: {
