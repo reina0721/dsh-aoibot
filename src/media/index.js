@@ -326,7 +326,8 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
       // No-follow and non-blocking open also protect against replacement by a symlink/FIFO.
       handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
       const opened = await handle.stat()
-      if (!opened.isFile() || opened.dev !== info.dev || opened.ino !== info.ino) throw new Error('本地文件已变化，请刷新后重试')
+      // Windows may report different file identity values for lstat and an open handle.
+      if (!opened.isFile() || (process.platform !== 'win32' && (opened.dev !== info.dev || opened.ino !== info.ino))) throw new Error('本地文件已变化，请刷新后重试')
       if (opened.size > limit) throw new Error(`文件超过大小限制 ${limit} bytes`)
       const chunks = []
       let size = 0
