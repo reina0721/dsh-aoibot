@@ -655,3 +655,10 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 数据为当前人格 `reminder`，含 scopeType/scopeId、text、at/everySeconds/nextAt、active/sent/cancelled、createdBy/createdAt、sentCount、lastError。人格切换只检查当前人格；切回后过期活跃提醒会在下次 tick 处理；复制提醒数据组会复制活跃状态，目标人格激活后也会发送，需自行取消不需要的副本。关闭时 tick 不读写提醒、不发送，调度器保留轻量配置检查以支持热启用；服务支持关闭后直接取消，但 QQ 提醒命令均要求 enabled。
 
 每次最多发送 20 条到期记录，全部经 outbound 的 access/rate/leak guard/dry-run；dry-run 成功也记 sent/推进时间。重复成功后按完成时刻 `now + everySeconds` 排下次，跳过错过的次数；失败仍 active、只存固定错误码，至少等 `max(60,minIntervalSeconds)` 秒重试。网关发送非幂等，超时/进程崩溃后的重试可能重复；无跨进程 exactly-once 保证。无 DSH jobs/长任务/LLM 任务执行/任意命令/外部任务调用，真实定时器和 QQ 未验证，#8/#40 为 partial。
+
+
+## 目的规划助手（M7-t）
+
+无新增配置字段，沿用现有目的服务与认知 LLM 路由/预算；默认行为不变。主人显式 `/purpose plan ID` 才调用 `llm.completeJson`，要求活跃 goal 有标题和描述，生成并替换 1–8 条未完成步骤（每条最多 200 UTF-16 单元、去控制字符、非空且唯一）。无效结果/缺少服务/目标变化时不写入；命令经 owner、`deniedCommands` 与当前聊天访问闸门。`/purpose step ID N [done|undo]` 仅手动更新步骤标记，N 为 1–20；`/purpose steps ID` 查看进度。步骤更新沿用服务既有进度/完成规则，undo 不自动恢复已完成目标，恢复用 `/purpose resume ID`。用法见[用户手册](USER-MANUAL.md#36-目的与记忆整理)。
+
+仅当前聊天命令回复，无步骤执行、动作绑定、审批集成或后台 LLM/自主执行器；离线 fake LLM 测试，真实模型/QQ 未验证。GAP #38 仍 partial；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。

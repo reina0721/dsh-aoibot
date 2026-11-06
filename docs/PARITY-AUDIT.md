@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-t 更新 #38：新增主人 `/purpose plan ID`，仅活跃 goal 的非空标题/描述，显式调用既有 JSON LLM；严格校验 1–8 条非空唯一步骤、去控制字符与每条 200 UTF-16 单元上限；只写 steps，等待期间目标变化拒绝覆盖。`/purpose step ID N [done|undo]`（1–20，默认 done）只修改选中步骤完成标记，steps 查看进度；沿用服务既有自动完成规则，undo 不自动 resume。owner/禁用/访问与参数闸门，缺服务/异常静态安全失败，仅当前聊天回复。无新配置/依赖、隐式 LLM 调用或后台执行；没有自主执行器、动作绑定、审批集成，真实模型/QQ 未验证、未部署。#38 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
 
 M7-s 更新 #15：新增默认关闭的 `cognition.qqAdmin.requireApproval=false`；固定十种 QQ 管理/文件命令校验后写全局持久化审批队列，随机 apr_32hex、10 分钟/50 pending、已知密钥拒绝与字段白名单。主人 `/approvals` 最多10条脱敏单行摘要，approve/reject 字面量 confirm；批准先持久化后通过 handleAdmin 重校验原聊天/当前主人/开关/禁用列表/参数并单次重放，结果发往原聊天并记录 executed/failed。拒绝不执行，未知/过期/重复安全失败；外部 bypass 无效，req_ 请求/原动作 confirm 不变。跨重启/人格切换保留，失败/批准后中断不自动重试。仅离线本地存储/fake QQ，无审批 HTTP/面板、全服务/工具统一审批、PII/媒体扫描；#15 与 #14 操作员档位/deny-list 仍 partial。6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变；v0.11.1 live 未改，M7-s 未发布/部署，真实 QQ 未验证。
 
@@ -68,8 +70,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 39，none: 1，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：67 个 JS 文件 / 17083 行。
-测试静态计数：47 个文件 / 11075 行 / 482 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：67 个 JS 文件 / 17145 行。
+测试静态计数：47 个文件 / 11290 行 / 493 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -199,6 +201,7 @@ npm run check:docs
 | M7-n 操作员命令禁用 | [config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)：默认/数组/名称/去重/100上限/issue/字段；内置与模块、大小写、非主人静默、无处理服务调用/配置写入、未知命令/帮助/动态更新 | 仅离线 fake 服务；不覆盖 API/直接服务/Agent 工具/模块同进程代码；无所有服务/工具逐项 allow/deny 矩阵或统一审批；#14 仍 partial、remaining 47 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/runtime.test.js)、[access.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/access.test.js)、[reply-split.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/reply-split.test.js)、[runtime-qq-tools.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
 | M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/consolidation.test.js)、[purpose.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/purpose.test.js)、[timeline.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/timeline.test.js)、[archive-import.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/archive-import.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)/[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
+| M7-t 目的规划/步骤标记 | [commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[purpose.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/purpose.test.js)：fake LLM/真实进度、JSON/数量/长度/控制字符/去重、缺服务/目标/歧义/状态、等待期间变化、done/undo/越界、owner/禁用/访问、坏输入零服务调用、仅当前聊天回复及无动作调用 | 无自主执行器/动作绑定/审批集成、真实模型/QQ 验证；#38 仍 partial |
 | M7-m B站公开评论/分享 | [bilibili.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/bilibili.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[e2e.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：合成响应/fake 宿主/mock UI，评论去重/限额/纯文本/默认关闭/离线分享/HTTP/超时/风控 | 真实 B站/QQ/浏览器；无登录/WBI/字幕/发布评论；#48 仍 partial |
 | M7-l 主人本地提醒 | [reminders.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/reminders.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
 | M7-k 本地文件上传/列表 | [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
@@ -271,3 +274,8 @@ M7-n 本次最终 `npm test` 退出 **0**：472 项，468 通过、0 失败、4 
 M7-p 本次最终 `npm test` 退出 **0**：505 项，501 通过、0 失败、4 跳过（既有 live 模型测试未配置 key），耗时 123172.73717 ms；新增 3 个顶层测试声明与 21 个集成子测试。覆盖默认关闭、低分/无记忆、阈值夹取/等于阈值/高分、点名与私聊旁路、中文/英文摘要重合及有界截断、非法信号回退、计算异常放行、实际检索复用、概率/点名模式/分钟/连续/冷却优先与跳过仍编码记忆。首次专项及修复前启动的完整运行均发现 NaN/Infinity 被 deepMerge 的 JSON 克隆转为 null，现按原始输入校验该阈值；配置专项 13 项通过，随后干净完整运行通过。
 
 `npm run check:docs`、`npm run check:parity` 均退出 **0**。快照为源码 66 个 JS 文件 / 16916 行，测试 46 个文件 / 10407 行 / 448 个顶层声明；矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47。#20 仍 partial，仅词法记忆相关度；无 LLM 话题判断/接梗/语义分数。#31/#42/#49/#50 行逐字不变，`cordis.patch.yml` 校验未变。无新增依赖或外部调用，无 git 写入或提交；仅离线 fake LLM/网关与本地记忆测试，真实 QQ/浏览器未验证。
+
+
+M7-t 本次最终 `npm test` 退出 **0**：559 项，555 通过、0 失败、4 跳过（既有 live 模型测试），耗时 136734.573957 ms；新增 11 个顶层命令测试声明，最终 commands/purpose 专项 71 项全部通过。覆盖 fake LLM 的有效/无效 JSON、1/8 步与 200 字符边界、控制字符、非空/唯一/类型校验，缺少模型/目的/目标信息、目标状态/歧义、等待期间暂停/删除/修改、步骤 done/undo/20步边界/越界、坏输入零服务调用、owner/操作员/访问/禁用闸门、静态安全错误、无隐式模型调用和无动作执行。出站仅 fake 当前聊天命令回复；未配置 outbound 的手动标记与查看也返回摘要，无真实模型/QQ 或网络调用。
+
+`npm run check:docs` 与 `npm run check:parity` 均退出 **0**。审计快照为源码 67 个 JS 文件 / 17145 行，测试 47 个文件 / 11290 行 / 493 个顶层声明；矩阵仍为 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。#38 仅增加计划生成与手动步骤标记，仍 partial；没有自主执行器、动作绑定或审批集成。无新配置字段/依赖、后台执行、默认行为变化或 git 操作；`cordis.patch.yml` 的 SHA-256 与 #31/#42/#49/#50 行均已对照任务前副本确认未变，未部署。

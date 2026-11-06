@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
+import { createPurposeService } from '../src/cognition/purpose.js'
 import { createCommandService, parseCommand } from '../src/cognition/commands.js'
 import { createQqActions } from '../src/cognition/qq-actions.js'
 import { createApprovalService } from '../src/core/approvals.js'
@@ -73,11 +74,11 @@ function harness(overrides = {}, services = {}) {
     setConfig,
     access,
     outbound,
-    llm,
+    llm: services.llm === undefined ? llm : services.llm,
     memory,
     runtime: services.runtime === undefined ? runtime : services.runtime,
     qqActions: services.qqActions || qqActions,
-    purpose,
+    purpose: services.purpose === undefined ? purpose : services.purpose,
     requests: services.requests,
     approvals: services.approvals,
     clock: services.clock,
@@ -794,7 +795,7 @@ test('operators: unsafe/unknown commands and all model arguments are silent with
     'wholemute on', 'kick 10003 confirm', 'essence 1', 'recall 1 confirm', 'file files/a.txt',
     'approvals', 'approve apr_' + 'a'.repeat(32) + ' confirm', 'reject apr_' + 'a'.repeat(32) + ' confirm',
     'requests', 'approve req_fake confirm', 'reject req_fake confirm', 'remind 60 text', 'reminders', 'forgetreminder rem_fake',
-    'steer text', 'quiet', 'active', 'remember text', 'forget text', 'like', 'poke', 'purpose', 'purpose add text',
+    'steer text', 'quiet', 'active', 'remember text', 'forget text', 'like', 'poke', 'purpose', 'purpose add text', 'purpose plan abc12345', 'purpose step abc12345 1', 'purpose steps abc12345',
     'tts text', 'say text', 'draw cat', 'redraw a.png cat', 'image a.png', 'sticker', 'unknown',
     'model clear', 'MODEL p/m', 'model invalid']
   for (const chatType of ['private', 'group']) {
@@ -1008,4 +1009,218 @@ test('admin approvals: request/origin access checks and missing approval service
   const missing = adminCommands({ cognition: { qqAdmin: { enabled: true, requireApproval: true } } })
   assert.match((await missing.service.handle(turn('/groupname 群', approvalGroup))).reply, /审批服务不可用/)
   assert.equal(missing.calls.length, 0)
+})
+
+
+function purposeCommands({ result = { ok: true, json: { steps: ['列出材料', '练习揉面'] } }, goal = {}, llm: llmOverride, ...options } = {}) {
+  const store = createStore()
+  const purpose = createPurposeService({ store, getConfig: () => ({}), clock: { now: () => 1700000000000 } })
+  const item = purpose.create({ title: '学会做面包', description: '练习一次基础面包制作', steps: [{ id: 'first', text: '旧步骤', done: true }], ...goal })
+  const calls = [], modelCalls = [], actions = []
+  const tracked = { ...purpose,
+    list(args) { calls.push(['list', args]); return purpose.list(args) },
+    update(id, patch) { calls.push(['update', id, structuredClone(patch)]); return purpose.update(id, patch) },
+  }
+  const llm = llmOverride === undefined ? { async completeJson(...args) { modelCalls.push(args); return typeof result === 'function' ? result(purpose, item) : result } } : llmOverride
+  const actionSpy = new Proxy({}, { get: (_target, key) => () => { actions.push(key); throw new Error('action must never execute') } })
+  const h = harness({}, { purpose: tracked, llm, qqActions: actionSpy, media: actionSpy, runtime: actionSpy, approvals: actionSpy, ...options })
+  return { ...h, purpose, item, calls, modelCalls, actions, close: () => store.close() }
+}
+
+test('purpose planning: explicit invocation saves sanitized steps only and replies in current chat', async () => {
+  const h = purposeCommands({ result: { ok: true, json: { steps: ['  列出\u0000材料  ', '练习\u0085揉面'], progress: 1, status: 'done', action: 'send' } } })
+  try {
+    const before = structuredClone(h.purpose.get(h.item.id))
+    assert.deepEqual(h.modelCalls, [])
+    const reply = await h.service.handle(turn(`/purpose plan ${h.item.id}`))
+    assert.match(reply.reply, /已保存计划.*2 步/)
+    assert.match(reply.reply, /仅保存，不执行/)
+    const after = h.purpose.get(h.item.id)
+    assert.deepEqual(after.steps, [{ id: 's1', text: '列出材料', done: false }, { id: 's2', text: '练习揉面', done: false }])
+    assert.equal(after.progress, 0)
+    assert.equal(after.title, before.title)
+    assert.equal(after.status, 'active')
+    assert.equal(h.modelCalls.length, 1)
+    const [spec, prompt] = h.modelCalls[0]
+    assert.equal(spec.purpose, 'planning')
+    assert.deepEqual(JSON.parse(prompt.user), { title: before.title, description: before.description })
+    assert.match(prompt.system, /不要编造事实/)
+    assert.match(prompt.system, /不要对外发送消息/)
+    assert.match(prompt.system, /1–8.*200/)
+    assert.deepEqual(h.calls.filter(([method]) => method === 'update'), [['update', h.item.id, { steps: ['列出材料', '练习揉面'] }]])
+    assert.equal(h.sent.length, 1)
+    assert.equal(h.sent[0].chatId, '10001')
+    assert.equal(h.sent[0].source, 'command')
+    assert.deepEqual(h.actions, [])
+    assert.deepEqual(h.configWrites, [])
+  } finally { h.close() }
+})
+
+test('purpose planning: invalid JSON, schema, lengths and duplicate steps never update', async () => {
+  const invalid = [null, { ok: false, error: 'LLM_BAD_JSON', text: 'private diagnostic' },
+    { ok: true, json: 'not JSON' }, { ok: true, json: {} },
+    ...[[], [''], [' \u0000 '], ['a', ' a\u0001'], [null], [123], [{ text: 'a' }], ['a'.repeat(201)], Array.from({ length: 9 }, (_, i) => String(i))].map(steps => ({ ok: true, json: { steps } }))]
+  for (const result of invalid) {
+    const h = purposeCommands({ result })
+    try {
+      const before = h.purpose.get(h.item.id)
+      const reply = await h.service.handle(turn(`/purpose plan ${h.item.id}`))
+      assert.match(reply.reply, /模型结果无效/)
+      assert.doesNotMatch(reply.reply, /private diagnostic/)
+      assert.deepEqual(h.purpose.get(h.item.id), before)
+      assert.equal(h.calls.some(([method]) => method === 'update'), false)
+      assert.deepEqual(h.actions, [])
+    } finally { h.close() }
+  }
+})
+
+test('purpose planning: one/eight steps and 200-character boundary are accepted', async () => {
+  for (const steps of [['a'.repeat(200)], Array.from({ length: 8 }, (_, i) => `步骤${i}`)]) {
+    const h = purposeCommands({ result: { ok: true, json: { steps } } })
+    try {
+      assert.match((await h.service.handle(turn(`/purpose plan ${h.item.id}`))).reply, /已保存计划/)
+      assert.deepEqual(h.purpose.get(h.item.id).steps.map(step => step.text), steps)
+    } finally { h.close() }
+  }
+})
+
+test('purpose planning: requires a unique active goal with title and description before LLM', async () => {
+  for (const goal of [{ status: 'paused' }, { status: 'done' }, { status: 'abandoned' }, { type: 'plan' }, { type: 'intent' }, { title: '\u0000' }, { description: ' ' }]) {
+    const h = purposeCommands()
+    try {
+      h.purpose.update(h.item.id, goal)
+      assert.match((await h.service.handle(turn(`/purpose plan ${h.item.id}`))).reply, /活跃目标|标题和描述/)
+      assert.deepEqual(h.modelCalls, [])
+      assert.deepEqual(h.calls.filter(([method]) => method === 'update'), [])
+    } finally { h.close() }
+  }
+  for (const command of ['/purpose plan missing', '/purpose step missing 1', '/purpose steps missing']) {
+    const h = purposeCommands()
+    try {
+      assert.match((await h.service.handle(turn(command))).reply, /没有找到唯一/)
+      assert.deepEqual(h.modelCalls, [])
+      assert.equal(h.calls.some(([method]) => method === 'update'), false)
+    } finally { h.close() }
+  }
+  const h = harness({}, { purpose: { list: () => [{ id: 'goal_abc1' }, { id: 'goal_abc2' }], update: () => assert.fail('ambiguous goal update') }, llm: { completeJson: () => assert.fail('ambiguous goal LLM') } })
+  assert.match((await h.service.handle(turn('/purpose plan abc'))).reply, /没有找到唯一/)
+})
+
+test('purpose planning: missing services and thrown failures return static safe errors', async () => {
+  for (const llm of [null, {}]) {
+    const h = purposeCommands({ llm })
+    try {
+      assert.match((await h.service.handle(turn(`/purpose plan ${h.item.id}`))).reply, /缺少 JSON 模型服务/)
+      assert.deepEqual(h.calls, [])
+    } finally { h.close() }
+  }
+  assert.match((await harness({}, { purpose: null }).service.handle(turn('/purpose plan abc'))).reply, /目的服务不可用/)
+  for (const services of [
+    { purpose: { list() { throw new Error('secret list') } }, llm: { completeJson() {} } },
+    { purpose: { list: () => [{ id: 'goal_abc', title: 't', description: 'd', type: 'goal', status: 'active' }] }, llm: { completeJson() { throw new Error('secret model') } } },
+    { purpose: { list: () => [{ id: 'goal_abc', title: 't', description: 'd', type: 'goal', status: 'active' }], update() { throw new Error('secret update') } }, llm: { completeJson: async () => ({ ok: true, json: { steps: ['a'] } }) } },
+  ]) {
+    const reply = await harness({}, services).service.handle(turn('/purpose plan abc'))
+    assert.equal(reply.reply, '目的操作失败，请稍后重试。')
+  }
+})
+
+test('purpose planning: changed/deleted goals during model wait cannot be overwritten', async () => {
+  for (const change of [(p, item) => p.pause(item.id), (p, item) => p.remove(item.id), (p, item) => p.update(item.id, { steps: ['主人新步骤'] }), (p, item) => p.update(item.id, { description: '新描述' })]) {
+    const h = purposeCommands({ result(p, item) { change(p, item); return { ok: true, json: { steps: ['模型步骤'] } } } })
+    try {
+      assert.match((await h.service.handle(turn(`/purpose plan ${h.item.id}`))).reply, /目的已变化/)
+      assert.equal(h.calls.some(([method]) => method === 'update'), false)
+    } finally { h.close() }
+  }
+})
+
+test('purpose steps: done/undo changes only selected flag, reports progress and never executes actions', async () => {
+  const h = purposeCommands({ goal: { steps: [{ id: 'a', text: '/say hi', done: false }, { id: 'b', text: '第二步', done: false }] } })
+  try {
+    const original = structuredClone(h.purpose.get(h.item.id).steps)
+    assert.match((await h.service.handle(turn(`/purpose step ${h.item.id} 1`))).reply, /进度 50%/)
+    assert.deepEqual(h.purpose.get(h.item.id).steps, [{ ...original[0], done: true }, original[1]])
+    assert.deepEqual(original[0].done, false)
+    assert.match((await h.service.handle(turn(`/purpose steps ${h.item.id}`))).reply, /1\. \[x\] \/say hi/)
+    assert.match((await h.service.handle(turn(`/purpose step ${h.item.id} 2 done`))).reply, /100%/)
+    assert.equal(h.purpose.get(h.item.id).status, 'done')
+    assert.match((await h.service.handle(turn(`/purpose step ${h.item.id} 1 undo`))).reply, /取消完成；进度 50%/)
+    assert.equal(h.purpose.get(h.item.id).status, 'done') // Existing service behavior; resume remains explicit.
+    assert.deepEqual(h.purpose.get(h.item.id).steps, [original[0], { ...original[1], done: true }])
+    assert.deepEqual(h.modelCalls, [])
+    assert.deepEqual(h.actions, [])
+    assert.equal(h.sent.length, 4)
+    assert.ok(h.sent.every(payload => payload.chatId === '10001' && payload.source === 'command'))
+    for (const [, , patch] of h.calls.filter(([method]) => method === 'update')) assert.deepEqual(Object.keys(patch), ['steps'])
+  } finally { h.close() }
+})
+
+test('purpose steps: empty steps, missing step and 20-step boundary', async () => {
+  const h = purposeCommands({ goal: { steps: [] } })
+  try {
+    for (const sub of ['step', 'steps']) assert.match((await h.service.handle(turn(`/purpose ${sub} ${h.item.id}${sub === 'step' ? ' 1' : ''}`))).reply, /还没有步骤/)
+    h.purpose.update(h.item.id, { steps: ['one'] })
+    assert.match((await h.service.handle(turn(`/purpose step ${h.item.id} 2`))).reply, /超出范围/)
+    assert.equal(h.calls.some(([method]) => method === 'update'), false)
+    h.purpose.update(h.item.id, { steps: Array.from({ length: 20 }, (_, i) => `step ${i + 1}`) })
+    assert.match((await h.service.handle(turn(`/purpose step ${h.item.id} 20`))).reply, /进度 5%/)
+    assert.equal(h.purpose.get(h.item.id).steps[19].done, true)
+    assert.deepEqual(h.modelCalls, [])
+  } finally { h.close() }
+})
+
+test('purpose commands: malformed arguments make no purpose/model/action calls', async () => {
+  const h = purposeCommands()
+  try {
+    for (const args of ['plan', 'plan abc extra', 'plan ../abc', 'plan abc\u0000', 'steps', 'steps abc extra', 'step', 'step abc', 'step abc 0', 'step abc 21', 'step abc -1', 'step abc 1.5', 'step abc 01', 'step abc 1e0', 'step abc 1 DONE', 'step abc 1 nope', 'step abc 1 done extra']) {
+      assert.match((await h.service.handle(turn('/purpose ' + args))).reply, /用法/)
+    }
+    assert.deepEqual(h.calls, [])
+    assert.deepEqual(h.modelCalls, [])
+    assert.deepEqual(h.actions, [])
+  } finally { h.close() }
+})
+
+test('purpose commands: owner, access and deny-list gates prevent calls; no implicit LLM', async () => {
+  for (const options of [{}, { allowSend: false }]) {
+    const h = purposeCommands(options)
+    try {
+      for (const command of [`/purpose plan ${h.item.id}`, `/purpose step ${h.item.id} 1`, `/purpose steps ${h.item.id}`]) {
+        const reply = await h.service.handle(turn(command, options.allowSend === false ? {} : { senderId: '10002' }))
+        assert.equal(reply.reply, '')
+      }
+      assert.deepEqual(h.calls, [])
+      assert.deepEqual(h.modelCalls, [])
+      assert.deepEqual(h.sent, [])
+      assert.deepEqual(h.actions, [])
+    } finally { h.close() }
+  }
+  const h = purposeCommands()
+  try {
+    await h.service.handle(turn('/purpose'))
+    await h.service.handle(turn('/purpose add 新目标'))
+    assert.deepEqual(h.modelCalls, [])
+    h.setConfig({ ...h.getConfig(), cognition: { permissions: { deniedCommands: ['purpose'] } } })
+    h.calls.length = 0
+    for (const sub of ['plan', 'step', 'steps']) assert.match((await h.service.handle(turn(`/purpose ${sub} ${h.item.id}${sub === 'step' ? ' 1' : ''}`))).reply, /禁用/)
+    assert.deepEqual(h.calls, [])
+    assert.deepEqual(h.modelCalls, [])
+  } finally { h.close() }
+})
+
+
+test('purpose commands: owner group reply stays in current chat; no outbound dependency is required', async () => {
+  const h = purposeCommands()
+  try {
+    await h.service.handle(turn(`/purpose plan ${h.item.id}`, { chatType: 'group', chatId: '20001' }))
+    assert.equal(h.sent.length, 1)
+    assert.equal(h.sent[0].chatType, 'group')
+    assert.equal(h.sent[0].chatId, '20001')
+    assert.deepEqual(h.actions, [])
+    const offline = createCommandService({ getConfig: h.getConfig, purpose: h.purpose, access: { canSend: () => ({ allowed: true }) } })
+    assert.match((await offline.handle(turn(`/purpose step ${h.item.id} 1`))).reply, /进度 50%/)
+    assert.match((await offline.handle(turn(`/purpose steps ${h.item.id}`))).reply, /进度 50%/)
+    assert.equal(h.sent.length, 1)
+  } finally { h.close() }
 })

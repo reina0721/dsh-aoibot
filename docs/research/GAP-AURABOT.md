@@ -119,7 +119,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 37 | 候选效用/bandit/结果归因 | 模块化 hooks + 群聊策略 | Beta 后验、效用、限频、沉默、撤回专项 | **领先** | 已领先（无缺口） |
-| 38 | 目的引擎/计划 | `purpose/engine.js` 2,287 行，目标/计划/执行 | goal/plan/intent CRUD、优先级/进度/步骤、少量注入、`/purpose`、面板；无执行器 | 部分（M3-a） | M3 剩余/M5 |
+| 38 | 目的引擎/计划 | `purpose/engine.js` 2,287 行，目标/计划/执行 | goal/plan/intent CRUD、优先级/进度/步骤、少量注入、面板；M7-t 主人 `/purpose plan ID` 显式 JSON LLM 规划（1–8步、控制字符/长度/唯一校验），step done/undo 手动标记与 steps 查看；仅保存和当前聊天回复，无自主执行器/动作绑定/审批集成 | 部分（M3-a/M7-t） | M3 剩余/M5 |
 | 39 | 主动搭话 | 醒着时间/频率/白名单/晚安心情 | 安静时段/日预算/关系门槛/退避/dryRun | 部分 | M3 |
 | 40 | 定时/后台任务 | 有 | M7-l 主人 /remind /reminders /forgetreminder；本地一次/重复提醒经 outbound 访问/限频/leak guard，默认关闭 | 部分（M7-l） | M1/M3：仅本地主人提醒；无 DSH jobs/长任务/LLM 执行/提醒 HTTP 或面板；真实定时器/QQ 未验证 |
 
@@ -277,6 +277,7 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - `cognition/purpose.js`：goal/plan/intent，active/paused/done/abandoned；优先级/进度/步骤/截止/作用域；`promptContext` 限量注入 compose；`tick` 给建议不执行。
 - `/purpose` 列表/新建/完成/放弃/暂停/恢复/进度；认知面板「目的」页 CRUD；API `/cognition/purpose*`。
 - 测试：`test/purpose.test.js`、commands 用例、cognition 集成（目的注入/完成停止注入）。
+- M7-t：主人 plan/step/steps 规划与手动标记；标题和描述必填，active goal/唯一 ID/参数/owner/禁用/访问闸门；LLM 仅显式调用，严格 JSON 校验，等待期间目标变化不覆盖。离线 fake LLM/真实目的进度测试；无新配置/依赖、后台执行、自主执行器、动作绑定或审批集成；#38 仍 partial，矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
 
 **M3-b（每日整理/反思）**
 - `cognition/consolidation.js`：每日 04:00 调度 `memory.consolidateAll()`；按作用域 LLM 反思，只压缩已有记忆，写回同 scope（source=reflection）；私聊不跨聊/不写 global。

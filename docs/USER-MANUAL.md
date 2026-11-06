@@ -297,7 +297,9 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 - 字段：标题、描述、优先级、进度、步骤、截止时间、作用域（global/private/group）；
 - 回复时只注入少量高优先级目的（默认 3 条），提示词明确要求「只在自然相关时体现，不要机械汇报」；
 - 面板可新建、+10% 进度、暂停/恢复、完成、放弃；命令用 ID 前 8 位即可；
-- 目的本身**不执行工具**，也不自动发消息；执行仍由策略/主动/Agent 决定。
+- 主人 `/purpose plan ID`（M7-t）：仅对 active 的 goal 调用现有 `llm.completeJson`；标题和描述都须非空（可通过 `POST /cognition/purpose/update` 的 `id/title/description` 补充）。成功覆盖原步骤，保存 1–8 条未完成、非空、不重复且每条最多 200 UTF-16 单元的步骤；去除控制字符，进度重新计算。模型缺失、JSON/步骤无效或目标在生成期间变化时不写入，错误不回显模型或服务细节。
+- 主人 `/purpose step ID N [done|undo]`：N 为 1–20 且必须存在，默认 done；只修改该步骤的完成标记并回复进度。`/purpose steps ID` 最多列 20 条及进度；支持完整 ID 或唯一短前缀，歧义拒绝。已有服务在 active 目标全部完成时置为 done；undo 降低进度但不自动恢复状态，需要时另用 `/purpose resume ID`。
+- 目的本身**不执行工具**，也不自动发消息；M7-t 只保存计划/手动标记并回复当前聊天，不执行步骤、不绑定动作或接入审批。未使用 plan 时没有新增 LLM 调用或后台执行；无新配置，默认行为不变，GAP #38 仍 partial。
 
 **记忆检索（M7-f）**：默认使用本地词法/FTS 与关联图，无 embedding 网络请求。可在「认知 → 设置 → 记忆」打开 `cognition.memory.embedding.enabled`，填写 Base URL、模型及密钥环境变量名，默认权重 0.35。开启后会向所配 OpenAI 兼容 `/embeddings` 服务发送查询与候选记忆文本；仅重排词法候选，不做全库向量召回。provider 出错、超时或响应不合法会回退词法检索；空查询/无候选不调用。同步面板查询保持词法检索。配置与批次/维度/缓存限制见 [CONFIG](CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。无本地模型、独立 reranker 或向量数据库；目前仅 fake provider 离线测试通过，真实 provider 未验证，#31 仍部分实现。
 

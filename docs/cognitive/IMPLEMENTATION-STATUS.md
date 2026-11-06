@@ -1,16 +1,17 @@
-# 实现状态（v0.11.1 发布后，M7-s 工作区）
+# 实现状态（v0.11.1 发布后，M7-t 工作区）
 
-0.11.1 已发布并 live，M7-r/M7-s 为尚未发布的工作区改动；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记，不代表全量验收。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
+0.11.1 已发布并 live，M7-r/M7-s/M7-t 为尚未发布的工作区改动；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记，不代表全量验收。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 
 > M7-b：2026-11-06 用户批准 #16（仅远端 API 鉴权）、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 迁移/离峰为发布门槛豁免；保留本机-only/CSRF 行为。豁免是明确用户决定，不是实现证据；#42/#44/#49/#50 及其他差距不豁免。精确范围见 [GAP §8.1](../research/GAP-AURABOT.md#81-用户批准豁免)。
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.11.1` 发布后工作区，548 个测试（544 通过、0 失败、4 项 live 禁用 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）+ M7-n 操作员命令禁用列表（默认空、离线配置/命令测试，#14 partial）+ M7-o 主人显式会话 steer（fake agent，#9 partial）+ M7-p 默认关闭的群聊词法记忆相关度门控（离线配置/集成测试，#20 partial）+ M7-q 默认关闭的私聊/C2C 输入状态（离线 fake 网关，#9 仍 partial，真实 QQ 未验证） + M7-r 默认空的固定只读操作员档位（#13 partial、#14 仍 partial，无完整 RBAC/admin/approval 档位）+ M7-s 默认关闭的持久化主人管理审批（#15 仍 partial，fake QQ/重启持久化验证）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.11.1` 发布后工作区，559 个测试（555 通过、0 失败、4 项 live 禁用 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）+ M7-n 操作员命令禁用列表（默认空、离线配置/命令测试，#14 partial）+ M7-o 主人显式会话 steer（fake agent，#9 partial）+ M7-p 默认关闭的群聊词法记忆相关度门控（离线配置/集成测试，#20 partial）+ M7-q 默认关闭的私聊/C2C 输入状态（离线 fake 网关，#9 仍 partial，真实 QQ 未验证） + M7-r 默认空的固定只读操作员档位（#13 partial、#14 仍 partial，无完整 RBAC/admin/approval 档位）+ M7-s 默认关闭的持久化主人管理审批（#15 仍 partial，fake QQ/重启持久化验证）+ M7-t 主人显式目的规划与手动步骤标记（fake LLM、#38 仍 partial）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
 |---|---|---|---|---|
+| 目的规划/步骤标记（M7-t） | I/T/L | `cognition/commands.js`、`purpose.js` | 主人 plan/step/steps；活跃 goal 标题/描述、唯一 ID 与严格参数校验；显式 JSON LLM 生成 1–8 条未完成步骤，去控制字符/长度/去重校验，变化检测、安全错误；指定步骤 done/undo、现有进度重算；离线 fake LLM/目的服务测试 | 无新配置/依赖或后台 LLM/步骤执行、自主执行器、动作绑定、审批集成；undo 不自动 resume，真实模型/QQ 未验证；#38 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47 |
 | QQ 管理审批（M7-s） | I/T/L | `core/approvals.js`、`core/config.js`、`cognition/index.js`、`cognition/commands.js` | 默认关闭，固定十种管理动作；全局持久化 apr_ 随机 ID、10 分钟/50 pending、参数校验/已知密钥拒绝；主人列表/confirm 批准拒绝，原聊天 handleAdmin 重校验/单次重放、executed/failed；原 req_ 保留；离线服务/命令/重启集成测试 | 无全服务/工具统一审批、审批 HTTP/面板、PII/媒体扫描；失败/批准后中断不自动重试，真实 QQ 未验证；#15/#14 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47 |
 | 只读操作员（M7-r） | I/T/L | `core/access.js`、`core/config.js`、`cognition/commands.js`、`cognition/qq-actions.js` | access.operators 默认空、同 private 规范化/去重/最多500；主人优先，allowlist 操作员私聊入站/出站 operator；固定 help/status/model（无参数）/bili/groupinfo/memberinfo，禁用时静默，模块 ownerOnly 保留；离线测试 | 群仍须白名单，无主人特权、完整 per-tool/per-action RBAC、admin/approval 档位或统一审批，真实 QQ 未验证；6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变 |
 | 私聊输入状态（M7-q） | I/T/L | `gateway/actions.js`、`core/config.js`、`cognition/pipeline.js` | 默认关闭，`cog-turn` 开关；严格字符串安全整数 ID/整数 1、2；私聊/C2C 轮次前 await 输入中、finally await 暂停；同步/异步错误隔离，不改回复/原处理异常，不记录原始错误或聊天 ID；关闭/群聊/缺方法旁路、命令早退与异常也清理；离线 action/配置/集成测试 | 依赖网关，等待沿用既有超时/重试；入站 input_status 仍忽略；没有群聊 typing/群 set_input_status、输入状态限频或专用状态面板（仅配置开关）；真实 QQ 未验证、未全量验收，#9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变 |
@@ -32,7 +33,7 @@
 | 技能 | I/T/V | `skills.js` | 13 项初始技能；成功/失败/不用/压力/迁移；有效熟练度独立于人格/情绪/关系 | 技能参数是手工先验，未从长期真实成功数据拟合 |
 | 元认知 | I/T | `meta.js` | 决策/结果/校准 Brier/沉默率/能力缺口/有限 insight | 反思只记录 bounded insight，不自动改代码/权限；无完整自我模型 |
 | 主动行为 | I/T/L | `proactivity.js` | 默认关闭；安静时段、日预算、关系门槛、退避、dryRun、决策记录 | 真实 LLM/发送路径未在带凭据的探针上验证；群主动默认关闭 |
-| 目的系统 | I/T | `cognition/purpose.js`、pipeline、面板「目的」 | goal/plan/intent；优先级/进度/步骤/作用域；少量注入 compose；`/purpose` 增删改；面板 CRUD | 不执行工具/不自动发消息；无计划执行器 | M3 剩余 |
+| 目的系统 | I/T | `cognition/purpose.js`、pipeline、面板「目的」 | goal/plan/intent；优先级/进度/步骤/作用域；少量注入 compose；`/purpose` 增删改、M7-t 显式规划/手动标记；面板 CRUD | 不执行工具/不自动发消息；无自主执行器/动作绑定/审批集成 | M3 剩余 |
 | 时间轴 | I/T | `cognition/timeline.js`、认知「时间轴」页 | 轮次/记忆/决策/导入事件合并、倒序、before 分页、type/scope 过滤；event 独立筛选；只读 | 无编辑/真实样本验证 | M3 剩余 |
 | QQ 通知/请求审批（M7-j） | I/T/L | `cognition/notices.js`、commands、gateway actions、persona-scope | 十种通知校验/去重写时间轴（含名片/群名/头衔）；好友/群请求 pending、flag 去重、公共投影；主人列表与 approve/reject 强制 confirm；服务复核 owner/开关、并发防重、固定原人格完成写入；请求人格数据组 | 无自动审批/队列面板/新增 API/Agent 工具；无通用审批/逐项权限或 PII 检测；fake 网关验证，真实 QQ 未验证；#3/#15 仍 partial |
 | 旧档案导入（M7-d/M7-h） | I/T/L | `cognition/archive-import.js`、`index.js`、REST、`CogMemories` | 通用 JSON/JSONL 导入当前人格记忆或时间轴事件（kind=memory 默认/timeline）；事件时间必填、独立 ID/人格数据组；默认 5 MiB/5000 项；作用域/字段/时间戳规范化；稳定 ID 幂等去重；本地面板、API 与仅计数日志；离线测试 | 无 Aurabot 专用迁移或向量导入；无真实旧档案样本验证；#30 仍 partial |
