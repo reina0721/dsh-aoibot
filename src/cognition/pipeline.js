@@ -13,7 +13,7 @@ export function createPipeline({
   store, getConfig, clock, logger,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
-  beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null,
+  beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -254,6 +254,7 @@ export function createPipeline({
       emotion: context.emotionState,
       persona: context.personaState,
       memories: context.memories,
+      purposes: context.purposes || [],
       decision,
       analysis: context.analysis,
       llm,
@@ -478,7 +479,7 @@ export function createPipeline({
     const decision = policy.decide({ turn: pseudoTurn, relationship: rel, emotion: emotionState, appraisal: { desirability: -0.1, relevance: 0.8, intensity: 0.5, intent: 'recall' }, persona: personaState, memories: [], recall: { messageId: String(notice.messageId || ''), sawContent } })
     stats.decisions += 1
     trace(pseudoTurn.id, 'recall_decision', { text: `${decision.action} saw=${sawContent}`, data: { action: decision.action } })
-    const composed = await composeFor(decision, { turn: pseudoTurn, personRecord, relationship: rel, emotionState, personaState, memories: [], analysis: { intent: 'recall', replyGoal: '处理撤回' }, sawContent })
+    const composed = await composeFor(decision, { turn: pseudoTurn, personRecord, relationship: rel, emotionState, personaState, memories: [], analysis: { intent: 'recall', replyGoal: '处理撤回' }, purposes: [], sawContent })
     if (!composed.ok) {
       stats.degraded += 1
       return buildResult({ ok: false, decision, degraded: true, error: composed.error })
@@ -556,6 +557,15 @@ export function createPipeline({
     const personaState = persona.get()
     const scope = boundScope(turn)
     const memories = memory.retrieve({ query: turn.text, personId: personRecord?.person?.id || '', scope, emotion: emotionState, relationship: rel })
+    let purposeLines = []
+    try {
+      purposeLines = purpose?.promptContext?.({
+        scopeType: scope.scopeType,
+        scopeId: scope.scopeId,
+        personId: personRecord?.person?.id || '',
+        limit: cfg().purpose?.promptLimit,
+      }) || []
+    } catch (error) { log.debug?.('目的上下文失败：', error.message) }
     trace(turn.id, 'retrieved', { text: `${memories.length} memories`, data: { memoryIds: memories.map((item) => item.memory.id) } })
     // 群聊 gate：默认仅点名；可配置为概率参与或所有消息。所有模式仍写记忆。
     if (turn.chatType === 'group') {
@@ -629,7 +639,7 @@ export function createPipeline({
       if (!isDry()) policy.markSent(decision.id, { dryRun: false })
       return buildResult({ ok: true, decision, reply: '', degraded: false })
     }
-    const composed = await composeFor(decision, { turn, personRecord, relationship: rel, emotionState: emotion.get(), personaState, memories, analysis })
+    const composed = await composeFor(decision, { turn, personRecord, relationship: rel, emotionState: emotion.get(), personaState, memories, analysis, purposes: purposeLines })
     if (!composed.ok) {
       stats.degraded += 1
       markLast(turn, 'degraded', composed.error || 'compose_failed')

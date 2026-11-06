@@ -5240,6 +5240,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'relationships', label: '关系', icon: 'link' },
       { id: 'memories', label: '记忆', icon: 'memory' },
       { id: 'emotion', label: '情绪', icon: 'heart' },
+      { id: 'purpose', label: '目的', icon: 'target' },
       { id: 'policy', label: '策略', icon: 'target' },
       { id: 'learning', label: '学习', icon: 'book' },
       { id: 'skills', label: '技能', icon: 'chart' },
@@ -5382,6 +5383,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (section === 'relationships') page = h(CogRelationships, props)
       else if (section === 'memories') page = h(CogMemories, props)
       else if (section === 'emotion') page = h(CogEmotion, props)
+      else if (section === 'purpose') page = h(CogPurpose, props)
       else if (section === 'policy') page = h(CogPolicy, props)
       else if (section === 'learning') page = h(CogLearning, props)
       else if (section === 'skills') page = h(CogSkills, props)
@@ -5689,7 +5691,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       return h(
         'div',
         { className: 'ob-stack', style: { gap: '14px' } },
-        h(Panel, { title: '记忆网络', description: '情景/语义/情绪/社交/程序记忆；检索按相关性、新近性、重要性、情绪与关联加权；遗忘≠删除。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => search() }, '刷新') },
+        h(Panel, { title: '记忆网络', description: '情景/语义/情绪/社交/程序记忆；检索按相关性、新近性、重要性、情绪与关联加权；遗忘≠删除。', actions: h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: () => search() }, '刷新'), h(Btn, { small: true, kind: 'ghost', icon: 'sparkles', onClick: async () => { if (!window.confirm('立即整理记忆并尝试阶段反思？会消耗少量 LLM 预算。')) return; const response = await cogPost(props, '/cognition/consolidation/run', { force: false }); if (response) { props.toast('整理完成：巩固 ' + String(response.consolidated || 0) + '，反思 ' + String(response.reflected || 0), 'ok'); search() } } }, '整理/反思')) },
           h(CogToolbar, null,
             h(CogSearch, { value: query, onChange: setQuery, onSubmit: () => search(), placeholder: '搜索记忆内容' }),
             h('select', { className: 'ob-select', value: type, onChange: (event) => { setType(event.target.value); search(query, event.target.value) }, 'aria-label': '记忆类型' },
@@ -5742,6 +5744,83 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h('div', { className: 'ob-cog-divider' }),
           h('div', { className: 'ob-row' }, top.length ? top.map(([key, value]) => h(CogTag, { key, tone: 'brand' }, key + ' ' + Math.round(Number(value) * 100) + '%')) : h('span', { className: 'ob-small ob-muted' }, '当前没有显著离散情绪')),
           emotion.appraisal ? h('p', { className: 'ob-field-help' }, '最近评价：' + JSON.stringify(emotion.appraisal)) : null,
+        ),
+      )
+    }
+
+    function CogPurpose(props) {
+      const list = useCogApi(props, '/cognition/purpose?limit=100')
+      const items = safeArray(list.data && list.data.items)
+      const stats = safeObject(list.data && list.data.stats)
+      const [title, setTitle] = useState('')
+      const [busy, setBusy] = useState(false)
+      async function act(path, body, okText) {
+        if (busy) return
+        setBusy(true)
+        const result = await cogPost(props, path, body)
+        setBusy(false)
+        if (result) {
+          if (okText) props.toast(okText, 'ok')
+          list.reload()
+        }
+      }
+      const add = () => {
+        const value = title.trim()
+        if (!value) { props.toast('先填一个目的标题', 'warn'); return }
+        act('/cognition/purpose/create', { title: value, type: 'goal', priority: 0.6, source: 'panel' }, '目的已创建')
+        setTitle('')
+      }
+      const statusTone = (status) => status === 'active' ? 'ok' : status === 'done' ? 'brand' : status === 'paused' ? 'warn' : 'muted'
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, {
+          title: '目的',
+          description: '长期目标 / 计划 / 近期意图。只注入少量高优先级目的作为上下文，不自动执行工具；完成/放弃/暂停可随时调整。',
+          actions: h('div', { className: 'ob-row' },
+            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: list.reload }, '刷新'),
+          ),
+        },
+          h('div', { className: 'ob-row' },
+            h('input', {
+              className: 'ob-input',
+              value: title,
+              placeholder: '例如：学会做面包 / 这周整理一次记忆',
+              'aria-label': '新目的标题',
+              onChange: (event) => setTitle(event.target.value),
+              onKeyDown: (event) => { if (event.key === 'Enter') add() },
+            }),
+            h(Btn, { small: true, kind: 'primary', icon: 'plus', disabled: busy, onClick: add }, '新建目的'),
+          ),
+          h('div', { className: 'ob-stat-grid' },
+            h(StatTile, { label: '活跃', value: Number(stats.active || 0), icon: 'target', tone: 'brand' }),
+            h(StatTile, { label: '已完成', value: Number((stats.byStatus && stats.byStatus.done) || 0), icon: 'check', tone: 'ok' }),
+            h(StatTile, { label: '平均进度', value: CogPct(stats.averageProgress || 0), icon: 'chart', tone: 'muted' }),
+          ),
+          list.error ? h(Banner, { tone: 'err', message: '目的 API 不可用：' + list.error }) : null,
+          list.loading ? h(CogLoading) : null,
+          items.length
+            ? h('div', { className: 'ob-stack', style: { gap: '10px' } }, items.map((item) => h(
+                'div',
+                { key: item.id, className: 'ob-stack', style: { gap: '6px', padding: '10px 0', borderTop: '1px solid var(--ob-border)' } },
+                h('div', { className: 'ob-row' },
+                  h(CogTag, { tone: 'muted' }, item.type || 'goal'),
+                  h('strong', null, item.title || '(无标题)'),
+                  h(CogTag, { tone: statusTone(item.status) }, item.status || 'active'),
+                  h('span', { className: 'ob-muted ob-small', style: { marginLeft: 'auto' } }, '优先级 ' + Number(item.priority || 0).toFixed(2)),
+                ),
+                item.description ? h('p', { className: 'ob-field-help', style: { margin: 0 } }, item.description) : null,
+                h(CogBar, { label: '进度', value: Number(item.progress || 0) }),
+                h('div', { className: 'ob-row' },
+                  h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: () => act('/cognition/purpose/update', { id: item.id, progress: Math.min(1, Number(item.progress || 0) + 0.1) }, '进度已更新') }, '+10%'),
+                  item.status === 'paused'
+                    ? h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: () => act('/cognition/purpose/update', { id: item.id, status: 'active' }, '已恢复') }, '恢复')
+                    : h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: () => act('/cognition/purpose/update', { id: item.id, status: 'paused' }, '已暂停') }, '暂停'),
+                  h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: () => act('/cognition/purpose/update', { id: item.id, status: 'done' }, '已完成') }, '完成'),
+                  h(Btn, { small: true, kind: 'danger', disabled: busy, onClick: () => act('/cognition/purpose/update', { id: item.id, status: 'abandoned' }, '已放弃') }, '放弃'),
+                ),
+              )))
+            : h(CogEmpty, { title: '还没有目的', description: '新建一个长期目标或近期计划；回复时只会在自然相关时体现。', icon: 'target' }),
         ),
       )
     }

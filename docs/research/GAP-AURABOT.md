@@ -99,9 +99,9 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 27 | 记忆类型 | 本地索引 + 原话/梗概/事实分层 + 人物/群档案 | 工作/情景/语义/情绪/社会/程序 + FTS5 | 部分 | M3 |
-| 28 | 每日整理/空闲提炼 | 有；预算/批次/重试/保留 | 无 | 无 | M3 |
-| 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | person/relationship 数据有，UI 只有条数 | 部分 | M3 |
-| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 无 | 无 | M3 |
+| 28 | 每日整理/空闲提炼 | 有；预算/批次/重试/保留 | 每日 04:00 巩固 + 按作用域 LLM 反思；手动触发；私聊隔离 | 部分（M3-b） | M3 剩余：批次/重试/保留 |
+| 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | person/relationship 数据有，UI 只有条数；目的已有独立页 | 部分 | M3 剩余 |
+| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 无独立时间轴；原始事件/记忆/决策可查 | 无 | M3 剩余 |
 | 31 | 语义检索/embedding | 可选，默认关 | 只有 seam，未接真实向量 | 部分 | M3 |
 | 32 | 跨平台身份 | 有 | 无 | 无 | M3 |
 
@@ -119,7 +119,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 37 | 候选效用/bandit/结果归因 | 模块化 hooks + 群聊策略 | Beta 后验、效用、限频、沉默、撤回专项 | **领先** | — |
-| 38 | 目的引擎/计划 | `purpose/engine.js` 2,287 行，目标/计划/执行 | 无 | **无** | M3 |
+| 38 | 目的引擎/计划 | `purpose/engine.js` 2,287 行，目标/计划/执行 | goal/plan/intent CRUD、优先级/进度/步骤、少量注入、`/purpose`、面板；无执行器 | 部分（M3-a） | M3 剩余/M5 |
 | 39 | 主动搭话 | 醒着时间/频率/白名单/晚安心情 | 安静时段/日预算/关系门槛/退避/dryRun | 部分 | M3 |
 | 40 | 定时/后台任务 | 有 | 无 | 无 | M1/M3 |
 
@@ -236,7 +236,7 @@ QQ → 网关 → events → access（主人/白名单/档位）
 | **M6** | 运维/UI/安全 | 备份恢复、升级提示、工作区迁移、离峰省钱、本机-only/CSRF/反代、审批/危险确认、向导、25 页 | 安全评审 + 向导 + 备份恢复 |
 | **M7** | 审计发布 | parity matrix 关闭、性能/成本、真机验收、发布 | 所有行「实现」或「豁免」 |
 
-## 7. M0–M2 交付（已完成）
+## 7. M0–M3 交付（已完成部分）
 
 **M0（视觉与矩阵）**
 - Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。
@@ -267,6 +267,17 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 命令在 pipeline 的分析/策略前处理；`/quiet` `/active` 写回群聊参与/主动开关；`/remember` `/forget` 使用记忆服务。
 - 测试：`test/commands.test.js`、`test/model-llm.test.js` 的按聊天覆盖用例。
 - 边界：仅认知 LLM；agent Session 模型、`/sing` 等媒体命令留到后续。
+
+**M3-a（目的系统）**
+- `cognition/purpose.js`：goal/plan/intent，active/paused/done/abandoned；优先级/进度/步骤/截止/作用域；`promptContext` 限量注入 compose；`tick` 给建议不执行。
+- `/purpose` 列表/新建/完成/放弃/暂停/恢复/进度；认知面板「目的」页 CRUD；API `/cognition/purpose*`。
+- 测试：`test/purpose.test.js`、commands 用例、cognition 集成（目的注入/完成停止注入）。
+
+**M3-b（每日整理/反思）**
+- `cognition/consolidation.js`：每日 04:00 调度 `memory.consolidateAll()`；按作用域 LLM 反思，只压缩已有记忆，写回同 scope（source=reflection）；私聊不跨聊/不写 global。
+- 面板记忆页「整理/反思」；API `/cognition/consolidation*`；配置 `consolidation.*`。
+- 测试：`test/consolidation.test.js`（scope 隔离、条数门槛、LLM 失败不写、调度时间、状态）。
+- 边界：无时间轴、批次/重试/保留策略、人物档案编辑页、向量检索。
 
 **M2-b（合并转发/拍一拍/表态/QQ 动作）**
 - `gateway/forward.js` + `actions.getForwardMsg`：兼容 `id`/`message_id`，节点压平成 `发送者：内容`；pipeline 展开进 `turn.text` 并标记不可信。

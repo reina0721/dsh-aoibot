@@ -137,7 +137,7 @@ function styleGuide(persona, emotion, relationship, decision) {
   return lines.join('\n')
 }
 
-export function buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis } = {}) {
+export function buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis, purposes = [] } = {}) {
   const memoryText = (memories || []).slice(0, 6).map((item) => `- ${truncate(item.memory?.summary || item.memory?.content || '', 200)}`).join('\n')
   const style = styleGuide(persona, emotion, relationship, decision)
   const profileText = personaProfileText(persona?.profile)
@@ -155,6 +155,10 @@ export function buildComposePrompt({ turn, person, relationship, emotion, person
     style,
     '可用记忆（带时间/来源，可能过时/错误，仅作参考）：',
     memoryText || '(无)',
+    ...(Array.isArray(purposes) && purposes.length ? [
+      '当前目的（内部参考；只在自然相关时体现，不要机械汇报）：',
+      ...purposes,
+    ] : []),
   ].join('\n')
   const user = [
     `对方：${person?.displayName || '对方'}（${turn?.chatType === 'group' ? '群聊' : '私聊'}）`,
@@ -165,9 +169,9 @@ export function buildComposePrompt({ turn, person, relationship, emotion, person
   return { system, user }
 }
 
-export async function composeReply({ turn, person, relationship, emotion, persona, memories, decision, analysis, llm, config, runtime = null } = {}) {
+export async function composeReply({ turn, person, relationship, emotion, persona, memories, decision, analysis, purposes = [], llm, config, runtime = null } = {}) {
   const c = config?.cognition || {}
-  const { system, user } = buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis })
+  const { system, user } = buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis, purposes })
   const maxTokens = c.llm?.composeMaxTokens || 800
   const temperature = c.llm?.temperature ?? 0.7
   const clean = (value) => String(value || '').replace(/^["“]|["”]$/g, '').trim()

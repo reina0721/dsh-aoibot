@@ -31,6 +31,8 @@ import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createCommandService } from './commands.js'
 import { createQqActions } from './qq-actions.js'
+import { createPurposeService } from './purpose.js'
+import { createConsolidationService } from './consolidation.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
 export function createCognition({
@@ -98,6 +100,15 @@ export function createCognition({
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
       state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
+      state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
+      state.services.consolidation = createConsolidationService({
+        memory: state.services.memory,
+        llm: state.services.llm,
+        getConfig,
+        clock,
+        scheduler,
+        logger: log,
+      })
       state.services.policy = createPolicyService({ store: personaStore, getConfig, clock, rng })
       state.services.llm = createLlmClient({ ctx, models, getConfig, store: personaStore, clock, log })
       state.services.outbound = createOutbound({
@@ -129,6 +140,7 @@ export function createCognition({
         memory: state.services.memory,
         runtime: state.services.runtime,
         qqActions: state.services.qqActions,
+        purpose: state.services.purpose,
         logger: log,
       })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
@@ -156,6 +168,7 @@ export function createCognition({
         outbound: state.services.outbound,
         runtime: state.services.runtime,
         commands: state.services.commands,
+        purpose: state.services.purpose,
         turnAggregator: null,
       })
       state.services.aggregator = createTurnAggregator({
@@ -339,7 +352,7 @@ export function createCognition({
   function counts() {
     const out = {}
     if (!state.store) return out
-    for (const kind of ['person', 'identity', 'relationship', 'memory', 'unknown', 'learning_task', 'knowledge_claim', 'decision', 'outcome', 'skill', 'belief', 'trace', 'raw_event']) {
+    for (const kind of ['person', 'identity', 'relationship', 'memory', 'purpose', 'unknown', 'learning_task', 'knowledge_claim', 'decision', 'outcome', 'skill', 'belief', 'trace', 'raw_event']) {
       try { out[kind] = state.scopedStore.count(kind) } catch (error) { out[kind] = 0 }
     }
     return out
@@ -528,7 +541,40 @@ export function createCognition({
     try { return state.scopedStore.tx(fn) } catch (error) { log.warn?.('认知事务失败：', error.message); return null }
   }
 
+  function consolidationStats() {
+    return state.services.consolidation?.status?.() || null
+  }
+
+  async function runConsolidation(options = {}) {
+    return state.services.consolidation?.runOnce?.(options) || { ok: false, error: 'CONSOLIDATION_UNAVAILABLE' }
+  }
+
+  function purposeSummary() {
+    return state.services.purpose?.stats?.() || null
+  }
+
+  function purposeList(options = {}) {
+    return state.services.purpose?.list?.(options) || []
+  }
+
+  function purposeCreate(input = {}) {
+    const result = state.services.purpose?.create?.(input)
+    if (!result) throw new Error('标题不能为空')
+    return result
+  }
+
+  function purposeUpdate(id, patch = {}) {
+    const result = state.services.purpose?.update?.(id, patch)
+    if (!result) throw new Error('目的不存在')
+    return result
+  }
+
+  function purposeDelete(id) {
+    return Boolean(state.services.purpose?.remove?.(id))
+  }
+
   function dispose() {
+    try { state.services.consolidation?.dispose?.() } catch (error) {}
     try { state.services.runtime?.dispose?.() } catch (error) {}
     try { scheduler.dispose?.() } catch (error) {}
     try { state.services.aggregator?.dispose?.() } catch (error) {}
@@ -592,6 +638,13 @@ export function createCognition({
     cancelTask,
     metrics,
     outboundStats: () => state.services.outbound?.stats?.() || null,
+    purposeSummary,
+    purposeList,
+    purposeCreate,
+    purposeUpdate,
+    purposeDelete,
+    consolidationStats,
+    runConsolidation,
     runtimeStats: () => state.services.runtime?.summary?.() || null,
     runtimeSessions: () => state.services.runtime?.sessions?.() || [],
     proactivityStats,

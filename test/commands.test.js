@@ -37,6 +37,16 @@ function harness(overrides = {}) {
     },
   }
   const runtime = { summary: () => ({ active: true, sessions: 2 }) }
+  const purposeItems = [{ id: 'goal_abc12345', type: 'goal', title: '学会做面包', status: 'active', progress: 0.2 }]
+  const purpose = {
+    list(args = {}) { return purposeItems.filter((item) => !args.status || item.status === args.status) },
+    create(input) { const item = { id: 'goal_new00001', type: 'goal', status: 'active', progress: 0, ...input }; purposeItems.push(item); return item },
+    update(id, patch) { const item = purposeItems.find((row) => row.id === id); Object.assign(item, patch); return item },
+    complete(id) { const item = purposeItems.find((row) => row.id === id); item.status = 'done'; return item },
+    abandon(id) { const item = purposeItems.find((row) => row.id === id); item.status = 'abandoned'; return item },
+    pause(id) { const item = purposeItems.find((row) => row.id === id); item.status = 'paused'; return item },
+    resume(id) { const item = purposeItems.find((row) => row.id === id); item.status = 'active'; return item },
+  }
   const qqActions = {
     async like(args) { return { ok: true, target: args.userId, times: args.times || 1 } },
     async poke() { return { ok: true } },
@@ -60,6 +70,7 @@ function harness(overrides = {}) {
     memory,
     runtime,
     qqActions,
+    purpose,
     logger: null,
   })
   return { service, sent, memory, getConfig: () => config, setConfig }
@@ -190,4 +201,24 @@ test('commands：/like /poke /groupinfo /memberinfo 走 QQ 动作服务', async 
 
   const privateInfo = await service.handle(turn('/groupinfo'))
   assert.match(privateInfo.reply, /只能在群里用/)
+})
+
+
+test('commands：/purpose 列表/新建/完成/进度', async () => {
+  const { service, sent } = harness()
+  const list = await service.handle(turn('/purpose'))
+  assert.match(list.reply, /活跃目的/)
+  assert.match(list.reply, /abc12345/)
+  assert.match(list.reply, /学会做面包/)
+
+  const add = await service.handle(turn('/purpose add 学会做蛋糕'))
+  assert.match(add.reply, /已新建目的 new00001/)
+  assert.match(add.reply, /学会做蛋糕/)
+
+  const progress = await service.handle(turn('/purpose progress abc12345 50'))
+  assert.match(progress.reply, /50%/)
+
+  const done = await service.handle(turn('/purpose done abc12345'))
+  assert.match(done.reply, /已完成/)
+  assert.equal(sent.length, 4)
 })

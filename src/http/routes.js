@@ -120,6 +120,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       logs: logger.stats(),
       access: access?.summary?.() || { mode: 'open', configured: false },
       runtime: cognition?.runtimeStats?.() || null,
+      purpose: cognition?.purposeSummary?.() || null,
+      consolidation: cognition?.consolidationStats?.() || null,
       recentEvents: events.recent(20),
     }
   }
@@ -232,6 +234,35 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       const body = await readBody(req)
       if (!body?.id || !body?.action) throw new Error('缺少 id/action')
       return { ok: true, result: cognition.memoryAction(body.id, body.action) }
+    })
+    route('GET', '/cognition/consolidation', async () => ({ ok: true, ...(cognition.consolidationStats() || {}) }))
+    route('POST', '/cognition/consolidation/run', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, ...(await cognition.runConsolidation({ force: body?.force === true, reflect: body?.reflect })) }
+    })
+    route('GET', '/cognition/purpose', async (req) => {
+      const query = queryOf(req)
+      const status = query.status === undefined ? 'active' : String(query.status || '')
+      return {
+        ok: true,
+        items: cognition.purposeList({ status, type: query.type || '', limit: toInt(query.limit, 50, 1, 200) }),
+        stats: cognition.purposeSummary(),
+      }
+    })
+    route('POST', '/cognition/purpose/create', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, purpose: cognition.purposeCreate(body || {}) }
+    })
+    route('POST', '/cognition/purpose/update', async (req) => {
+      const body = await readBody(req)
+      const { id, ...patch } = body || {}
+      if (!id) throw new Error('缺少 id')
+      return { ok: true, purpose: cognition.purposeUpdate(String(id), patch) }
+    })
+    route('POST', '/cognition/purpose/delete', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id) throw new Error('缺少 id')
+      return { ok: true, deleted: cognition.purposeDelete(String(body.id)) }
     })
     route('GET', '/cognition/emotion', async () => ({ ok: true, ...cognition.emotionState() }))
     route('POST', '/cognition/emotion/adjust', async (req) => {

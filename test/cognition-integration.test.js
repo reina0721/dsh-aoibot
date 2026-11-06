@@ -465,3 +465,31 @@ test('M2-b：表情回应把机器人消息标记为正向 outcome', async () =>
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('M3-a：活跃目的注入回复上下文，完成/删除后不再注入', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-purpose-'))
+  const scheduler = createFakeScheduler()
+  const capture = []
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 812 } } } }
+  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(capture) })
+  try {
+    const goal = cog.services.purpose.create({ title: '学会做面包', priority: 0.8, scope: { scopeType: 'private', scopeId: '10001' } })
+    cog.observe(privateEvent(1, '在吗'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.equal(sent.length, 1)
+    assert.ok(capture.some((system) => system.includes('学会做面包')), '目的应注入 compose system')
+
+    cog.services.purpose.complete(goal.id)
+    capture.length = 0
+    cog.observe(privateEvent(2, '再问一句'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.equal(sent.length, 2)
+    assert.ok(!capture.some((system) => system.includes('学会做面包')), '完成后的目的不应再注入')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

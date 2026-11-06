@@ -320,6 +320,17 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - `src/cognition/qq-actions.js`：点赞、拍回去、群信息、成员信息；校验主人与当前会话，返回可展示字段；
   `/like` `/poke` `/groupinfo` `/memberinfo` 命令复用。agent 工具化留到工具注册/模块阶段。
 
+### 3.16 目的与每日整理
+
+- `src/cognition/purpose.js`：`goal/plan/intent` 三类型，`active/paused/done/abandoned` 四状态；按 persona 作用域存储；
+  `promptContext()` 只返回少量高优先级目的，`tick()` 给「优先级+紧迫度+停滞度」建议，不执行。
+- pipeline 在分析前取 `purpose.promptContext()`，随 `composeReply` 注入 compose system；完成/放弃后不再注入。
+- `src/cognition/consolidation.js`：每日 04:00 调度 `memory.consolidateAll()`；可选按作用域调用 LLM 反思，
+  只压缩已有记忆，结果写回同一 scope 的 semantic 记忆（source=`reflection`）；私聊不跨聊、不写 global。
+- 面板：认知 → 目的（增删改/进度/状态）；记忆页「整理/反思」手动触发；API `GET /cognition/purpose`、
+  `POST /cognition/purpose/create|update|delete`、`POST /cognition/consolidation/run`。
+- 边界：目的不执行工具、不自动发消息；时间轴/人物档案编辑/向量检索仍在 M3 剩余。
+
 ## 4. 数据目录
 
 ```

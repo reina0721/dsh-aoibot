@@ -145,6 +145,18 @@ export const DEFAULTS = {
       patReply: true,
       patCooldownMs: 60000,
     },
+    purpose: {
+      enabled: true,
+      maxActive: 5,
+      injectPrompt: true,
+      promptLimit: 3,
+    },
+    consolidation: {
+      enabled: true,
+      hour: 4,
+      reflect: true,
+      reflectMinEpisodes: 10,
+    },
     llm: {
       mode: 'auto', // auto | dsh | fixed | direct | chain
       fallbackToDsh: true,
@@ -605,6 +617,17 @@ export const CONFIG_GROUPS = [
     ],
   },
   {
+    id: 'cog-purpose',
+    title: '目的',
+    description: '长期目标 / 计划 / 近期意图；只注入 prompt 与面板管理，不自动执行工具。',
+    fields: [
+      { path: 'cognition.purpose.enabled', label: '启用目的系统', type: 'switch', default: true },
+      { path: 'cognition.purpose.injectPrompt', label: '注入回复上下文', type: 'switch', default: true, help: '把少量高优先级目的作为上下文；不会让机器人机械汇报目标。' },
+      { path: 'cognition.purpose.promptLimit', label: '注入条数', type: 'number', default: 3, min: 0, max: 10, step: 1 },
+      { path: 'cognition.purpose.maxActive', label: '活跃目的上限', type: 'number', default: 5, min: 1, max: 20, step: 1, help: '目前用于容量提示，不强制删除。' },
+    ],
+  },
+  {
     id: 'cog-persona',
     title: '人格',
     description: '相对稳定的长期行为倾向；单次互动不应剧烈改变。人格与情绪/关系/技能分开存储。',
@@ -676,6 +699,10 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.memory.forgetHalfLifeDays', label: '遗忘半衰期', type: 'number', default: 60, min: 5, max: 730, step: 5, unit: '天' },
       { path: 'cognition.memory.consolidateEvery', label: '每 N 条记忆尝试巩固', type: 'number', default: 25, min: 5, max: 200, step: 5 },
       { path: 'cognition.memory.semanticIndex', label: '语义索引', type: 'select', default: 'lexical', options: [{ value: 'lexical', label: '词法 + 关联图（默认）' }, { value: 'embedding', label: '向量索引（需外部 provider）' }] },
+      { path: 'cognition.consolidation.enabled', label: '每日整理', type: 'switch', default: true, help: '每日定时把情景记忆巩固为语义记忆，并按作用域生成阶段小结。' },
+      { path: 'cognition.consolidation.hour', label: '整理时间', type: 'number', default: 4, min: 0, max: 23, step: 1, unit: '点', help: '本地时间；服务重启后会重新计算下一次。' },
+      { path: 'cognition.consolidation.reflect', label: 'LLM 阶段反思', type: 'switch', default: true, help: '只压缩已有记忆，不新增事实；预算不足时自动跳过。' },
+      { path: 'cognition.consolidation.reflectMinEpisodes', label: '反思最低条数', type: 'number', default: 10, min: 3, max: 100, step: 1 },
     ],
   },
   {
@@ -1022,6 +1049,18 @@ function normalizeCognition(raw, rawCognition = {}) {
     notice: {
       patReply: pickBool(src.notice?.patReply, d.notice.patReply),
       patCooldownMs: pickNumber(src.notice?.patCooldownMs, d.notice.patCooldownMs, { min: 0, max: 600000, integer: true }),
+    },
+    purpose: {
+      enabled: pickBool(src.purpose?.enabled, d.purpose.enabled),
+      maxActive: pickNumber(src.purpose?.maxActive, d.purpose.maxActive, { min: 1, max: 20, integer: true }),
+      injectPrompt: pickBool(src.purpose?.injectPrompt, d.purpose.injectPrompt),
+      promptLimit: pickNumber(src.purpose?.promptLimit, d.purpose.promptLimit, { min: 0, max: 10, integer: true }),
+    },
+    consolidation: {
+      enabled: pickBool(src.consolidation?.enabled, d.consolidation.enabled),
+      hour: pickNumber(src.consolidation?.hour, d.consolidation.hour, { min: 0, max: 23, integer: true }),
+      reflect: pickBool(src.consolidation?.reflect, d.consolidation.reflect),
+      reflectMinEpisodes: pickNumber(src.consolidation?.reflectMinEpisodes, d.consolidation.reflectMinEpisodes, { min: 3, max: 100, integer: true }),
     },
     llm: {
       mode: pickEnum(src.llm?.mode, d.llm.mode, ['auto', 'dsh', 'fixed', 'direct', 'chain']),

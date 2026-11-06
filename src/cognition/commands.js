@@ -5,7 +5,7 @@
 
 import { isOwner } from '../core/access.js'
 
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo']
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose']
 
 export function parseCommand(text) {
   const raw = String(text || '').trim()
@@ -34,6 +34,10 @@ const HELP_TEXT = [
   '/poke — 戳一戳当前聊天对象',
   '/groupinfo — 当前群信息（仅群聊）',
   '/memberinfo [QQ] — 群成员信息（仅群聊）',
+  '/purpose — 查看活跃目的',
+  '/purpose add 标题 — 新建目的',
+  '/purpose done|drop|pause|resume ID — 更新目的',
+  '/purpose progress ID 0-100 — 设置进度',
   '/help — 本帮助',
 ].join('\n')
 
@@ -49,7 +53,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
 
   function currentConfig() {
@@ -242,6 +246,44 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       const result = await qqActions.memberInfo({ operatorId: turn.senderId, chatType: turn.chatType, chatId: turn.chatId, userId: target })
       if (!result.ok) return send(turn, result.error === 'GROUP_ONLY' ? '这个命令只能在群里用。' : `查询失败：${result.error}`)
       return send(turn, `成员：${result.card || result.nickname || result.userId}（${result.userId}）· 角色 ${result.role || '?'}`)
+    }
+
+    if (parsed.name === 'purpose') {
+      if (!purpose) return send(turn, '目的服务不可用。')
+      const args = parsed.args
+      const shortId = (id) => String(id || '').replace(/^goal_/, '').slice(0, 8)
+      const find = (value) => {
+        const needle = String(value || '').replace(/^goal_/, '').trim()
+        if (!needle) return null
+        return purpose.list({ status: '', limit: 200 }).find((item) => String(item.id).replace(/^goal_/, '').startsWith(needle)) || null
+      }
+      if (!args) {
+        const items = purpose.list({ status: 'active', limit: 8 })
+        if (!items.length) return send(turn, '当前没有活跃目的。用 /purpose add 标题 新建。')
+        return send(turn, ['活跃目的：', ...items.map((item) => `- ${shortId(item.id)} [${item.type}] ${item.title}（${Math.round(Number(item.progress || 0) * 100)}%）`)].join('\n'))
+      }
+      const [sub, ...rest] = args.split(/\s+/)
+      const tail = rest.join(' ').trim()
+      if (sub === 'add') {
+        if (!tail) return send(turn, '用法：/purpose add 标题')
+        const created = purpose.create({ title: tail, type: 'goal', priority: 0.6, scope: scopeOf(turn), source: 'command' })
+        if (!created) return send(turn, '标题不能为空。')
+        return send(turn, `已新建目的 ${shortId(created.id)}：${created.title}`)
+      }
+      if (['done', 'drop', 'pause', 'resume', 'progress'].includes(sub)) {
+        const [idArg, valueArg] = rest
+        const item = find(idArg)
+        if (!item) return send(turn, '没有找到这个目的。先 /purpose 查看 ID。')
+        if (sub === 'done') { purpose.complete(item.id); return send(turn, `已完成：${item.title}`) }
+        if (sub === 'drop') { purpose.abandon(item.id); return send(turn, `已放弃：${item.title}`) }
+        if (sub === 'pause') { purpose.pause(item.id); return send(turn, `已暂停：${item.title}`) }
+        if (sub === 'resume') { purpose.resume(item.id); return send(turn, `已恢复：${item.title}`) }
+        const percent = Number.parseFloat(valueArg)
+        if (!Number.isFinite(percent)) return send(turn, '用法：/purpose progress ID 0-100')
+        purpose.update(item.id, { progress: Math.max(0, Math.min(100, percent)) / 100 })
+        return send(turn, `已更新进度：${item.title} → ${Math.round(Math.max(0, Math.min(100, percent)))}%`)
+      }
+      return send(turn, '用法：/purpose | /purpose add 标题 | /purpose done|drop|pause|resume ID | /purpose progress ID 0-100')
     }
 
     if (parsed.name === 'remember') {

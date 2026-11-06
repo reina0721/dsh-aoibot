@@ -249,8 +249,8 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
     return scopeAllows({ scopeType: memory.scopeType, scopeId: memory.scopeId }, scope) || memory.scopeType === 'global'
   }
 
-  function maybeConsolidate(personId, scope) {
-    const threshold = Math.max(5, Number(cfg().memory?.consolidateEvery || 25))
+  function maybeConsolidate(personId, scope, { force = false } = {}) {
+    const threshold = force ? 1 : Math.max(5, Number(cfg().memory?.consolidateEvery || 25))
     const episodes = store.list('memory', {
       limit: threshold + 10,
       where: (item) => item.type === 'episodic' && item.status === 'active'
@@ -296,6 +296,27 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
     })
     log?.debug?.('记忆巩固完成', personId || '(anonymous)', summary.length)
     return semantic
+  }
+
+  /** 扫描所有作用域，按阈值巩固；force 用于面板手动整理。 */
+  function consolidateAll({ force = false, limit = 200 } = {}) {
+    const episodes = store.list('memory', {
+      limit: Math.max(50, Math.min(500, Number(limit) || 200)),
+      where: (item) => item.type === 'episodic' && item.status === 'active',
+    })
+    const groups = new Map()
+    for (const item of episodes) {
+      const key = `${item.scopeType || 'global'}:${item.scopeId || ''}:${item.personId || ''}`
+      const group = groups.get(key) || { personId: item.personId || '', scope: { scopeType: item.scopeType || 'global', scopeId: item.scopeId || '' }, count: 0 }
+      group.count += 1
+      groups.set(key, group)
+    }
+    const results = []
+    for (const group of groups.values()) {
+      const result = maybeConsolidate(group.personId, group.scope, { force })
+      if (result) results.push(result)
+    }
+    return results
   }
 
   function get(id) {
@@ -421,7 +442,7 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
   }
 
   return {
-    workingSet, workingGet, encodeTurn, remember, forgetMatching, retrieve, get, list, activate, forget, remove, contextFor, stats,
+    workingSet, workingGet, encodeTurn, remember, forgetMatching, retrieve, get, list, activate, forget, remove, contextFor, stats, consolidateAll,
     maybeConsolidate, scopeVisible,
   }
 }
