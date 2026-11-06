@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -116,7 +116,7 @@ test('媒体：TTS 输出 mp3；图片、语音和文件走对应网关动作', 
     await media.sendMedia({ chatType: 'group', chatId: '3', kind: 'file', filePath: file, name: '报告.pdf' })
     assert.match(sent[0][1].message[0].data.file, /^base64:\/\//)
     assert.equal(sent[1][1].message[0].type, 'record')
-    assert.deepEqual(sent[2].slice(0, 3), ['group-file', '3', file])
+    assert.deepEqual(sent[2].slice(0, 3), ['group-file', '3', realpathSync(file)])
     await assert.rejects(() => media.sendMedia({ chatType: 'private', chatId: '2', kind: 'image', filePath: '/etc/passwd' }), /媒体目录内/)
   } finally {
     delete process.env.DSH_MEDIA_TEST_KEY
@@ -151,7 +151,8 @@ test('media file command: relative paths, size/extension gates and symlink confi
   } } })
   await service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', relativePath: 'inbound/ok.txt' })
   await service.sendMedia({ chatType: 'group', chatId: '20001', kind: 'file', relativePath: 'inbound/ok.txt' })
-  assert.deepEqual(calls, [['private', '10001', join(root, 'inbound/ok.txt'), 'ok.txt'], ['group', '20001', join(root, 'inbound/ok.txt'), 'ok.txt']])
+  const expected = realpathSync(join(root, 'inbound/ok.txt'))
+  assert.deepEqual(calls, [['private', '10001', expected, 'ok.txt'], ['group', '20001', expected, 'ok.txt']])
   for (const relativePath of ['/etc/passwd', '../outside.txt', 'C:/outside.txt', 'link.txt', 'escape/outside.txt', 'bad.exe', 'big.txt', 'inbound']) await assert.rejects(service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', relativePath }))
   await assert.rejects(service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', filePath: join(root, 'link.txt') }), /符号链接/)
   assert.equal(calls.length, 2)
