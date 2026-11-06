@@ -61,8 +61,8 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | preset 内置 fs/fs-search/web；无 QQ 动作工具/MCP/子智能体 | 部分（M1-b） | M1/M2 |
 | 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | 无 | **无** | M1 |
 | 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | 无 | 无 | M1 |
-| 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | 全局路由 | 无 | M1 |
-| 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | 只有命令快路径，无命令实现 | 无 | M1 |
+| 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | `cognition.modelRouting`：私聊/群默认 + 会话覆盖；`/model` 写回 | 部分（M1-c，仅认知 LLM） | M1 剩余：agent Session 模型 |
+| 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；非主人静默 | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
 
 ### 3.3 权限与安全
 
@@ -251,6 +251,13 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 配置 `runtime.*`；概览「运行诊断」显示 engine/active/会话数；`/runtime/stats`、`/runtime/sessions`。
 - 测试：`test/runtime.test.js`（Session 复用、preset 选择、工具中间文本丢弃、空回复/超时、并发串行、oneshot 回退）。
 - 边界：默认 `oneshot`；未在真实 DSH Session 上做 live smoke；QQ 动作工具/命令/按聊天模型留到 M1 剩余。
+
+**M1-c（QQ 命令 + 按聊天模型）**
+- `src/cognition/commands.js`：`/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；只处理 `/name args`，非主人静默；命令回复走 outbound。
+- `cognition.modelRouting`：私聊/群默认 + `QQ号或群号=provider/model` 会话覆盖；`/model` 写回；provider 在直连列表则 direct，否则 DSH。
+- 命令在 pipeline 的分析/策略前处理；`/quiet` `/active` 写回群聊参与/主动开关；`/remember` `/forget` 使用记忆服务。
+- 测试：`test/commands.test.js`、`test/model-llm.test.js` 的按聊天覆盖用例。
+- 边界：仅认知 LLM；agent Session 模型、`/sing` 等媒体命令留到后续。
 
 **M0（视觉与矩阵）**
 - Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。

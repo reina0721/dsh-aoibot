@@ -147,6 +147,12 @@ export const DEFAULTS = {
       retry: 1,
       cache: true,
     },
+    // 按聊天选模型：provider/model；routes 形如 "10001=opencode-go/deepseek-v4.1-flash"
+    modelRouting: {
+      privateDefault: '',
+      groupDefault: '',
+      routes: [],
+    },
     persona: {
       traits: {
         extraversion: 0.55,
@@ -540,6 +546,9 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.llm.dailyTokenBudget', label: '每日 token 预算', type: 'number', default: 300000, min: 1000, max: 5000000, step: 1000 },
       { path: 'cognition.llm.maxConcurrency', label: '并发上限', type: 'number', default: 2, min: 1, max: 8, step: 1 },
       { path: 'cognition.llm.retry', label: '解析/瞬时错误重试', type: 'number', default: 1, min: 0, max: 3, step: 1 },
+      { path: 'cognition.modelRouting.privateDefault', label: '私聊默认模型', type: 'text', default: '', placeholder: 'provider/model，留空用全局路由', help: '只影响认知分析/生成，不改变 DSH 面板默认模型。' },
+      { path: 'cognition.modelRouting.groupDefault', label: '群聊默认模型', type: 'text', default: '', placeholder: 'provider/model，留空用全局路由' },
+      { path: 'cognition.modelRouting.routes', label: '按会话覆盖', type: 'string-list', default: [], placeholder: '10001=provider/model 后回车', help: 'QQ 号或群号=provider/model；私聊优先于群号。也可用 QQ 命令 /model 设置当前会话。' },
     ],
   },
   {
@@ -986,6 +995,11 @@ function normalizeCognition(raw, rawCognition = {}) {
       maxConcurrency: pickNumber(src.llm?.maxConcurrency, d.llm.maxConcurrency, { min: 1, max: 8, integer: true }),
       retry: pickNumber(src.llm?.retry, d.llm.retry, { min: 0, max: 3, integer: true }),
       cache: pickBool(src.llm?.cache, d.llm.cache),
+    },
+    modelRouting: {
+      privateDefault: pickString(src.modelRouting?.privateDefault, '', { max: 200 }),
+      groupDefault: pickString(src.modelRouting?.groupDefault, '', { max: 200 }),
+      routes: pickStringArray(src.modelRouting?.routes, [], { maxItems: 200 }),
     },
     persona: {
       traits,

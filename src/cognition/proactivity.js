@@ -61,7 +61,7 @@ export function createProactivityService({
     ].join('\n')
     let text = ''
     if (llm) {
-      const result = await llm.complete({ system: promptSystem, user: promptUser, maxTokens: 220, temperature: 0.8, purpose: 'proactive' })
+      const result = await llm.complete({ system: promptSystem, user: promptUser, maxTokens: 220, temperature: 0.8, purpose: 'proactive', chat: { chatType: 'private', chatId: String(rel.scopeId || '') } })
       if (result.ok) text = String(result.text || '').trim()
       else state.lastError = result.message || result.error || 'llm_failed'
     }

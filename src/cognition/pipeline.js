@@ -11,7 +11,7 @@ export function createPipeline({
   store, getConfig, clock, logger,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
-  beliefs = null, dryRun = null, outbound = null, runtime = null,
+  beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -217,7 +217,7 @@ export function createPipeline({
     }
   }
 
-  function buildResult({ ok, decision, reply, analysis, degraded, error }) {
+  function buildResult({ ok, decision, reply, analysis, degraded, error, command = false }) {
     return {
       ok: Boolean(ok),
       decision: decision || null,
@@ -225,6 +225,7 @@ export function createPipeline({
       analysis: analysis || null,
       degraded: Boolean(degraded),
       error: error || '',
+      command: Boolean(command),
       at: clock.now(),
     }
   }
@@ -380,6 +381,19 @@ export function createPipeline({
     // 绝不把机器人自己的消息当成用户输入；否则会形成回复循环。
     if (turn.senderId && (turn.senderId === turn.selfId || turn.senderId === String(getConfig()?.botQQ || ''))) {
       return buildResult({ ok: false, error: 'self_message' })
+    }
+    if (commands && typeof commands.handle === 'function') {
+      try {
+        const handled = await commands.handle(turn)
+        if (handled && handled.handled) {
+          stats.turns += 1
+          markLast(turn, handled.reply ? 'sent' : 'silenced')
+          trace(turn.id, 'command', { text: truncate(turn.text, 120), data: { replied: handled.reply ? 1 : 0 } })
+          return buildResult({ ok: true, decision: null, reply: handled.reply || '', command: true })
+        }
+      } catch (error) {
+        log.warn?.('命令处理失败：', error.message)
+      }
     }
     const started = clock.now()
     stats.turns += 1

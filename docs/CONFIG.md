@@ -205,7 +205,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | 组 | 代表字段 | 默认值 | 作用 |
 |---|---|---|---|
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
-| `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；超预算/失败降级，不伪造 |
+| `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` / `modelRouting.*` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` / 空 | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；`modelRouting` 按聊天覆盖 provider/model，优先级：会话覆盖 > 私聊/群默认 > 全局路由 |
 | `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `groupReplyMode` / `groupReplyProbability` / `groupCooldownMs` / `groupMaxRepliesPerMinute` | `1800` / `10000` / `9000` / `addressed` / `0.2` / `3000` / `6` | 碎片聚合软/硬等待；群聊参与方式（仅@/概率/所有消息）及冷却/频率上限；旧 `addressedOnlyGroups` 仍兼容映射 |
 | `cog-persona` | `persona.traits` / `style` / `values` / `evolutionEnabled` / `evolutionPerDay` | 见默认值 | 12 维稳定人格、6 维表达风格、价值边界；最长每日小步慢演化。**文本人设（名字/背景/性格/风格/喜好/边界）存在认知 persona 记录，不在此表** |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
@@ -215,6 +215,10 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
+
+按聊天选模型：`cognition.modelRouting.privateDefault` / `groupDefault` 为 `provider/model`；`routes` 是
+`QQ号或群号=provider/model` 的字符串数组，优先于默认项。只影响认知分析与回复生成（oneshot / agent compose），
+不修改 DSH 面板默认模型；`/model` 命令会写这个数组。provider 在直连 provider 列表里时走直连，否则走 DSH。
 
 认知数据位置（与平台配置分离）：
 

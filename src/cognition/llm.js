@@ -86,7 +86,42 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return candidates
   }
 
-  async function buildAttempts() {
+  function parseModelSpec(spec) {
+    const text = String(spec || '').trim()
+    const at = text.indexOf('/')
+    if (at <= 0 || at >= text.length - 1) return null
+    const provider = text.slice(0, at).trim()
+    const model = text.slice(at + 1).trim()
+    return provider && model ? { provider, model } : null
+  }
+
+  function chatOverride(chat) {
+    if (!chat) return null
+    const routing = cfg().modelRouting || {}
+    const id = String(chat.chatId || '')
+    const routes = Array.isArray(routing.routes) ? routing.routes : []
+    let spec = ''
+    for (const entry of routes) {
+      const text = String(entry || '')
+      const eq = text.indexOf('=')
+      if (eq <= 0) continue
+      if (text.slice(0, eq).trim() === id) {
+        spec = text.slice(eq + 1).trim()
+        break
+      }
+    }
+    if (!spec) spec = String(chat.chatType === 'group' ? routing.groupDefault : routing.privateDefault || '').trim()
+    const parsed = parseModelSpec(spec)
+    if (!parsed) return null
+    let kind = 'dsh'
+    try {
+      const providers = models?.list?.()?.providers || []
+      if (Array.isArray(providers) && providers.some((provider) => provider?.id === parsed.provider)) kind = 'direct'
+    } catch (error) {}
+    return { kind, ...parsed, source: 'chat' }
+  }
+
+  async function buildAttempts(chat = null) {
     const c = cfg().llm || {}
     const mode = ['auto', 'dsh', 'fixed', 'direct', 'chain'].includes(c.mode) ? c.mode : 'auto'
     const attempts = []
@@ -98,6 +133,8 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       seen.add(key)
       attempts.push(route)
     }
+    const override = chatOverride(chat)
+    if (override) add(override)
     const dsh = await resolveDshRoute()
     const direct = directCandidates()
 
@@ -241,12 +278,12 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     }
   }
 
-  async function complete({ system = '', user = '', maxTokens = null, temperature = null, timeoutMs = null, purpose = 'analysis', sessionId = '' } = {}) {
+  async function complete({ system = '', user = '', maxTokens = null, temperature = null, timeoutMs = null, purpose = 'analysis', sessionId = '', chat = null } = {}) {
     const c = cfg().llm || {}
     const tokensLeft = budgetLeft()
     if (tokensLeft <= 0) return { ok: false, error: 'BUDGET_EXHAUSTED', message: '今日 LLM token 预算已用完', degraded: true }
     const budget = Math.max(64, Math.min(Number(maxTokens || (purpose === 'compose' ? c.composeMaxTokens : c.analysisMaxTokens) || 700), tokensLeft))
-    const attempts = await buildAttempts()
+    const attempts = await buildAttempts(chat)
     if (!attempts.length) {
       return {
         ok: false,
@@ -344,5 +381,10 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return resolveDshRoute()
   }
 
-  return { complete, completeJson, test, resolveRoute, status, budgetLeft, todayUsage, buildAttempts }
+  async function currentRoute(chat = null) {
+    const attempts = await buildAttempts(chat)
+    return attempts[0] || null
+  }
+
+  return { complete, completeJson, test, resolveRoute, currentRoute, status, budgetLeft, todayUsage, buildAttempts }
 }

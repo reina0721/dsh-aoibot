@@ -76,6 +76,7 @@ export function apply(ctx, rowConfig) {
     logger,
     dataRoot: dataDir('cognition'),
     access,
+    setConfig,
   })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */

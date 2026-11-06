@@ -288,6 +288,18 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
 - 边界：M1 只替换 compose；analysis/policy/记忆仍由认知内核负责；QQ 动作工具、命令、按聊天模型在后续里程碑。
 
+### 3.13 QQ 命令与按聊天模型
+
+- `src/cognition/commands.js`：`parseCommand(text)` + `createCommandService()`；只处理 `/name args`，非主人静默忽略。
+- 命令在 `pipeline.handleTurn` 的自循环检查之后、分析/策略之前处理；回复走 `outbound.deliver({ source:'command' })`，
+  因此同样受访问控制与频率上限约束。
+- `/quiet` `/active` 写回 `cognition.turn.groupReplyMode` 与 `cognition.proactivity.enabled`；`/model` 写
+  `cognition.modelRouting.routes`（`chatId=provider/model`）；`/remember` `/forget` 调用记忆服务的 `remember` /
+  `forgetMatching`，作用域是当前私聊或群。
+- `src/cognition/llm.js`：`chatOverride(chat)` 解析 `modelRouting`，`buildAttempts(chat)` 把会话覆盖放在最前；
+  provider 在直连注册表里 → `kind:'direct'`，否则 `kind:'dsh'`。`currentRoute(chat)` 供 `/model` 与面板诊断。
+- 限制：只影响认知 LLM 路由；`agent` 引擎的 DSH Session 模型仍由 preset/DSH 选择，后续再通过 sessionController 选模型。
+
 ## 4. 数据目录
 
 ```

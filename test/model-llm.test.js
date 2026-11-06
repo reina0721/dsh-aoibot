@@ -120,3 +120,38 @@ test('llm 预算：记录 token，耗尽时报 BUDGET_EXHAUSTED', async () => {
   assert.equal(result.ok, false)
   assert.equal(result.error, 'BUDGET_EXHAUSTED')
 })
+
+test('llm 按聊天覆盖：优先当前会话 provider/model，不影响其他会话', async () => {
+  const calls = []
+  const models = {
+    selected: () => ({ provider: 'p', model: 'm', resolved: true, available: true }),
+    fallback: () => [],
+    list: () => ({ providers: [{ id: 'chat-p' }], selected: null }),
+    complete: async (payload) => {
+      calls.push({ provider: payload.provider, model: payload.model })
+      return { text: 'chat-ok', usage: { total: 1 }, route: { provider: payload.provider, model: payload.model }, finish: { kind: 'stop' } }
+    },
+  }
+  const cfg = {
+    cognition: {
+      enabled: true,
+      llm: { mode: 'direct', fallbackToDsh: true, provider: '', model: '', analysisMaxTokens: 200, composeMaxTokens: 200, dailyTokenBudget: 100000 },
+      modelRouting: { privateDefault: '', groupDefault: '', routes: ['10001=chat-p/chat-m'] },
+    },
+  }
+  const llm = createLlmClient({
+    ctx: fakeCtx(), models, getConfig: () => cfg, store: fakeStore(), clock: { now: () => 1000 }, log: { debug() {} },
+  })
+  const route = await llm.currentRoute({ chatType: 'private', chatId: '10001' })
+  assert.equal(route.provider, 'chat-p')
+  assert.equal(route.model, 'chat-m')
+  assert.equal(route.source, 'chat')
+
+  const result = await llm.complete({ system: 's', user: 'u', chat: { chatType: 'private', chatId: '10001' } })
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls[0], { provider: 'chat-p', model: 'chat-m' })
+
+  const other = await llm.complete({ system: 's', user: 'u', chat: { chatType: 'private', chatId: '10002' } })
+  assert.equal(other.ok, true)
+  assert.deepEqual(calls[1], { provider: 'p', model: 'm' })
+})

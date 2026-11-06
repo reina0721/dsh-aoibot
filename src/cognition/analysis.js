@@ -82,6 +82,7 @@ function analysisPrompt({ turn, person, relationship, emotion, memories, unknown
       'beliefCandidates[{subject,proposition,probability(0-1),status(fact|hypothesis|disputed)}]（只允许有证据/明确自述的命题，最多3条）。',
     ].join('\n'),
     user: JSON.stringify(state),
+    chat: { chatType: turn?.chatType || '', chatId: String(turn?.chatId || '') },
   }
 }
 
@@ -189,7 +190,7 @@ export async function composeReply({ turn, person, relationship, emotion, person
   }
 
   if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE', runtimeError }
-  const result = await llm.complete({ system, user, maxTokens, temperature, purpose: 'compose' })
+  const result = await llm.complete({ system, user, maxTokens, temperature, purpose: 'compose', chat: { chatType: turn?.chatType || '', chatId: String(turn?.chatId || '') } })
   if (!result.ok) return { ...result, degraded: true, runtimeError }
   const text = clean(result.text)
   if (!text) return { ok: false, degraded: true, error: 'EMPTY_REPLY', runtimeError }

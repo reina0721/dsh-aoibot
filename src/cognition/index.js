@@ -29,6 +29,7 @@ import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
+import { createCommandService } from './commands.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
 export function createCognition({
@@ -43,6 +44,7 @@ export function createCognition({
   dryRun = null,
   models = null,
   access = null,
+  setConfig = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -116,6 +118,17 @@ export function createCognition({
         logger: log,
         dataRoot: pluginDataDir('runtime'),
       })
+      state.services.commands = createCommandService({
+        getConfig,
+        setConfig,
+        access,
+        outbound: state.services.outbound,
+        llm: state.services.llm,
+        memory: state.services.memory,
+        runtime: state.services.runtime,
+        commands: state.services.commands,
+        logger: log,
+      })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
@@ -140,6 +153,7 @@ export function createCognition({
         dryRun,
         outbound: state.services.outbound,
         runtime: state.services.runtime,
+        commands: state.services.commands,
         turnAggregator: null,
       })
       state.services.aggregator = createTurnAggregator({

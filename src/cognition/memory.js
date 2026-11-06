@@ -358,13 +358,70 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
     return lines.join('\n')
   }
 
+  /** 显式记住一条内容（/remember、面板导入、后续整理任务共用）。 */
+  function remember(text, { scope = null, personId = '', source = 'command', importance = 0.8, type = 'episodic' } = {}) {
+    const content = String(text || '').trim()
+    if (!content) return null
+    const memoryScope = scope || { scopeType: 'global', scopeId: '' }
+    const id = uid('mem')
+    const memory = {
+      id,
+      type: MEMORY_TYPES.includes(type) ? type : 'episodic',
+      scopeType: String(memoryScope.scopeType || 'global'),
+      scopeId: String(memoryScope.scopeId || ''),
+      personId: String(personId || ''),
+      chatType: memoryScope.scopeType === 'group' ? 'group' : memoryScope.scopeType === 'private' ? 'private' : '',
+      chatId: String(memoryScope.scopeId || ''),
+      content,
+      summary: content.slice(0, 500),
+      text: content,
+      salience: 0.75,
+      importance: round(clamp(Number(importance) || 0.8, 0, 1), 3),
+      confidence: 1,
+      valence: 0,
+      arousal: 0,
+      sourceEventIds: [],
+      sourceTurnId: '',
+      source: String(source || 'command'),
+      stability: 0.55,
+      accessCount: 0,
+      lastAccessed: 0,
+      status: 'active',
+      createdAt: clock.now(),
+      updatedAt: clock.now(),
+      version: 1,
+    }
+    store.put('memory', id, memory)
+    try { linkRelated(memory, { messageIds: [] }) } catch (error) {}
+    return memory
+  }
+
+  /** 按关键词遗忘（标记 inactive，不删除）；只在给定 scope 内匹配。 */
+  function forgetMatching(query, { scope = null, limit = 5 } = {}) {
+    const text = String(query || '').trim()
+    if (!text) return []
+    let rows = []
+    try {
+      rows = store.search('memory', text, 100)
+    } catch (error) {
+      rows = []
+    }
+    const wanted = scope ? rows.filter((row) => String(row.scopeType || '') === String(scope.scopeType || '') && String(row.scopeId || '') === String(scope.scopeId || '')) : rows
+    const out = []
+    for (const row of wanted.slice(0, Math.max(1, Math.min(20, Number(limit) || 5)))) {
+      const next = forget(row.id)
+      if (next) out.push(next)
+    }
+    return out
+  }
+
   function stats() {
     const rows = store.list('memory', { limit: 100000 })
     return { total: rows.length, active: rows.filter((item) => item.status === 'active').length, byType: rows.reduce((acc, item) => { acc[item.type] = (acc[item.type] || 0) + 1; return acc }, {}) }
   }
 
   return {
-    workingSet, workingGet, encodeTurn, retrieve, get, list, activate, forget, remove, contextFor, stats,
+    workingSet, workingGet, encodeTurn, remember, forgetMatching, retrieve, get, list, activate, forget, remove, contextFor, stats,
     maybeConsolidate, scopeVisible,
   }
 }
