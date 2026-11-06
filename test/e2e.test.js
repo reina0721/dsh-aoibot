@@ -342,6 +342,12 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
   const modules = await getJson(fake, '/modules')
   assert.deepEqual(modules.items, [])
 
+  const backup = await getJson(fake, '/backup')
+  assert.equal(backup.status.enabled, true)
+  assert.equal(backup.status.allowRestore, false)
+  assert.equal(backup.status.snapshotCount, 0)
+  assert.deepEqual(backup.items, [])
+
   // /config：config / defaults / groups 三件套，面板据此数据驱动渲染
   const configPayload = await getJson(fake, '/config')
   assert.equal(configPayload.dataDir, dir)

@@ -95,6 +95,9 @@ export const DEFAULTS = {
     // 面板「高级」里透传任意 OneBot action（调试用，默认关）
     allowRawAction: false,
   },
+  ops: {
+    backup: { enabled: true, includeMedia: false, maxSnapshots: 10, maxBytes: 209715200, maxFiles: 5000, prune: true, allowRestore: false },
+  },
   // 媒体能力总开关；provider 均默认关闭，默认配置不会产生任何媒体网络请求。
   media: {
     enabled: false,
@@ -337,6 +340,19 @@ export const DEFAULTS = {
  * type: switch | text | secret | number | select | string-list | number-list | textarea
  */
 export const CONFIG_GROUPS = [
+  {
+    id: 'ops', title: '备份与运维',
+    description: '本地目录快照，含密钥与认知隐私；默认只暂存恢复。应用前停止写入，完成后重启。',
+    fields: [
+      { path: 'ops.backup.enabled', label: '启用本地备份', type: 'switch', default: true },
+      { path: 'ops.backup.includeMedia', label: '面板默认包含全部媒体', type: 'switch', default: false },
+      { path: 'ops.backup.maxSnapshots', label: '最多保留快照', type: 'number', default: 10, min: 1, max: 1000, step: 1 },
+      { path: 'ops.backup.maxBytes', label: '单次备份字节上限', type: 'number', default: 209715200, min: 1, max: 10737418240, step: 1 },
+      { path: 'ops.backup.maxFiles', label: '单次备份文件上限', type: 'number', default: 5000, min: 1, max: 100000, step: 1 },
+      { path: 'ops.backup.prune', label: '自动清理最旧快照', type: 'switch', default: true },
+      { path: 'ops.backup.allowRestore', label: '允许应用恢复（需停止写入并重启）', type: 'switch', default: false },
+    ],
+  },
   {
     id: 'media',
     title: '媒体',
@@ -1038,6 +1054,17 @@ export function normalizeConfig(raw) {
     cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}),
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
+    },
+    ops: {
+      backup: {
+        enabled: pickBool(merged.ops?.backup?.enabled, DEFAULTS.ops.backup.enabled),
+        includeMedia: pickBool(merged.ops?.backup?.includeMedia, DEFAULTS.ops.backup.includeMedia),
+        maxSnapshots: pickNumber(merged.ops?.backup?.maxSnapshots, DEFAULTS.ops.backup.maxSnapshots, { min: 1, max: 1000, integer: true }),
+        maxBytes: pickNumber(merged.ops?.backup?.maxBytes, DEFAULTS.ops.backup.maxBytes, { min: 1, max: 10737418240, integer: true }),
+        maxFiles: pickNumber(merged.ops?.backup?.maxFiles, DEFAULTS.ops.backup.maxFiles, { min: 1, max: 100000, integer: true }),
+        prune: pickBool(merged.ops?.backup?.prune, DEFAULTS.ops.backup.prune),
+        allowRestore: pickBool(merged.ops?.backup?.allowRestore, DEFAULTS.ops.backup.allowRestore),
+      },
     },
     media: {
       enabled: pickBool(merged.media?.enabled, DEFAULTS.media.enabled),

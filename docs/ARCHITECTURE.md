@@ -389,3 +389,29 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
   在 `THIRD_PARTY_NOTICES.md` 中保留版权与许可声明，并在文件头注明来源。
 - OneBot v11 协议规范：<https://github.com/botuniverse/onebot-11>。
 - SnowLuma / NapCat 只作为「外部网关地址」接入，不内置、不分发、不自动部署。
+
+
+### 3.21 本地备份与恢复（M6-a）
+
+`src/ops/backup.js` 提供 `createBackupService({dataDir,getConfig,logger})`，由 host 创建并注入 routes，卸载时 `dispose()` 为 no-op。全部操作只在插件数据根内进行，不需要新依赖或外部网络。
+
+快照是**目录，不是 zip**：`<dataDir>/backups/<id>/manifest.json` 与 `files/<原相对路径>`。ID 为 UTC 时间戳加 8 位随机十六进制，例如 `20261106T120000000Z-deadbeef`。manifest v1 保存 id、createdAt、note、includeMedia、files（path/bytes/SHA-256）、总 bytes 与 excluded（相对路径及原因）。创建先写隐藏 staging 目录，全部复制成功后 rename 发布；超出字节/文件上限则清理 staging，不发布、不触发清理旧快照。
+
+默认复制 `config.json`、`models.json`、`cognition/` 全部普通文件、`modules/`（包含清单、代码、状态、数据）和 `media/stickers.json`、`media/stickers/`；`includeMedia=true` 扩展为数据根内全部 `media/`。自定义 `media.dir` 位于根外时不会备份。任意层级的 logs/backups/restore-*、临时文件、符号链接及特殊文件排除；其余根级文件也不在白名单中。相对路径及每个既存源/目标路径分量都检查，恢复目标硬链接拒绝。使用同步 readdir 和有界文件描述符复制，在进程内串行执行；大快照会短暂阻塞事件循环，建议维护窗口操作。该检查不是针对恶意本地进程并发替换目录的系统级沙箱。
+
+`ops.backup` 默认启用；200 MiB、5000 文件、10 份；仅 `prune=true` 才按 manifest 时间从旧到新清理有效快照。损坏/不完整快照不列入清单，不自动删除。列表只返回 `{id,createdAt,note,bytes,files,includeMedia}`，files 为数量，不公开绝对路径。
+
+API 均位于 `/onebot-qq/api`：
+
+| 方法与路径 | 请求 / 响应 |
+|---|---|
+| `GET /backup` | `{ok,status,items}`；status 为 enabled/maxSnapshots/maxBytes/allowRestore/snapshotCount |
+| `POST /backup/create` | `{includeMedia?:false,note?:''}` → `{ok,item}`；note 最多 1000 字符 |
+| `POST /backup/restore` | `{id,apply?:false}` → 默认 `{ok:true,requiresRestart:true,stagedPath:'restore-<id>'}` |
+| `POST /backup/delete` | `{id}` → `{ok:true}` |
+
+恢复先校验 manifest 版本/白名单路径/重复项/总大小、当前 maxFiles/maxBytes、源/目标及每份文件 hash，并复制到隔离暂存目录。默认 rename 成 `<dataDir>/restore-<id>/`，不会修改运行数据；已有同名暂存目录时拒绝覆盖。`apply=true` 仅在 `allowRestore===true` 时允许；先创建 `pre-restore:<id>` 备注的安全快照，失败则不应用，成功后再逐文件覆盖。应用成功才清理旧快照，并保护此次安全快照；应用失败保留安全快照。应用只覆盖列出的文件，不删除其它文件，不热加载配置或重启服务；不是全目录事务，途中 I/O 失败可能留下部分覆盖。
+
+**SQLite 与运维边界**：服务不 checkpoint、不锁库，也不协调认知/模块等写入；在线文件复制不保证 SQLite/WAL 一致性。应先停止所有写入，再创建快照。推荐在面板暂存和检查，停止目标 DSH profile 后手动复制回原数据根，再启动；`apply=true` 仅适用于已停写的维护环境，应用后必须立即重启。自动化只用临时根和离线文件，未覆盖正在运行的 SQLite。
+
+备份保留原始配置/模型密钥和认知隐私，必须按秘密保护；新建目录/文件尽可能使用 0700/0600（受平台权限语义影响），不做加密。面板继续使用 DSH 本地访问边界，本里程碑不新增 API 鉴权。无 zip、云端上传/下载、自动恢复、升级检查、beta 通道、工作区迁移或离峰省钱策略。

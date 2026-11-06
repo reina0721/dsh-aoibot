@@ -15,6 +15,8 @@
 | 配置文件 | `<数据目录>/config.json` |
 | 事件落盘（可选） | `<数据目录>/events.jsonl`（`events.persist.enabled=true` 时） |
 | 日志落盘（可选） | `<数据目录>/logs/<area>-<day>.log`（`logging.persist.enabled=true` 时） |
+| 本地备份 | `<数据目录>/backups/<id>/manifest.json` + `files/`（目录快照，无 zip） |
+| 恢复暂存 | `<数据目录>/restore-<id>/`，相对路径由 API 返回 |
 | 本地模块 | `<数据目录>/modules/<id>/`；启停覆盖为 `<数据目录>/modules/state.json` |
 
 在 Windows 上默认就是：
@@ -453,3 +455,22 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 
 以上都只是「建议值」，默认值按回环 + 单账号场景选取，已在 NapCat/SnowLuma 生态调研中核对
 （见 [research/ONEBOT-ECOSYSTEM.md §5](research/ONEBOT-ECOSYSTEM.md#5-默认值核对与建议只提建议不改代码)）。
+
+
+## 本地备份与运维（`ops.backup`，M6-a）
+
+配置页「备份与运维」分组提供全部字段，保存后影响后续操作。备份为本地目录，含配置/模型密钥与认知隐私，请按秘密保护；没有 zip、加密、云端传输、自动恢复、升级检查或迁移。
+
+| 路径 | 类型 | 默认值 | 范围 / 作用 |
+|---|---|---|---|
+| `ops.backup.enabled` | boolean | `true` | 关闭后禁止创建、删除及恢复；仍可查看列表/状态 |
+| `ops.backup.includeMedia` | boolean | `false` | 面板创建表单初始勾选值；API/create 缺省仍是 false |
+| `ops.backup.maxSnapshots` | integer | `10` | 1–1000；仅 prune=true 时清理最旧的有效快照 |
+| `ops.backup.maxBytes` | integer | `209715200` | 1–10737418240 bytes；默认 200 MiB，单份文件内容总量上限（不含 manifest）；恢复也校验当前上限 |
+| `ops.backup.maxFiles` | integer | `5000` | 1–100000；单份普通文件数量上限；恢复也校验 |
+| `ops.backup.prune` | boolean | `true` | 创建成功后清理旧快照；应用恢复成功后清理并保护恢复前快照；失败时保留安全快照，可能暂超保留数 |
+| `ops.backup.allowRestore` | boolean | `false` | 只有严格 true 允许 apply=true；默认只暂存到 restore-<id>/ |
+
+默认内容：`config.json`、`models.json`、全部 `cognition/` 普通文件、`modules/`（清单/代码/状态/数据）、`media/stickers.json` 和 `media/stickers/`。`includeMedia=true` 只额外包含数据根内全部 `media/`，不会跟随外部 `media.dir`。任意层级日志目录、backups、restore-*、临时文件、符号链接、特殊文件和根外文件始终排除。临时文件包括 .tmp/.temp/.swp/.swo/.part/.partial（及带后缀版本）、~ 开头/结尾、编辑器 # 文件和 .staging-*。
+
+复制 SQLite 前必须停止所有写入，在线快照不保证数据库一致性。恢复不热应用配置；推荐暂存后停 DSH、手动复制、再启动。应用需先在停写维护环境开启 allowRestore，服务先创建恢复前备份；覆盖中途失败可能只恢复部分文件，需用安全快照离线处理。详见[用户手册](USER-MANUAL.md#备份)。

@@ -25,6 +25,7 @@ import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
 import { createBilibiliService } from './content/bilibili.js'
+import { createBackupService } from './ops/backup.js'
 import { createModuleKernel } from './modules/kernel.js'
 import { personaProfileText } from './cognition/persona.js'
 
@@ -56,6 +57,8 @@ export function apply(ctx, rowConfig) {
   const access = createAccess({ getConfig: () => configState.current, logger: logger.child('access') })
 
   const getConfig = () => configState.current
+
+  const backup = createBackupService({ dataDir: dataDir(), getConfig, logger })
 
   const events = createEventStore({ getConfig, log: eventLog })
 
@@ -251,6 +254,7 @@ export function apply(ctx, rowConfig) {
     bilibili,
     access,
     modules,
+    backup,
     version: VERSION,
     dataDir: dataDir(),
   })
@@ -271,6 +275,7 @@ export function apply(ctx, rowConfig) {
     try {
       routes.dispose()
     } catch (error) {}
+    backup.dispose()
     modules.dispose().catch(() => {})
     try {
       gateway.dispose()
@@ -312,6 +317,7 @@ export function apply(ctx, rowConfig) {
     bilibili,
     modules,
     modulesReady,
+    backup,
     access,
     logger,
     routes,

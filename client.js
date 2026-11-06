@@ -3055,6 +3055,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'media', label: '媒体', icon: 'sparkles' },
       { id: 'content', label: '内容', icon: 'play' },
       { id: 'modules', label: '模块', icon: 'layout' },
+      { id: 'backup', label: '备份', icon: 'shield' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'persona', label: '人格', icon: 'sparkles' },
       { id: 'models', label: '模型', icon: 'bolt' },
@@ -6765,6 +6766,75 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function BackupPage(props) {
+      const [data, setData] = useState(null)
+      const [loading, setLoading] = useState(true)
+      const [busy, setBusy] = useState(false)
+      const [error, setError] = useState('')
+      const [note, setNote] = useState('')
+      const [includeMedia, setIncludeMedia] = useState(() => getByPath(props.status?.config, 'ops.backup.includeMedia') === true)
+      const [stagedPath, setStagedPath] = useState('')
+      const refresh = useCallback(async () => {
+        setLoading(true)
+        try {
+          const result = safeObject(await get('/backup'))
+          if (result.ok === false) throw new Error(result.message || '备份列表加载失败')
+          setData(result)
+          setError('')
+        } catch (requestError) { setError(String(requestError.message || requestError)) }
+        finally { setLoading(false) }
+      }, [])
+      useEffect(() => { refresh() }, [refresh])
+      const action = async (kind, item, apply) => {
+        if (kind === 'delete' && typeof window !== 'undefined' && window.confirm && !window.confirm('删除备份 ' + item.id + '？')) return
+        if (apply === true && typeof window !== 'undefined' && window.confirm && !window.confirm('应用恢复会覆盖本地文件。请先停止认知与模块等全部写入，并在完成后立即重启 DSH。继续？')) return
+        setBusy(true)
+        setError('')
+        try {
+          const body = kind === 'create' ? { note, includeMedia } : kind === 'restore' ? { id: item.id, apply: apply === true } : { id: item.id }
+          const result = safeObject(await post('/backup/' + kind, body))
+          if (result.ok === false) throw new Error(result.message || '备份操作失败')
+          if (result.stagedPath) setStagedPath(String(result.stagedPath))
+          if (kind === 'create') setNote('')
+          props.toast?.(result.applied ? '恢复已应用，请立即重启 DSH' : result.stagedPath ? '已暂存恢复文件，替换后需要重启' : kind === 'delete' ? '备份已删除' : '备份已创建', 'ok')
+          await refresh()
+        } catch (requestError) { setError(String(requestError.message || requestError)) }
+        finally { setBusy(false) }
+      }
+      const state = safeObject(data?.status)
+      const items = safeArray(data?.items)
+      const mib = (bytes) => (Number(bytes || 0) / 1048576).toFixed(2) + ' MiB'
+      return h('div', { className: 'ob-stack' },
+        h(Banner, { tone: 'warn', message: '备份是本地目录，包含配置、模型密钥与认知隐私，请按秘密保护。恢复需要重启；复制 SQLite 前应停止所有写入，在线复制不保证数据库一致性。' }),
+        h('div', { className: 'ob-stat-grid' },
+          h(StatTile, { label: '快照', value: Number(state.snapshotCount || 0), hint: state.enabled === false ? '备份服务已禁用' : '本地目录快照', icon: 'inbox' }),
+          h(StatTile, { label: '总大小', value: mib(items.reduce((sum, item) => sum + Number(item.bytes || 0), 0)), hint: '已保存文件大小', icon: 'inbox' }),
+          h(StatTile, { label: '保留上限', value: Number(state.maxSnapshots || 0), hint: '单次上限 ' + mib(state.maxBytes), icon: 'shield' }),
+          h(StatTile, { label: '应用恢复', value: state.allowRestore === true ? '允许' : '禁用', hint: '默认只暂存，不覆盖文件', icon: 'shield' }),
+        ),
+        h(Panel, { title: '创建备份', description: '默认包含 config.json、models.json、cognition、modules 与表情包；勾选后包含数据目录内全部媒体。日志、临时文件、符号链接和备份目录始终排除。' },
+          h('div', { className: 'ob-row' },
+            h('input', { className: 'ob-input', value: note, maxLength: 1000, placeholder: '可选备注', 'aria-label': '备份备注', style: { flex: '1 1 240px' }, onChange: (event) => setNote(event.target.value) }),
+            h('label', { className: 'ob-row ob-small' }, h('input', { type: 'checkbox', checked: includeMedia, onChange: (event) => setIncludeMedia(event.target.checked) }), '包含全部媒体'),
+            h(Btn, { kind: 'primary', icon: 'inbox', disabled: busy || loading || state.enabled !== true, onClick: () => action('create') }, '创建备份'),
+            h(Btn, { kind: 'secondary', icon: 'refresh', disabled: busy || loading, onClick: refresh }, '刷新'),
+          ),
+        ),
+        error ? h(Banner, { tone: 'err', message: error }) : null,
+        stagedPath ? h(Banner, { tone: 'ok', message: '已暂存到数据目录下：' + stagedPath + '。请检查文件，停止 DSH 后手动复制回数据目录，再启动 DSH。' }) : null,
+        loading ? h(PanelSkeleton, { rows: 3 }) : items.length ? h('div', { className: 'ob-grid two' }, items.map((item) => h(Panel, {
+          key: item.id, title: String(item.note || item.id), description: String(item.id) + ' · ' + formatDateTime(item.createdAt),
+          actions: h('div', { className: 'ob-row' },
+            h(Btn, { small: true, kind: 'secondary', disabled: busy || state.enabled !== true, onClick: () => action('restore', item, false) }, '暂存恢复'),
+            h(Btn, { small: true, kind: 'danger', disabled: busy || state.enabled !== true || state.allowRestore !== true, onClick: () => action('restore', item, true) }, '应用恢复'),
+            h(Btn, { small: true, kind: 'danger', disabled: busy || state.enabled !== true, onClick: () => action('delete', item) }, '删除'),
+          ),
+        }, h('div', { className: 'ob-row' },
+          h(Badge, { tone: 'muted' }, mib(item.bytes)), h(Badge, { tone: 'muted' }, String(item.files) + ' 个文件'), h(Badge, { tone: 'muted' }, item.includeMedia ? '全部媒体' : '仅表情包'),
+        )))) : h(Panel, null, h(EmptyState, { icon: 'inbox', title: '还没有备份', description: '创建首个本地目录快照。此页不提供 zip、云端传输、自动恢复、升级检查或迁移。' })),
+      )
+    }
+
     function ModulesPage(props) {
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(true)
@@ -6885,6 +6955,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             title: '模块',
             description: '管理操作员放入本地数据目录的 JavaScript 模块。模块是任意本地代码；此页只支持查看、启停和热重载。',
           }
+        case 'backup':
+          return { eyebrow: 'BACKUP & SECURITY', title: '备份', description: '创建、查看和删除本地目录快照；恢复默认暂存，检查后停止 DSH 再替换文件并重启。备份含密钥，请保护好数据目录。' }
         case 'config':
           return {
             eyebrow: 'PREFERENCES',
@@ -7314,6 +7386,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'media') body = h(MediaPage, tabProps)
       else if (tab === 'content') body = h(ContentPage, tabProps)
       else if (tab === 'modules') body = h(ModulesPage, tabProps)
+      else if (tab === 'backup') body = h(BackupPage, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'persona') body = h(PersonaTab, tabProps)
       else if (tab === 'models') body = h(ModelTab, tabProps)
@@ -7453,6 +7526,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.MediaPage = MediaPage
     exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
+    exports.BackupPage = BackupPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。

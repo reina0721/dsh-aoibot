@@ -15,11 +15,13 @@ globalThis.window = {
   },
 }
 
+let stateOverrides = null
+
 const reactShim = {
   createElement: (type, props, ...children) => ({ type, props: props || null, children }),
   createContext: (defaultValue) => ({ Provider: 'Provider', Consumer: 'Consumer', _default: defaultValue }),
   useContext: () => ({ mode: 'full', systemReduced: false, categories: { screen: true, async: true, reveal: true, swap: true, feedback: true, media: true } }),
-  useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+  useState: (initial) => [stateOverrides?.length ? stateOverrides.shift() : typeof initial === 'function' ? initial() : initial, () => {}],
   useEffect: () => {},
   useLayoutEffect: () => {},
   useRef: (initial) => ({ current: initial === undefined ? null : initial }),
@@ -117,7 +119,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'backup', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
   )
 })
 
@@ -225,7 +227,7 @@ test('全部标签页：无数据与有数据都能渲染（不依赖真实网�
     retryPrefSave: noop,
     prefStatus: { saving: false, error: '', savedAt: 0 },
   }
-  const tabNames = ['Overview', 'Connect', 'Messages', 'MediaPage', 'ModulesPage', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
+  const tabNames = ['Overview', 'Connect', 'Messages', 'MediaPage', 'ModulesPage', 'ContentPage', 'BackupPage', 'ConfigTab', 'PersonaTab', 'ModelTab', 'SettingsTab', 'CognitionTab', 'Logs', 'About']
   for (const name of tabNames) {
     assert.equal(typeof panel[name], 'function', name + ' 应该导出')
     assert.doesNotThrow(() => panel[name](baseProps), name + ' 空数据应可渲染')
@@ -893,4 +895,38 @@ test('格式化与缓冲值：formatCount / splitBufferValue', () => {
   assert.equal(panel.splitBufferValue(null), null)
   assert.equal(panel.formatNumberList([1000, 3000]), '1000, 3000')
   assert.equal(panel.formatNumberList(null), '')
+})
+
+
+test('BackupPage: status/list render, staged restore defaults false and apply requires permission', async () => {
+  const id = '20261106T000000000Z-deadbeef'
+  const calls = []
+  const originalFetch = globalThis.fetch
+  const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children), ...nodes(tree.props?.actions)]
+  const render = (allowRestore) => {
+    stateOverrides = [{ status: { enabled: true, snapshotCount: 1, maxSnapshots: 10, maxBytes: 209715200, allowRestore }, items: [{ id, createdAt: '2026-11-06T00:00:00Z', note: 'before change', bytes: 100, files: 2, includeMedia: false }] }, false, false, '', '', false, 'restore-' + id]
+    try { return panel.BackupPage({ toast() {} }) } finally { stateOverrides = null }
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, body: init.body ? JSON.parse(init.body) : null })
+    return { ok: true, json: async () => path.endsWith('/restore') ? { ok: true, stagedPath: 'restore-' + id } : { ok: true, status: {}, items: [] } }
+  }
+  try {
+    const tree = render(false)
+    const text = JSON.stringify(tree)
+    assert.match(text, /before change/)
+    assert.match(text, /restore-20261106/)
+    assert.match(text, /重启/)
+    assert.match(text, /密钥/)
+    const buttons = nodes(tree)
+    const stage = buttons.find((node) => node.children?.includes('暂存恢复'))
+    const apply = buttons.find((node) => node.children?.includes('应用恢复'))
+    assert.equal(apply.props.disabled, true)
+    await stage.props.onClick()
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/backup/restore', body: { id, apply: false } })
+    const permitted = nodes(render(true)).find((node) => node.children?.includes('应用恢复'))
+    assert.equal(permitted.props.disabled, false)
+    await permitted.props.onClick()
+    assert.ok(calls.some((call) => call.path.endsWith('/restore') && call.body.apply === true))
+  } finally { globalThis.fetch = originalFetch }
 })

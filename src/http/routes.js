@@ -69,7 +69,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, backup = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -149,6 +149,22 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return bilibili.search(keyword)
     })
     route('GET', '/content/bilibili/hot', async () => bilibili.hot())
+  }
+
+  if (backup) {
+    route('GET', '/backup', async () => ({ ok: true, status: await backup.status(), items: await backup.list() }))
+    route('POST', '/backup/create', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, item: await backup.create({ includeMedia: body?.includeMedia ?? false, note: body?.note ?? '' }) }
+    })
+    route('POST', '/backup/restore', async (req) => {
+      const body = await readBody(req)
+      return backup.restore(body?.id, { apply: body?.apply ?? false })
+    })
+    route('POST', '/backup/delete', async (req) => {
+      const body = await readBody(req)
+      return backup.delete(body?.id)
+    })
   }
 
   if (modules) {
