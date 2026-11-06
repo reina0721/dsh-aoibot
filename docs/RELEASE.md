@@ -57,6 +57,8 @@ git diff --check
 
 ## 6. 真机验收状态（部分）
 
+**0.11.6 部署**：live 已升级 0.11.6，`/status.brand=小葵`；`cognition.llm.budgetScope=global`，全局已用 315235/1000000，人格 0/300000，`effectiveLeft=684765`。侧栏/页头需刷新网页重载 index 注入；未做浏览器截图验证。
+
 **0.11.5 故障修复**：19:31 live 收到私聊但未回复；日志显示 `Preset services require isolate realms: compaction, toolResultPruner`，回退 one-shot 后 `BUDGET_EXHAUSTED`。已给私有预设 compaction 组补 isolate（与 DSH 标准预设一致），临时切 one-shot 并提高日预算后切回 agent；0.11.5 已发布/live，等待用户重发消息复测。
 
 2026-11-06 已将 `v0.11.1` 本地构建安装到 live `web` profile 并完成**部分**真实 QQ smoke：
