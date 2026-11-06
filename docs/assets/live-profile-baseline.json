@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-06T15:06:00Z",
+  "scope": "live web profile baseline; workspace M7 code NOT installed",
+  "live": {
+    "ok": true,
+    "version": "0.10.0",
+    "apiVersion": 1,
+    "state": "connected",
+    "uptimeMs": 42274181
+  },
+  "workspace": {
+    "head": "d2da394",
+    "packageVersion": "0.10.0"
+  },
+  "installed": {
+    "packageVersion": "0.10.0",
+    "missingNewFiles": [
+      "src/media/index.js",
+      "src/cognition/embeddings.js",
+      "src/cognition/reminders.js",
+      "src/cognition/notices.js",
+      "src/cognition/archive-import.js"
+    ]
+  },
+  "note": "Read-only health check; no QQ message sent, no config/token recorded, no live profile modification."
+}

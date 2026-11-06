@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "workflow",
   "quality": "showcase",
-  "startedAt": "2026-11-06T14:04:21.031Z",
+  "startedAt": "2026-11-06T15:14:07.696Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-    "sha256": "572e29efc26134afb8b6a2223f53129ddbe0b3c4f24de5d518ffcbc492a0a6b8",
-    "bytes": 5315
+    "sha256": "bd2bf1f7ed00d0529be73648f10428d87739ac7db42e1d947e19a2327c54ea22",
+    "bytes": 5276
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "03cb2fdfd3479c1ed992373c638bc0dbc107452cbcadfe29733309e4c7f0a95c",
-    "bytes": 763432
+    "sha256": "7e2070ad30b2e2856e3bb11548e1f7fe377906d496617e0937367af0260dddc0",
+    "bytes": 763393
   },
   "stages": {
     "validate": {
@@ -38,8 +38,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "572e29efc26134afb8b6a2223f53129ddbe0b3c4f24de5d518ffcbc492a0a6b8",
-          "bytes": 5315
+          "sha256": "bd2bf1f7ed00d0529be73648f10428d87739ac7db42e1d947e19a2327c54ea22",
+          "bytes": 5276
         },
         "validation": {
           "checksPassed": 9,
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 493,
+      "durationMs": 528,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,19 +68,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "20991dc7-eba2-4a67-8562-c7b0227af4f9",
+        "receiptId": "6cee0786-dc4e-4d90-9251-c7d2b51877dc",
         "ok": true,
         "command": "deliver",
         "type": "workflow",
         "input": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
         "output": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "specification": {
-          "sha256": "572e29efc26134afb8b6a2223f53129ddbe0b3c4f24de5d518ffcbc492a0a6b8",
-          "bytes": 5315
+          "sha256": "bd2bf1f7ed00d0529be73648f10428d87739ac7db42e1d947e19a2327c54ea22",
+          "bytes": 5276
         },
         "artifact": {
-          "sha256": "03cb2fdfd3479c1ed992373c638bc0dbc107452cbcadfe29733309e4c7f0a95c",
-          "bytes": 763432
+          "sha256": "7e2070ad30b2e2856e3bb11548e1f7fe377906d496617e0937367af0260dddc0",
+          "bytes": 763393
         },
         "validation": {
           "checksPassed": 9,
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 144,
+      "durationMs": 153,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -118,8 +118,8 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "artifact": {
-          "sha256": "03cb2fdfd3479c1ed992373c638bc0dbc107452cbcadfe29733309e4c7f0a95c",
-          "bytes": 763432
+          "sha256": "7e2070ad30b2e2856e3bb11548e1f7fe377906d496617e0937367af0260dddc0",
+          "bytes": 763393
         },
         "checks": [
           {
@@ -249,13 +249,13 @@
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "20991dc7-eba2-4a67-8562-c7b0227af4f9"
+        "deliveryReceiptId": "6cee0786-dc4e-4d90-9251-c7d2b51877dc"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 1496,
+      "durationMs": 2529,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -275,11 +275,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "20991dc7-eba2-4a67-8562-c7b0227af4f9",
+        "deliveryReceiptId": "6cee0786-dc4e-4d90-9251-c7d2b51877dc",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-          "sha256": "03cb2fdfd3479c1ed992373c638bc0dbc107452cbcadfe29733309e4c7f0a95c",
-          "bytes": 763432
+          "sha256": "7e2070ad30b2e2856e3bb11548e1f7fe377906d496617e0937367af0260dddc0",
+          "bytes": 763393
         },
         "state": {
           "detail": "read",
@@ -1382,8 +1382,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T14:04:24.580Z",
-  "durationMs": 3549,
+  "finishedAt": "2026-11-06T15:14:11.864Z",
+  "durationMs": 4167,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

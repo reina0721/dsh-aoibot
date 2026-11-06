@@ -794,9 +794,9 @@ test('升级 API：默认零联网、手动检查、缓存/force 与真实错误
   assert.equal((await getJson(fake, '/upgrade')).enabled, true)
   assert.equal((await getJson(fake, '/status')).upgrade.cached, null)
   assert.equal(calls, 0, '启用与状态读取也不联网')
-  response = { ok: true, json: async () => [{ draft: false, prerelease: true, tag_name: 'v0.11.0-beta.1', published_at: '2026-11-06T00:00:00Z', body: 'release notes' }] }
+  response = { ok: true, json: async () => [{ draft: false, prerelease: true, tag_name: 'v0.12.0-beta.1', published_at: '2026-11-06T00:00:00Z', body: 'release notes' }] }
   const checked = await postJson(fake, '/upgrade/check', {})
-  assert.equal(checked.latest, 'v0.11.0-beta.1')
+  assert.equal(checked.latest, 'v0.12.0-beta.1')
   assert.equal(checked.updateAvailable, true)
   assert.equal(checked.channel, 'beta')
   assert.deepEqual((await getJson(fake, '/upgrade')).cached, checked)

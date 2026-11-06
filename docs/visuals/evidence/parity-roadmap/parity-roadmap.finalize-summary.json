@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-    "sha256": "572e29efc26134afb8b6a2223f53129ddbe0b3c4f24de5d518ffcbc492a0a6b8",
-    "bytes": 5315
+    "sha256": "bd2bf1f7ed00d0529be73648f10428d87739ac7db42e1d947e19a2327c54ea22",
+    "bytes": 5276
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "03cb2fdfd3479c1ed992373c638bc0dbc107452cbcadfe29733309e4c7f0a95c",
-    "bytes": 763432
+    "sha256": "7e2070ad30b2e2856e3bb11548e1f7fe377906d496617e0937367af0260dddc0",
+    "bytes": 763393
   },
   "gates": {
     "validate": "pass",
@@ -45,7 +45,7 @@
     "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
   },
   "visualReview": "not-requested",
-  "durationMs": 3549,
+  "durationMs": 4167,
   "visualReviewRecommendation": {
     "action": "inspect-route-readability",
     "signals": {

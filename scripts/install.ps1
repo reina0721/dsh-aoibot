@@ -16,7 +16,7 @@ function Get-Sha256([string]$Path) {
 try {
   $command = Get-Command $DshPath -CommandType Application -ErrorAction Stop
   if ($Version -ne 'latest' -and $Version -notmatch '^v?\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') {
-    throw 'Version must be latest or a release version such as 0.10.0.'
+    throw 'Version must be latest or a release version such as 0.11.0.'
   }
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   if ($Version -eq 'latest') {

@@ -2,7 +2,7 @@
 
 > 快照：2026-11-06（Asia/Shanghai）。
 > Aurabot：`aureth-labs/dsh-aurabot-qq`，`dd1911f`，v1.2.0，MIT。
-> dsh-bot：`reina0721/dsh-bot`，`a195ce5`，v0.10.0，MIT。
+> dsh-bot：`reina0721/dsh-bot`，`d2da394`，v0.11.0（候选），MIT。
 > 本文是差距清单 + 里程碑计划；**不把设计当成已实现**。状态以「代码 + 测试 + 受控真机验证」为准。
 
 ## 0. 一句话结论
@@ -17,7 +17,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 
 ## 1. 量化对照
 
-| 项 | Aurabot v1.2.0 | dsh-bot v0.10.0 |
+| 项 | Aurabot v1.2.0 | dsh-bot v0.11.0（候选） |
 |---|---|---|
 | 宿主源码 | 24,721 行 / 220 个 js 文件 | 10,806 行 / 44 个 js 文件 |
 | 面板 | 5,102 行，约 25 个功能页 + 设置子页 | 单文件面板，15 个顶层标签（含媒体/内容/模块/备份/安全） |
@@ -355,7 +355,7 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 `src/cognition/embeddings.js` 提供配置驱动、默认关闭的 OpenAI 兼容 `/embeddings` 客户端；`memory.retrieveAsync` 重排已可见的词法候选，pipeline/proactivity await，同步 retrieve 保持原行为。无候选/空查询/关闭时无外部调用；异常 debug 后词法回退，候选不写入、最终强化一次。权重默认 0.35、限制 0–1；每批 query+最多 31 候选，单条 1–4000 Unicode 字符，向量 8–4096 维有限数且一致，LRU 最多 2000 项，redirect=error、超时沿用 callMs，日志不含正文/密钥。
 
-证据：[embeddings.test.js](../../test/embeddings.test.js)、[memory.test.js](../../test/memory.test.js)、[集成测试](../../test/cognition-integration.test.js) 均用 fake provider/假 embedder，不访问外部网络。只支持 OpenAI 兼容 embeddings，无本地模型、独立 reranker、持久化向量、向量数据库或全库向量召回；真实 provider 未验证。#31 仍 partial，#42/#49/#50 及其他行状态不变。
+证据：[embeddings.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/embeddings.test.js)、[memory.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/memory.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js) 均用 fake provider/假 embedder，不访问外部网络。只支持 OpenAI 兼容 embeddings，无本地模型、独立 reranker、持久化向量、向量数据库或全库向量召回；真实 provider 未验证。#31 仍 partial，#42/#49/#50 及其他行状态不变。
 
 ### M7-g：人物/群印象与关系编辑证据与限制
 
@@ -363,14 +363,14 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 `CogRelationships` 保留只读维度条，逐卡展开 API 返回的维度滑杆（当前 10 维，-1–1）。显式保存仅提交有变化的维度及原 `scopeType/scopeId`，使用既有 `/cognition/relationship/adjust`；后端记录 `source=ui` 人工调整历史。两处均支持取消、保存期间禁用控件、防重复提交、失败 toast 与草稿保留；不批量修改、不自动应用、不发送 QQ，不新增 API、Agent 工具或自动审批。
 
-证据：[panel.test.js](../../test/panel.test.js) 新增 6 项离线测试，显式渲染人物/关系页及内联编辑组件，mock 所有请求，覆盖群/私聊/全局目标、Unicode 校验、置信度/状态、差量保存、取消/禁用/错误和刷新；不证明真实浏览器或既有后端的 Unicode 持久化。#29 仍 partial：无独立的按人物/聊天「说话方式」编辑器，无 Aurabot 专用人物/群档案导入；M7-h 通用旧档案导入支持记忆与时间轴事件。顶层人格工作台的 bot 说话风格编辑不算补齐此缺口。
+证据：[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) 新增 6 项离线测试，显式渲染人物/关系页及内联编辑组件，mock 所有请求，覆盖群/私聊/全局目标、Unicode 校验、置信度/状态、差量保存、取消/禁用/错误和刷新；不证明真实浏览器或既有后端的 Unicode 持久化。#29 仍 partial：无独立的按人物/聊天「说话方式」编辑器，无 Aurabot 专用人物/群档案导入；M7-h 通用旧档案导入支持记忆与时间轴事件。顶层人格工作台的 bot 说话风格编辑不算补齐此缺口。
 
 
 ### M7-h：通用时间轴事件导入证据与限制
 
 `archive-import.js` 新增 kind=timeline，默认 memory 的既有格式、规范字段与 ID 保留。通用 JSON/JSONL 事件以独立 timeline_event 存入当前人格；正文/标题/时间/作用域校验，独立确定性 ID 幂等，共用 5 MiB/5000 项及 cognition.import 配置。缺时间拒绝，无效/未来时间回退为本次导入时间；因此回退时间的项跨时刻重导可能产生新 ID。面板选择记忆/时间轴并显示结果种类，时间轴默认包含 event，支持独立筛选及既有 scope 规则；事件纳入人格数据生命周期。
 
-证据：[archive-import.test.js](../../test/archive-import.test.js)、[timeline.test.js](../../test/timeline.test.js)、[panel.test.js](../../test/panel.test.js)、[e2e.test.js](../../test/e2e.test.js)，均为合成数据/本地 fake 宿主与 mock 请求。无 Aurabot 专用档案迁移、向量导入、真实旧档案样本或本轮真实浏览器/QQ 验证，#30 仍 partial。#31 保持 partial，#42/#49/#50 保持 exempt；47 项 remaining 口径不变。
+证据：[archive-import.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/archive-import.test.js)、[timeline.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/timeline.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)、[e2e.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)，均为合成数据/本地 fake 宿主与 mock 请求。无 Aurabot 专用档案迁移、向量导入、真实旧档案样本或本轮真实浏览器/QQ 验证，#30 仍 partial。#31 保持 partial，#42/#49/#50 保持 exempt；47 项 remaining 口径不变。
 
 ### M7-i 出站文本防泄漏与安全状态（#15 仍 partial）
 
@@ -385,13 +385,13 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 好友请求缺省子类型映射 add，群 add/invite 按 flag 去重存 pending；flag 仅本地凭据存储/固定网关 action 使用，不进入公共列表、回复或日志。备注去控制字符、脱敏 flag/既有密钥模式、限 500 字符；主人 `/requests` 最多 10 条摘要，`/approve ID confirm`、`/reject ID confirm` 固定字面量确认且先检查 access，服务复核 owner/开关/pending/boolean。成功记录处理元数据，失败静态错误且 pending；进程内同 ID 并发防重、await 固定原人格写入。请求新增 requests 人格数据组，支持统计/复制/删除。无自动审批、审批队列面板、新请求 REST API 或新增 Agent 工具。
 
-证据：[notices.test.js](../../test/notices.test.js)、[commands.test.js](../../test/commands.test.js)、[actions.test.js](../../test/actions.test.js)、[集成测试](../../test/cognition-integration.test.js)，全部为离线合成事件/fake 网关；真实 QQ 事件字段/审批动作未验证。没有通用审批/逐项权限或 PII/熵/媒体文件检测；QQ ID/备注仍是隐私，原事件日志策略不变，网关超时需人工核实、跨人格副本不代表新真实请求。#3/#15 保持 partial；#31/#42/#49/#50 行逐字不变，remaining 仍 47。
+证据：[notices.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/notices.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，全部为离线合成事件/fake 网关；真实 QQ 事件字段/审批动作未验证。没有通用审批/逐项权限或 PII/熵/媒体文件检测；QQ ID/备注仍是隐私，原事件日志策略不变，网关超时需人工核实、跨人格副本不代表新真实请求。#3/#15 保持 partial；#31/#42/#49/#50 行逐字不变，remaining 仍 47。
 
 ### M7-k 本地文件上传/列表（#45 仍 partial）
 
 媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`；媒体与文件开关均需开启，关闭时报错。上传只接受安全 basename≤120、FILE_EXTENSIONS、非空严格规范 base64 与大小内内容；固定 files 目录、根/目录 realpath、拒绝目录符号链接、wx 防覆盖。列表不递归、不跟随符号链接，仅白名单扩展名/大小内普通文件，mtime 最新优先最多 500 项，totalBytes 统计全部合格文件。新增本地 GET `/media/files` / POST `/media/file/upload`，POST 请求体固定 15 MiB；媒体页增加客户端预检、上传防重、路径/大小/时间列表、刷新与独立错误显示。
 
-证据：[media.test.js](../../test/media.test.js)、[API](../../test/e2e.test.js)、[面板](../../test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。无文件发送/删除/下载面板；发送仍使用主人 `/file 相对路径`。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。
+证据：[media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。无文件发送/删除/下载面板；发送仍使用主人 `/file 相对路径`。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。
 
 ### M7-l 主人本地提醒（#8/#40 partial）
 
@@ -403,13 +403,13 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 沿用默认关闭的 content.bilibili.enabled。视频详情提供数字 aid 与固定域名 shareUrl；评论先查 view，取得有效 aid 后请求公开 reply 第一页，默认 10/限制 1–20，top_replies 优先、按 rpid 去重并保留 API 顺序。正文去标签/控制字符并限 500 Unicode 字符，只含接口自带的一层楼中楼样本，无缓存或翻页。分享离线校验完整 BV 后生成固定域名链接，不验证视频存在或查询标题。新增主人 comments/share 命令、两个 GET 路由与内容页 BV 查询；不增加 Agent 工具。
 
-证据：[bilibili.test.js](../../test/bilibili.test.js)、[commands.test.js](../../test/commands.test.js)、[e2e.test.js](../../test/e2e.test.js)、[panel.test.js](../../test/panel.test.js)，全部为合成接口响应/fake 宿主/mock UI；覆盖去重/限额/纯文本、缺 aid 与无效 BV、默认关闭零网络、离线分享、HTTP/超时/登录与风控错误。无 Cookie/WBI/登录态/字幕/发布评论，无新增依赖；真实 B站接口、QQ 与浏览器未验证。#48 仍 partial，矩阵计数不变、remaining 47；#31/#42/#49/#50 行逐字不变。
+证据：[bilibili.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/bilibili.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[e2e.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)，全部为合成接口响应/fake 宿主/mock UI；覆盖去重/限额/纯文本、缺 aid 与无效 BV、默认关闭零网络、离线分享、HTTP/超时/登录与风控错误。无 Cookie/WBI/登录态/字幕/发布评论，无新增依赖；真实 B站接口、QQ 与浏览器未验证。#48 仍 partial，矩阵计数不变、remaining 47；#31/#42/#49/#50 行逐字不变。
 
 ### M7-n 操作员命令禁用列表（#14 仍 partial）
 
 `cognition.permissions.deniedCommands=[]` 默认保持原行为。仅数组、每项严格小写命令名 `^[a-z][a-z0-9_-]{0,31}$`，去重后最多保留 100 个，非法项/非数组/超限报告 issue；`cog-permissions` 配置组提供「禁用命令」string-list。现有身份检查后、内置或模块命令派发前检查解析后的小写名，主人收到固定禁用提示、非主人静默，不调用处理服务/handler 或写配置。未知命令与帮助保持原样；未禁用的公开模块命令保留既有行为，动态策略后续命令即生效。
 
-证据：[config.test.js](../../test/config.test.js)、[commands.test.js](../../test/commands.test.js)，全部为离线规范化与 fake 服务测试，覆盖默认/格式/边界/字段、内置与模块/大小写/静默/无副作用/未知命令/动态更新。无新增依赖或外部调用。仅命令入口 deny-list，不覆盖 API、直接服务、Agent 工具或模块同进程代码；仍无所有服务/工具逐项 allow/deny 矩阵和统一审批。#14 保持 partial、remaining 47，#31/#42/#49/#50 矩阵行逐字不变。
+证据：[config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)，全部为离线规范化与 fake 服务测试，覆盖默认/格式/边界/字段、内置与模块/大小写/静默/无副作用/未知命令/动态更新。无新增依赖或外部调用。仅命令入口 deny-list，不覆盖 API、直接服务、Agent 工具或模块同进程代码；仍无所有服务/工具逐项 allow/deny 矩阵和统一审批。#14 保持 partial、remaining 47，#31/#42/#49/#50 矩阵行逐字不变。
 
 
 ### M7-o 主人会话插话（#9 partial，仅 steer）
@@ -422,4 +422,4 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 `cognition.turn.groupRelevance={enabled:false,minScore:0.15}` 默认不改变行为，`cog-turn` 提供开关与 0–1 阈值（超界夹取、非法值回退）。仅群聊未点名消息，在既有点名模式/概率/分钟上限/连续上限/冷却之后、分析之前，复用已检索记忆最高 `signals.relevance`；缺信号时用有界文本/摘要词法重合。无记忆或低分走既有 `skipGroup`，仍编码 ambient 记忆，记录 `low_relevance`，不调用分析/回复 LLM；点名/私聊绕过相关度，计算异常放行。
 
-证据：[配置测试](../../test/config.test.js)、[集成测试](../../test/cognition-integration.test.js)，离线覆盖默认关闭、阈值夹取、低分/无记忆/等于或超过阈值、点名/私聊旁路、中文/英文摘要重合与边界、计算异常、实际检索复用、既有跳过优先级和跳过仍记忆。门控无新增依赖或外部调用，不用综合检索分数/embedding；既有检索仍先执行。仅词法记忆相关度，没有 LLM 话题判断/接梗/语义分数，真实 QQ/浏览器未验证。#20 保持 partial，矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。
+证据：[配置测试](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，离线覆盖默认关闭、阈值夹取、低分/无记忆/等于或超过阈值、点名/私聊旁路、中文/英文摘要重合与边界、计算异常、实际检索复用、既有跳过优先级和跳过仍记忆。门控无新增依赖或外部调用，不用综合检索分数/embedding；既有检索仍先执行。仅词法记忆相关度，没有 LLM 话题判断/接梗/语义分数，真实 QQ/浏览器未验证。#20 保持 partial，矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。

@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
-    "sha256": "1978e353f6692fdd7ec48b315ee4f96bfc659a2e29ad8977d3b59ed2e3379df3",
-    "bytes": 7080
+    "sha256": "1f7f339bd399227a6bdb00e19b2da370a9f247f4340411ed69258e06796a4428",
+    "bytes": 7101
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-    "sha256": "ebffd62c5249d27cf0563d0b850dd2a4e753c8c4d95287404c9cfb67d4f12296",
-    "bytes": 776876
+    "sha256": "49f9cecb71cdc9c42ef61475107f89d33a143bee36c2092e3cad7b91a78e8c35",
+    "bytes": 777695
   },
   "gates": {
     "validate": "pass",
@@ -45,5 +45,5 @@
     "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
   },
   "visualReview": "not-requested",
-  "durationMs": 4711
+  "durationMs": 4136
 }

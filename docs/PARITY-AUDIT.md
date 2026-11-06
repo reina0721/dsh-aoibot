@@ -24,6 +24,10 @@ M7-j 更新 #3/#15：十种已知通知（含群名/头衔/精华/离线文件�
 
 M7-i 更新 #15：默认启用 + redact 的本地出站文本密钥规则，可选 block，100k UTF-16 单元上限，dry-run 也检查，leakBlocked 计数；安全页只读 enabled/action，没有扫描内容/密钥。仅离线规则/fake 网关/配置与 mock 面板证据；无统一审批/逐项权限、PII/熵检测或媒体/文件扫描，可能误报/漏报，跨段/跨消息及独立发送路径不覆盖。#15 仍 partial，#31/#42/#49/#50 不变，remaining 47。
 
+## Live profile 只读基线（未加载工作区新代码）
+
+2026-11-06 对当前运行的 DSH `web` profile 做了只读 `/onebot-qq/api/health` 检查：`ok=true`、`version=0.10.0`、`state=connected`。工作区 HEAD 为 `d2da394`，但 live 安装的商业包仍是 0.10.0，且缺少 `src/media/index.js` 等新文件；因此这不是 M7 新代码的实机验收。脱敏摘要见 [live-profile-baseline.json](assets/live-profile-baseline.json)。未发送 QQ 消息、未修改 live profile。
+
 ## 临时 profile smoke 证据
 
 M7-d 更新 #30：通用 JSON/JSONL 经面板/API 导入当前人格记忆，本地处理、限额/作用域校验与幂等去重。#30 仍 partial；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证。#31/#44 保持 partial；#42/#49/#50 后续获用户豁免。
@@ -41,7 +45,7 @@ npm test
 npm run check:docs
 ```
 
-[审计脚本](../scripts/parity-audit.mjs)仅解析 3.x 的六列矩阵；保留代码片段内的竖线，以豁免开头的状态（忽略 Markdown 强调）优先归一为 exempt；其他按部分 → 受限 → 无 → 领先 → 有的优先级归一为 partial / limited / none / leading / has，注释中的“未获豁免”不算批准。结构问题（重复编号、格式错误、非 has 项（含 exempt）缺目标）使 CLI 返回 1；剩余差距本身不导致失败。空白、破折号目标视为缺目标。
+[审计脚本](https://github.com/reina0721/dsh-bot/blob/main/scripts/parity-audit.mjs)仅解析 3.x 的六列矩阵；保留代码片段内的竖线，以豁免开头的状态（忽略 Markdown 强调）优先归一为 exempt；其他按部分 → 受限 → 无 → 领先 → 有的优先级归一为 partial / limited / none / leading / has，注释中的“未获豁免”不算批准。结构问题（重复编号、格式错误、非 has 项（含 exempt）缺目标）使 CLI 返回 1；剩余差距本身不导致失败。空白、破折号目标视为缺目标。
 
 源码为 src/**/*.js 的普通文件数与物理行数（末行无换行也计一行）；测试为 test/**/*.test.js，声明按正则 `^test(?:\.\w+)?\(` 静态计数。声明数包含 skip/todo，忽略缩进声明且不展开循环；与执行用例数不是同一口径。两者均不跟随符号链接。
 
@@ -181,22 +185,22 @@ npm run check:docs
 
 | 范围 | 当前代码 / 自动化证据 | 尚不能证明 |
 |---|---|---|
-| 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
-| M7-n 操作员命令禁用 | [config.test.js](../test/config.test.js)、[commands.test.js](../test/commands.test.js)：默认/数组/名称/去重/100上限/issue/字段；内置与模块、大小写、非主人静默、无处理服务调用/配置写入、未知命令/帮助/动态更新 | 仅离线 fake 服务；不覆盖 API/直接服务/Agent 工具/模块同进程代码；无所有服务/工具逐项 allow/deny 矩阵或统一审批；#14 仍 partial、remaining 47 |
-| M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
-| M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
-| M7-m B站公开评论/分享 | [bilibili.test.js](../test/bilibili.test.js)、[commands.test.js](../test/commands.test.js)、[e2e.test.js](../test/e2e.test.js)、[panel.test.js](../test/panel.test.js)：合成响应/fake 宿主/mock UI，评论去重/限额/纯文本/默认关闭/离线分享/HTTP/超时/风控 | 真实 B站/QQ/浏览器；无登录/WBI/字幕/发布评论；#48 仍 partial |
-| M7-l 主人本地提醒 | [reminders.test.js](../test/reminders.test.js)、[commands.test.js](../test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
-| M7-k 本地文件上传/列表 | [media.test.js](../test/media.test.js)、[API](../test/e2e.test.js)、[面板](../test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
-| M7-j 通知/主人请求审批 | [notices.test.js](../test/notices.test.js)、[commands.test.js](../test/commands.test.js)、[actions.test.js](../test/actions.test.js)、[集成测试](../test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
-| M7-i 出站文本防泄漏 | [leak-guard.test.js](../test/leak-guard.test.js)、[outbound.test.js](../test/outbound.test.js)、[panel.test.js](../test/panel.test.js)：本地规则、重叠/上限、配置回退、访问/限频/dry-run、错误隐私与只读状态 | 统一审批/逐项权限、PII/熵检测、媒体/文件及独立发送路径、跨段/跨消息密钥；可能误报/漏报，未做真实 QQ/浏览器验证；#15 仍 partial |
-| M7-g 人物/群印象与关系编辑 | [client.js](../client.js)、[panel.test.js](../test/panel.test.js) 新增 6 项；mock API、原作用域/差量保存、Unicode/数值校验、取消/禁用/失败/刷新 | 本轮真实浏览器验证、独立人物说话方式编辑器、Aurabot 专用人物/群档案导入；既有后端 UTF-16 截断未改；#29 仍 partial |
-| M7-f 可选 embedding 重排 | [embeddings.test.js](../test/embeddings.test.js)、[memory.test.js](../test/memory.test.js)、[集成测试](../test/cognition-integration.test.js)；默认零调用、校验/超时/缓存/隐私、词法回退与并发写保护 | 真实 provider、本地模型、独立 reranker、向量数据库、全库向量召回；#31 仍 partial |
-| M4 媒体 | [media](../src/media)、[media.test.js](../test/media.test.js)、[stickers.test.js](../test/stickers.test.js) | 真实网关/媒体 provider、RVC、生图、自动语境选图 |
-| M5 内容与模块 | [bilibili.test.js](../test/bilibili.test.js)、[modules.test.js](../test/modules.test.js)、[模块文档](MODULES.md) | 真实 B站、QQ空间授权、模块市场或进程沙箱 |
-| M6 运维与面板 | [backup.test.js](../test/backup.test.js)、[upgrade.test.js](../test/upgrade.test.js)、[panel.test.js](../test/panel.test.js)、[API 路由](../src/http/routes.js) | 在线 SQLite 一致性、真实 GitHub、自动升级、迁移、真实浏览器验收 |
-| M7-b 主人 QQ 管理命令 | [qq-actions.test.js](../test/qq-actions.test.js)、[commands.test.js](../test/commands.test.js)、[actions.test.js](../test/actions.test.js)、[media.test.js](../test/media.test.js)；fake 网关/本地临时文件，默认关、owner/access/确认/当前会话/realpath 闸门 | 真实 QQ 管理/资料/文件动作尚未验证；消息查询缺归属则拒绝；无新增 Agent 工具/任意 action 透传/媒体根外文件 |
-| M7 本机宿主 smoke | [smoke-temp-profile.sh](../scripts/smoke-temp-profile.sh) 与下方实际结果 | QQ 登录/收发、外部模型、B站/GitHub 或全量 parity |
+| 审计工具 | [parity-audit.mjs](https://github.com/reina0721/dsh-bot/blob/main/scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](https://github.com/reina0721/dsh-bot/blob/main/test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
+| M7-n 操作员命令禁用 | [config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)：默认/数组/名称/去重/100上限/issue/字段；内置与模块、大小写、非主人静默、无处理服务调用/配置写入、未知命令/帮助/动态更新 | 仅离线 fake 服务；不覆盖 API/直接服务/Agent 工具/模块同进程代码；无所有服务/工具逐项 allow/deny 矩阵或统一审批；#14 仍 partial、remaining 47 |
+| M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/runtime.test.js)、[access.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/access.test.js)、[reply-split.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/reply-split.test.js)、[runtime-qq-tools.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
+| M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/consolidation.test.js)、[purpose.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/purpose.test.js)、[timeline.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/timeline.test.js)、[archive-import.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/archive-import.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)/[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
+| M7-m B站公开评论/分享 | [bilibili.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/bilibili.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[e2e.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：合成响应/fake 宿主/mock UI，评论去重/限额/纯文本/默认关闭/离线分享/HTTP/超时/风控 | 真实 B站/QQ/浏览器；无登录/WBI/字幕/发布评论；#48 仍 partial |
+| M7-l 主人本地提醒 | [reminders.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/reminders.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
+| M7-k 本地文件上传/列表 | [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
+| M7-j 通知/主人请求审批 | [notices.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/notices.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
+| M7-i 出站文本防泄漏 | [leak-guard.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/leak-guard.test.js)、[outbound.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/outbound.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：本地规则、重叠/上限、配置回退、访问/限频/dry-run、错误隐私与只读状态 | 统一审批/逐项权限、PII/熵检测、媒体/文件及独立发送路径、跨段/跨消息密钥；可能误报/漏报，未做真实 QQ/浏览器验证；#15 仍 partial |
+| M7-g 人物/群印象与关系编辑 | [client.js](../client.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) 新增 6 项；mock API、原作用域/差量保存、Unicode/数值校验、取消/禁用/失败/刷新 | 本轮真实浏览器验证、独立人物说话方式编辑器、Aurabot 专用人物/群档案导入；既有后端 UTF-16 截断未改；#29 仍 partial |
+| M7-f 可选 embedding 重排 | [embeddings.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/embeddings.test.js)、[memory.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/memory.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)；默认零调用、校验/超时/缓存/隐私、词法回退与并发写保护 | 真实 provider、本地模型、独立 reranker、向量数据库、全库向量召回；#31 仍 partial |
+| M4 媒体 | [media](../src/media)、[media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[stickers.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/stickers.test.js) | 真实网关/媒体 provider、RVC、生图、自动语境选图 |
+| M5 内容与模块 | [bilibili.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/bilibili.test.js)、[modules.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/modules.test.js)、[模块文档](MODULES.md) | 真实 B站、QQ空间授权、模块市场或进程沙箱 |
+| M6 运维与面板 | [backup.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/backup.test.js)、[upgrade.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/upgrade.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)、[API 路由](../src/http/routes.js) | 在线 SQLite 一致性、真实 GitHub、自动升级、迁移、真实浏览器验收 |
+| M7-b 主人 QQ 管理命令 | [qq-actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/qq-actions.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)；fake 网关/本地临时文件，默认关、owner/access/确认/当前会话/realpath 闸门 | 真实 QQ 管理/资料/文件动作尚未验证；消息查询缺归属则拒绝；无新增 Agent 工具/任意 action 透传/媒体根外文件 |
+| M7 本机宿主 smoke | [smoke-temp-profile.sh](https://github.com/reina0721/dsh-bot/blob/main/scripts/smoke-temp-profile.sh) 与下方实际结果 | QQ 登录/收发、外部模型、B站/GitHub 或全量 parity |
 
 ## 临时 profile smoke
 

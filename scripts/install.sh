@@ -10,7 +10,7 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] && [ -n "$2" ] || fail "Missing value for $1"
       case "$1" in --profile) profile=$2;; --version) version=$2;; --dsh) dsh=$2;; esac
       shift 2;;
-    --help) printf '%s\n' 'Usage: sh install.sh --profile NAME [--version latest|0.10.0] [--dsh PATH]'; exit 0;;
+    --help) printf '%s\n' 'Usage: sh install.sh --profile NAME [--version latest|0.11.0] [--dsh PATH]'; exit 0;;
     *) fail "Unknown option: $1";;
   esac
 done

@@ -1,14 +1,14 @@
 # 发布检查表（M7 发布候选）
 
-状态：**未达到全量 parity / 未发布**。本页是可复查的发布前检查表，不是发布公告。
+状态：**v0.11.0 发布候选，未完成真实 QQ 验收**。本页是可复查的发布检查表，不是“全量 parity”声明。
 
 ## 1. 当前结论
 
-- 版本：`package.json` 仍为 `0.10.0`；M7 改动尚未发布到线上 `web` profile。
-- 审计：61 项中 `has 6`、`partial 35`、`none 5`、`limited 1`、`leading 6`、`exempt 8`；**47 项非 has/exempt**。完整快照见 [PARITY-AUDIT.md](PARITY-AUDIT.md)。
+- 版本：`package.json` 已升为 `0.11.0`；GitHub 标签/Release 与线上 `web` 安装状态见文末。
+- 审计：61 项中 `has 6`、`partial 38`、`none 2`、`limited 1`、`leading 6`、`exempt 8`；**47 项非 has/exempt**。完整快照见 [PARITY-AUDIT.md](PARITY-AUDIT.md)。
 - 用户已批准 8 项发布门槛豁免（2026-11-06）：#16 远端 API 鉴权、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 工作区迁移/离峰省钱、#42 RVC/翻唱、#49 抖音/小黑盒、#50 桌宠。豁免是用户决定，不是实现证据；见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)。
 - 未豁免且影响发布陈述：生图/改图 #44（受限实现）、向量检索 #31、时间轴事件导入 #30 等。
-- 真实 QQ、媒体 provider、B站、GitHub、浏览器管理员操作均未做生产凭据验证。
+- 真实 QQ、媒体 provider、B站、GitHub、浏览器管理员操作均未做生产凭据验证；验收前不得声明已实机通过。
 
 ## 2. 发布前必须通过
 
@@ -54,7 +54,13 @@ git diff --check
 - 生图/改图完全闭环；RVC/抖音/桌宠虽已豁免但未实现；
 - 工作区迁移、模块市场、QQ空间、25 页级面板或 API 鉴权已实现。
 
-## 6. 建议的下一步
+## 6. 版本与发布状态
+
+- 标签：`v0.11.0`（推送后生效；GitHub Release 资产需另行上传）。
+- 线上 `web`：升级前为 `0.10.0`；升级与真实 smoke 记录单独追加到验收文档，未完成前不得写“已实机验收”。
+- 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 必须通过；未上传 GitHub Release 前，README 固定下载链接不代表 0.11.0 已可用。
+
+## 7. 建议的下一步
 
 1. 已批准 RVC/翻唱、抖音/小黑盒、桌宠豁免；继续闭环 47 项非 has/exempt。
 2. 完成向量检索与时间轴事件导入，或明确列为下一版本；
