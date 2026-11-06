@@ -150,6 +150,11 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       return bilibili.search(keyword)
     })
     route('GET', '/content/bilibili/hot', async () => bilibili.hot())
+    route('GET', '/content/bilibili/comments', async (req) => {
+      const query = queryOf(req)
+      return bilibili.comments(query.bvid, { limit: query.limit ?? 10 })
+    })
+    route('GET', '/content/bilibili/share', async (req) => ({ ok: true, ...await bilibili.share(queryOf(req).bvid) }))
   }
 
   if (upgrade) {

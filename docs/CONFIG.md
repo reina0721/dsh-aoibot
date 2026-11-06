@@ -224,13 +224,15 @@ M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 t
 
 ### 3.9.1 公共内容（`content.bilibili`）
 
-B站公共内容默认关闭，因此默认配置不会发起网络请求。只读取公开搜索、热门和视频基本信息，不使用 Cookie/WBI，也不提供评论、分享或登录态能力。
+B站公共内容默认关闭，因此默认配置不会发起网络请求。支持公开搜索、热门、视频基本信息与公开评论，以及离线分享链接；不使用 Cookie/WBI 或登录态，不含字幕或发布评论。评论若要求登录或受风控限制会明确报错，真实 B站接口未验证。
 
 | 路径 | 默认值 | 取值 / 范围 | 作用 |
 |---|---|---|---|
 | `content.bilibili.enabled` | `false` | `true`/`false` | 启用 `/bili`、内容页和 B站 REST 查询 |
 | `content.bilibili.timeoutMs` | `15000` | 1000–60000 ms | 单次公开接口超时 |
 | `content.bilibili.maxResults` | `5` | 1–20 | 搜索/热门最多返回条数 |
+
+评论使用 `GET /content/bilibili/comments?bvid=&limit=`（API 前缀 `/onebot-qq/api`），`limit` 默认 10、取整并限制为 1–20，与 `maxResults` 独立；先读取视频详情中的有效 aid，再请求第一页公开评论，置顶优先、按 rpid 去重、保留 API 顺序，正文最多 500 Unicode 字符。`GET /content/bilibili/share?bvid=` 仅校验完整 BV 格式并生成固定域名链接，不联网、不验证视频存在；也受 enabled 开关控制。评论无缓存、无翻页，只含接口自带的一层楼中楼样本。
 
 QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务条款，本版本明确未实现。
 

@@ -238,6 +238,42 @@ test('commands：/bili 支持关闭、热门、搜索、BV 与短错误', async 
   assert.match((await enabled.service.handle(turn('/bili hot'))).reply, /B站请求失败：upstream detail/)
 })
 
+test('commands：/bili comments|share 支持结果、空评论、用法、帮助与短错误', async () => {
+  const calls = []
+  const bilibili = {
+    async comments(bvid) { calls.push(['comments', bvid]); return { ok: true, items: [{ author: '评论者', content: '公开正文', like: 7 }] } },
+    share(bvid) { calls.push(['share', bvid]); return { url: 'https://www.bilibili.com/video/' + bvid, bvid } },
+  }
+  const { service } = harness({ content: { bilibili: { enabled: true } } }, { bilibili })
+  const bvid = 'BV1xx411c7mD'
+  assert.equal((await service.handle(turn('/bili comments ' + bvid))).reply, '1. 评论者 · 赞 7\n公开正文')
+  assert.equal((await service.handle(turn('/bili share ' + bvid))).reply, 'https://www.bilibili.com/video/' + bvid)
+  assert.deepEqual(calls, [['comments', bvid], ['share', bvid]])
+  for (const kind of ['comments', 'share']) assert.match((await service.handle(turn('/bili ' + kind))).reply, /用法/)
+  assert.equal(calls.length, 2)
+  assert.match((await service.handle(turn('/help'))).reply, /bili comments BV号.*bili share BV号/)
+  assert.match((await service.handle(turn('/bili'))).reply, /bili comments BV号.*bili share BV号/)
+  bilibili.comments = async () => ({ ok: true, items: [] })
+  assert.equal((await service.handle(turn('/bili comments ' + bvid))).reply, '没有可显示的 B站公开评论。')
+  bilibili.comments = async () => { throw new Error('B站公开接口要求登录；不使用 Cookie/WBI') }
+  assert.match((await service.handle(turn('/bili comments ' + bvid))).reply, /B站请求失败：.*不使用 Cookie\/WBI/)
+  bilibili.share = () => { throw new Error('无效的 BV 号') }
+  assert.match((await service.handle(turn('/bili share bad'))).reply, /B站请求失败：无效的 BV 号/)
+})
+
+test('commands：/bili comments|share 关闭与非主人不调用服务', async () => {
+  let calls = 0
+  const bilibili = { comments() { calls++; throw new Error('不应调用') }, share() { calls++; throw new Error('不应调用') } }
+  for (const enabled of [false, true]) {
+    const { service } = harness({ content: { bilibili: { enabled } } }, { bilibili })
+    for (const kind of ['comments', 'share']) {
+      if (!enabled) assert.equal((await service.handle(turn('/bili ' + kind + ' BV1xx411c7mD'))).reply, 'B站内容未启用')
+      await service.handle(turn('/bili ' + kind + ' BV1xx411c7mD', { senderId: '99999' }))
+    }
+  }
+  assert.equal(calls, 0)
+})
+
 test('commands：/tts 合成并向当前聊天发送语音，失败时短回复', async () => {
   const calls = []
   const media = {

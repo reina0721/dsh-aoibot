@@ -6941,6 +6941,33 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(false)
       const [error, setError] = useState('')
+      const [bvid, setBvid] = useState('')
+      const [comments, setComments] = useState(null)
+      const [share, setShare] = useState('')
+      const [lookupBusy, setLookupBusy] = useState(false)
+      const [lookupError, setLookupError] = useState('')
+      const lookupInFlight = useRef(false)
+
+      const lookup = async (kind) => {
+        if (lookupInFlight.current) return
+        if (!bvid.trim()) return props.toast?.('请输入 BV 号', 'warn')
+        lookupInFlight.current = true
+        setLookupBusy(true)
+        setLookupError('')
+        setComments(null)
+        setShare('')
+        try {
+          const result = safeObject(await get('/content/bilibili/' + kind + '?bvid=' + encodeURIComponent(bvid.trim())))
+          if (result.ok === false) throw new Error(result.message || 'B站内容加载失败')
+          if (kind === 'comments') setComments(safeArray(result.items))
+          else setShare(String(result.url || ''))
+        } catch (requestError) {
+          setLookupError(String(requestError?.message || 'B站内容加载失败'))
+        } finally {
+          lookupInFlight.current = false
+          setLookupBusy(false)
+        }
+      }
 
       const load = async (kind) => {
         const keyword = query.trim()
@@ -6966,7 +6993,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         'div',
         { className: 'ob-page' },
         h(Banner, { tone: 'warn', message: 'QQ空间未实现：该能力需要 QQ 登录授权，并涉及平台授权与服务条款边界。' }),
-        h(Panel, { title: 'B站公共内容', description: '只读取公开搜索、热门和视频基本信息；不使用 Cookie/WBI，不提供评论或分享。' },
+        h(Panel, { title: 'B站公共内容', description: '默认关闭；公开搜索、热门、视频信息与评论，不使用 Cookie/WBI 或登录态。' },
           h('div', { className: 'ob-row' },
             h('input', {
               className: 'ob-input', value: query, placeholder: '搜索 B站视频', style: { flex: '1 1 280px' },
@@ -6976,6 +7003,25 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h(Btn, { kind: 'primary', icon: 'search', busy: loading, onClick: () => load('search') }, '搜索'),
             h(Btn, { kind: 'secondary', icon: 'play', disabled: loading, onClick: () => load('hot') }, '热门'),
           ),
+        ),
+        h(Panel, { title: '公开评论与分享链接', description: '评论默认最多 10 条（API 上限 20），置顶优先；受登录要求或风控限制时会报错。不含字幕或发布评论。分享离线生成链接，不验证视频是否存在。' },
+          h('div', { className: 'ob-row' },
+            h('input', {
+              className: 'ob-input', value: bvid, 'aria-label': 'B站 BV 号', placeholder: 'BV 号', disabled: lookupBusy, style: { flex: '1 1 240px' },
+              onChange: (event) => { setBvid(event.target.value); setComments(null); setShare(''); setLookupError('') },
+              onKeyDown: (event) => { if (event.key === 'Enter') lookup('comments') },
+            }),
+            h(Btn, { kind: 'primary', busy: lookupBusy, disabled: lookupBusy, onClick: () => lookup('comments') }, '查看公开评论'),
+            h(Btn, { kind: 'secondary', disabled: lookupBusy, onClick: () => lookup('share') }, '生成分享链接'),
+          ),
+          lookupError ? h(Banner, { tone: 'err', message: lookupError }) : null,
+          share ? h('a', { href: share, target: '_blank', rel: 'noreferrer' }, share) : null,
+          comments !== null ? (comments.length
+            ? h('ol', null, comments.map((item, index) => h('li', { key: index },
+                h('strong', null, String(item.author || '匿名用户') + ' · 赞 ' + String(Number(item.like) || 0)),
+                h('p', { style: { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } }, String(item.content || '')),
+              )))
+            : h('p', null, '没有可显示的 B站公开评论。')) : null,
         ),
         error ? h(Banner, { tone: 'err', message: error }) : null,
         loading ? h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 })) : null,

@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-m 更新 #48：默认关闭的公开评论与离线分享，view 获取 aid 后读 reply 第一页，置顶优先、rpid 去重、limit 默认 10/上限 20、纯文本正文 500 Unicode 字符；新增主人命令、两个 GET 路由与内容页 BV 查询。分享仅离线校验并生成固定域名链接，不验证视频存在。仅 fake fetch/宿主/mock UI 测试，无 Cookie/WBI/登录/字幕/发布评论/新增 Agent 工具或依赖，真实 B站未验证。#48 仍 partial，37 partial / 3 none、remaining 47，#31/#42/#49/#50 不变。
 
 M7-l 更新 #8/#40：默认关闭的主人本地一次/重复固定文本提醒，owner/当前聊天/Unicode/时间/限额/防重；每次最多 20 条，统一 outbound 访问/限频/leak guard/dry-run，延迟安全重试、不补错过次数、自调度不重叠/dispose、异步固定原人格。新增 reminders 人格数据组与三个主人命令；无 DSH jobs/长任务/LLM 执行/任意代码或外部任务调用/提醒 HTTP 或管理面板。真实定时器与 QQ 未验证，仅离线测试；#8/#40 从 none 改为 partial，37 partial / 3 none，remaining 47，#31/#42/#49/#50 不变。
 
@@ -46,8 +48,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 37，none: 3，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：66 个 JS 文件 / 16699 行。
-测试静态计数：46 个文件 / 9753 行 / 414 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：66 个 JS 文件 / 16794 行。
+测试静态计数：46 个文件 / 10029 行 / 427 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -163,7 +165,7 @@ npm run check:docs
 | 41 | TTS/语音条/ASR | partial | 无自动语音策略、多音色编排、RVC/翻唱或 Agent 工具；待真机 |
 | 43 | 表情包 | partial | 不自动收集、缩放转码、语境/情绪选择或接商城 |
 | 45 | 文件发送/接收 | partial | 无文件发送/删除/下载面板；上传/列表需 media.enabled/files.enabled，主人发送另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
-| 48 | B 站浏览/评论/分享 | partial | 无评论/分享/字幕/登录态；真实接口待验 |
+| 48 | B 站浏览/评论/分享 | partial | 仅公开评论/离线分享；无登录/WBI/字幕/发布评论，真实接口未验证 |
 | 56 | 设置向导 | partial | 无独立向导/自动修复；模块始终人工待检查，媒体只检查字段，不验密钥/服务；无 API 鉴权变更，仍依赖 DSH 本机信任边界；未做真实浏览器 V |
 | 57 | 备份/恢复 | partial | 复制 SQLite 前停写，恢复后重启；无在线一致性/整目录事务、云端上传下载、自动恢复或迁移 |
 | 58 | 升级检查/beta 通道 | partial | beta 仅放宽预发布过滤；无后台/自动更新、下载/安装、token；未认证每 IP 60 req/h；无真实 GitHub V |
@@ -176,6 +178,7 @@ npm run check:docs
 | 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
 | M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
+| M7-m B站公开评论/分享 | [bilibili.test.js](../test/bilibili.test.js)、[commands.test.js](../test/commands.test.js)、[e2e.test.js](../test/e2e.test.js)、[panel.test.js](../test/panel.test.js)：合成响应/fake 宿主/mock UI，评论去重/限额/纯文本/默认关闭/离线分享/HTTP/超时/风控 | 真实 B站/QQ/浏览器；无登录/WBI/字幕/发布评论；#48 仍 partial |
 | M7-l 主人本地提醒 | [reminders.test.js](../test/reminders.test.js)、[commands.test.js](../test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
 | M7-k 本地文件上传/列表 | [media.test.js](../test/media.test.js)、[API](../test/e2e.test.js)、[面板](../test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
 | M7-j 通知/主人请求审批 | [notices.test.js](../test/notices.test.js)、[commands.test.js](../test/commands.test.js)、[actions.test.js](../test/actions.test.js)、[集成测试](../test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
@@ -233,3 +236,8 @@ M7-k 本次最终 `npm test` 实跑退出 **0**：436 项，432 通过、0 失�
 M7-l 本次最终 `npm test` 退出 **0**：450 项，446 通过、0 失败、4 跳过（既有 live 模型测试），耗时 82872.955249 ms；新增 14 个顶层测试声明。最终 reminders/commands/config 专项 50 项全通过。覆盖默认关闭、owner/scope、Unicode/一次时间/重复间隔/限额/防重、一次与重复发送/跳过错过次数、安全失败延迟重试、20 条上限/不重叠/取消/dispose、人格统计/复制/删除及 await 后写原人格、真实 outbound 访问/限频/leak guard/dry-run、命令校验与 cognition 重启持久化且零 LLM 调用；时间与网关均为 fake。
 
 `npm run check:docs` 最终退出 **0**；首次运行因扫描 `.agents/worktrees` 内既有嵌套仓库的旧名/归档链接失败，检查器现跳过 `.agents`/`.codex` 元数据目录，与既有 `.git`/`.ctx` 排除一致，不修改嵌套仓库。`npm run check:parity` 退出 **0**，快照为源码 66 个 JS 文件 / 16699 行，测试 46 个文件 / 9753 行 / 414 个顶层声明。矩阵为 6 has / 37 partial / 3 none / 1 limited / 6 leading / 8 exempt，remaining 47；只将 #8/#40 从 none 改为 partial，#31/#42/#49/#50 矩阵行逐字不变。无新增依赖、自动审批、任意代码/外部任务调用、LLM 任务执行或提醒 HTTP/管理面板；未改 `cordis.patch.yml`、未提交。没有真实定时器/QQ 验证，也没有 DSH jobs 或长任务执行。
+
+
+M7-m 本次最终 `npm test` 退出 **0**：463 项，459 通过、0 失败、4 跳过（既有 live 模型测试），耗时 75447.70083 ms；新增 13 个顶层测试声明。服务/命令/面板专项 84 项全部通过，新增 REST 专项 1 项通过。覆盖视频 aid/shareUrl、完整 BV 校验、公开评论置顶/去重/API 顺序/楼中楼/Unicode 限长/limit/空结果、缺 aid/异常数据、两阶段 HTTP/非零 code/网络与正文超时、真实 AbortSignal 超时、离线分享、默认关闭零请求、主人限制及面板防重/纯文本/错误/重试；全部网络响应来自 fake fetch，不访问真实 B站。
+
+审计快照为源码 66 个 JS 文件 / 16794 行，测试 46 个文件 / 10029 行 / 427 个顶层声明；矩阵 6 has / 37 partial / 3 none / 1 limited / 6 leading / 8 exempt，remaining 47。#48 仍 partial，仅公开评论与离线分享；#31/#42/#49/#50 矩阵行逐字不变。默认关闭、无 Cookie/WBI/登录/字幕/发布评论/新增 Agent 工具或依赖，分享不验证视频存在；真实 B站/QQ/浏览器未验证。未改 `cordis.patch.yml`、未提交；只保留本任务源码、测试与文档改动，无仓库内生成文件。

@@ -53,6 +53,7 @@ const HELP_TEXT = [
   '/say 文本 — 向当前聊天发送文本',
   '/sticker [标签] — 随机发送一个表情包',
   '/bili hot|关键词|BV号 — B站热门、搜索或视频信息',
+  '/bili comments BV号 | /bili share BV号 — 公开评论或离线分享链接',
   '/profile 昵称 — 主人私聊修改机器人昵称',
   '/card QQ 名片 | /groupname 名称 — 当前群资料',
   '/admin QQ on|off | /mute QQ 分钟（0=解除）',
@@ -346,11 +347,22 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       if (currentConfig().content?.bilibili?.enabled !== true) return send(turn, 'B站内容未启用')
       if (!bilibili) return send(turn, 'B站内容服务不可用')
       try {
+        const subcommand = /^(comments|share)(?:\s+(.*))?$/i.exec(parsed.args)
+        if (subcommand) {
+          const kind = subcommand[1].toLowerCase()
+          const bvid = (subcommand[2] || '').trim()
+          if (!bvid) return send(turn, `用法：/bili ${kind} BV号`)
+          if (kind === 'share') return send(turn, (await bilibili.share(bvid)).url)
+          const result = await bilibili.comments(bvid)
+          const items = Array.isArray(result?.items) ? result.items : []
+          if (!items.length) return send(turn, '没有可显示的 B站公开评论。')
+          return send(turn, items.map((item, index) => `${index + 1}. ${oneLine(item.author, 40)} · 赞 ${Number(item.like) || 0}\n${oneLine(item.content, 500)}`).join('\n'))
+        }
         let result
         if (parsed.args.toLowerCase() === 'hot') result = await bilibili.hot()
         else if (/^BV[0-9A-Za-z]{3,}$/i.test(parsed.args)) result = await bilibili.video(parsed.args)
         else if (parsed.args) result = await bilibili.search(parsed.args)
-        else return send(turn, '用法：/bili hot | /bili 关键词 | /bili BV号')
+        else return send(turn, '用法：/bili hot | /bili 关键词 | /bili BV号 | /bili comments BV号 | /bili share BV号')
         const items = Array.isArray(result?.items) ? result.items : []
         if (!items.length) return send(turn, '没有找到 B站视频。')
         const lines = items.map((item, index) => `${index + 1}. ${oneLine(item.title, 100)}\n${oneLine(item.author, 40)} · 播放 ${Number(item.play) || 0} · ${item.duration || '00:00'}\n${item.url}`)

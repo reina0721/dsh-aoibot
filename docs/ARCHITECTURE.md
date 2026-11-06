@@ -384,13 +384,15 @@ M7-k 在同一媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`�
 
 REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBytes}` 与 `POST /media/file/upload {name,dataBase64}` → `{ok:true,path,name,size}`；上传入口 `readBody(req,15*1024*1024)` 固定限制 JSON 体积，包含 base64 展开。path 只返回 `files/...` 相对路径，at 为 mtimeMs。MediaPage 文件区做客户端大小/扩展名预检、FileReader 去除 data URL 前缀、上传期间防重、成功刷新和独立错误显示，保留原媒体区。没有文件发送/删除/下载面板；发送继续走已有主人 `/file` 与身份/access/qqAdmin/媒体路径闸门。不新增外部调用、依赖或 QQ 发送；只验证离线临时文件、mock 面板及 fake 宿主，真实 QQ 未验证，#45 仍 partial。
 
-### 3.20 B站公共内容（M5-b）
+### 3.20 B站公共内容（M5-b / M7-m）
 
-- `src/content/bilibili.js` 只调用 `api.bilibili.com` 的公开搜索、热门与视频详情端点，统一规范化标题、作者、播放量、时长、BV 号与链接；标题会移除搜索高亮 HTML。
-- `content.bilibili.enabled=false`，所以默认配置零网络；超时默认 15000ms，最多返回 5 条。请求只带 User-Agent/Referer，不携带 Cookie、不做 WBI 签名。HTTP、非零 code、登录要求或风控都返回明确错误，绝不伪造结果。
-- 主人命令 `/bili hot|关键词|BV号`；REST 为 `GET /content/bilibili?q=` 与 `GET /content/bilibili/hot`；顶层「内容」页提供搜索、热门和结果卡。
+- `src/content/bilibili.js` 调用 `api.bilibili.com` 的公开搜索、热门、视频详情与评论端点；规范化标题、作者、播放量、时长、完整 BV 号、数字 aid 与固定域名 url/shareUrl；标题移除搜索高亮 HTML，无效 BV 结果不生成链接。
+- `comments(bvid, {limit=10})` 每次先查 view 取得有效 aid，缺失即报错；再以 type=1、oid=aid、sort=2、ps=1–20、pn=1 请求 `/x/v2/reply`。合并 top_replies/replies，置顶优先，按 rpid 去重并保留 API 顺序；规范化 author/content/like/at（ctime Unix 秒），去标签/控制字符、正文限 500 Unicode 字符，可附带一层楼中楼样本。无缓存或翻页。
+- `share(bvid)` 受原有 enabled 开关控制，离线返回 `{url,bvid}`，不查询标题或确认视频存在；完整 BV 格式校验防止路径/查询拼接。
+- `content.bilibili.enabled=false`，所以默认配置零网络；单次请求超时默认 15000ms（1000–60000ms），搜索/热门默认最多返回 5 条。请求只带 User-Agent/Referer，不携带 Cookie、不做 WBI 签名。HTTP、非零 code、登录要求或风控都返回明确错误，绝不伪造结果。
+- 主人命令 `/bili hot|关键词|BV号`、`/bili comments BV号`、`/bili share BV号`；REST 为 `GET /content/bilibili?q=`、`GET /content/bilibili/hot`、`GET /content/bilibili/comments?bvid=&limit=`、`GET /content/bilibili/share?bvid=`；顶层「内容」页提供搜索、热门、结果卡、BV 评论查询及分享链接。新增查询不注册 Agent 工具。
 - B站接口与 §3.19 媒体 provider 独立；内容查询不会触发生图/改图或自动发送图片。
-- 精确边界：不提供 B站评论、分享、字幕或登录态能力。QQ空间需要 QQ 登录授权且涉及平台授权/ToS，本里程碑明确未实现。没有通用动作总线；真实 B站与 QQ 行为仍待受控真机验证。
+- 精确边界：仅公开评论与离线分享，不提供 B站字幕、登录态、WBI 或发布评论能力。QQ空间需要 QQ 登录授权且涉及平台授权/ToS，本里程碑明确未实现。没有通用动作总线；真实 B站与 QQ 行为仍待受控真机验证。
 
 ## 4. 数据目录
 

@@ -901,3 +901,45 @@ test('media file routes: disabled gates, large local upload/list and 15 MiB body
   assert.equal((await fake.call(API + '/media/files', undefined, { method: 'GET' })).json.ok, false)
   assert.equal(mock.calls.length, 0, 'upload/list must not call QQ gateway')
 })
+
+
+test('B站 API：默认关闭零网络，公开评论 limit/错误及离线分享', async (t) => {
+  const originalFetch = globalThis.fetch, calls = []
+  let replyCode = 0
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input)
+    calls.push({ url, init })
+    assert.equal(url.origin, 'https://api.bilibili.com')
+    if (url.pathname === '/x/web-interface/view') return { ok: true, json: async () => ({ code: 0, data: { bvid: 'BV1xx411c7mD', aid: 98765 } }) }
+    assert.equal(url.pathname, '/x/v2/reply')
+    return { ok: true, json: async () => ({ code: replyCode, data: { replies: [{ rpid: 1, member: { uname: 'API作者' }, content: { message: 'API正文' }, like: 3, ctime: 1700000000 }] } }) }
+  }
+  t.after(() => { globalThis.fetch = originalFetch })
+  const { fake } = await boot(t, { rowConfig: { enabled: false } })
+  for (const path of ['/content/bilibili/comments?bvid=BV1xx411c7mD', '/content/bilibili/share?bvid=BV1xx411c7mD']) {
+    const disabled = await fake.call(API + path, undefined, { method: 'GET' })
+    assert.equal(disabled.json.ok, false)
+    assert.match(disabled.json.message, /B站内容未启用/)
+  }
+  assert.equal(calls.length, 0)
+  await patchConfig(fake, { content: { bilibili: { enabled: true } } })
+  const shared = await getJson(fake, '/content/bilibili/share?bvid=BV1xx411c7mD')
+  assert.deepEqual(shared, { ok: true, url: 'https://www.bilibili.com/video/BV1xx411c7mD', bvid: 'BV1xx411c7mD' })
+  assert.equal(calls.length, 0)
+  for (const path of ['/content/bilibili/share?bvid=bad', '/content/bilibili/comments']) {
+    const invalid = await fake.call(API + path, undefined, { method: 'GET' })
+    assert.equal(invalid.json.ok, false)
+    assert.match(invalid.json.message, /无效的 BV/)
+  }
+  assert.equal(calls.length, 0)
+  const comments = await getJson(fake, '/content/bilibili/comments?bvid=BV1xx411c7mD&limit=999')
+  assert.deepEqual(comments.items, [{ author: 'API作者', content: 'API正文', like: 3, at: 1700000000 }])
+  assert.equal(calls[1].url.searchParams.get('ps'), '20')
+  assert.equal(calls[1].url.searchParams.get('oid'), '98765')
+  replyCode = -352
+  const blocked = await fake.call(API + '/content/bilibili/comments?bvid=BV1xx411c7mD', undefined, { method: 'GET' })
+  assert.equal(blocked.json.ok, false)
+  assert.match(blocked.json.message, /不使用 Cookie\/WBI/)
+  const wrongMethod = await fake.call(API + '/content/bilibili/share?bvid=BV1xx411c7mD', {}, { method: 'POST' })
+  assert.equal(wrongMethod.status, 405)
+})

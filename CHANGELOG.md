@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- M7-m：B站公开评论与离线分享（#48 仍 partial）。视频新增数字 aid/shareUrl；评论先查 view，再读公开 reply 第一页，limit 默认 10/上限 20、置顶优先、rpid 去重、纯文本正文最多 500 Unicode 字符、一层楼中楼样本。新增主人 `/bili comments BV号`、`/bili share BV号`、两个 GET 路由与内容页 BV 查询；完整 BV 校验、缺 aid/HTTP/超时/风控明确报错，分享仅生成链接且不验证视频存在。沿用默认关闭开关，无 Cookie/WBI/登录态/字幕/发布评论/缓存/新增 Agent 工具或依赖；仅离线测试，真实 B站未验证。remaining 47，#31/#42/#49/#50 不变。
 - M7-l：新增默认关闭的主人本地提醒服务与 `/remind <秒|ISO时间> <文本>`、`/reminders`、`/forgetreminder <id>`。固定 1–500 Unicode 字符文本，当前私聊/群聊数字 ID；未来一次时间或 60–2592000 秒重复间隔，每人格默认最多 50 条活跃提醒、同作用域/文本/时间防重。每 tick 最多 20 条，经统一 outbound 访问/限频/leak guard/dry-run；重复提醒跳过错过次数，失败至少 60 秒后重试，只存固定安全错误。自调度不重叠、dispose 清理；await 后写原人格，取消/删除不会复活。新增 reminders/提醒人格统计/复制/删除组和配置字段；离线服务/命令/集成测试，无依赖、自动审批、任意代码/外部任务调用或 LLM 执行，无提醒 HTTP/面板。真实定时器与 QQ 未验证；#8/#40 从 none 改为 partial，remaining 47，#31/#42/#49/#50 不变。
 
 - M7-k：媒体服务新增本地 `saveFile/listFiles`、`GET /media/files`、`POST /media/file/upload` 和媒体页「文件」上传/列表/刷新。要求媒体与文件开关；安全 basename≤120、文件扩展名白名单、非空严格规范 base64、解码大小上限、15 MiB JSON 请求体限制；固定 files 目录、根/目录 realpath 检查、拒绝目录及文件符号链接、wx 防覆盖。列表最新优先最多 500 项，totalBytes 统计所有合格文件。客户端预检大小/扩展名、上传防重与独立错误提示，保留既有媒体 UI。无文件发送/删除/下载面板，发送仍用主人 `/file 相对路径`；新增离线服务/安全/API/面板测试，无新依赖/外部调用/真实 QQ 发送，未改 cordis.patch.yml。#45 仍 partial，真实 QQ 未验证；#31/#42/#49/#50 及 remaining 47 不变。

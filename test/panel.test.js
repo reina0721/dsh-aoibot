@@ -1410,3 +1410,73 @@ test('MediaPage files: size/extension checks before reading, read/upload/list er
     assert.equal(fileInput(panel.MediaPage({ toast() {} })).props.disabled, true)
   } finally { stateOverrides = null; globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader }
 })
+
+
+test('ContentPage：评论与分享本地查询、禁用/防重、纯文本渲染和输入切换清空', async () => {
+  const originalFetch = globalThis.fetch, calls = [], toasts = []
+  const render = mountNode({ type: panel.ContentPage, props: { toast: (...args) => toasts.push(args) } })
+  let release
+  globalThis.fetch = (path) => {
+    calls.push(path)
+    return new Promise((resolve) => { release = (payload) => resolve({ ok: true, json: async () => payload }) })
+  }
+  try {
+    let tree = render()
+    assert.match(JSON.stringify(tree), /Cookie\/WBI/)
+    assert.match(JSON.stringify(tree), /不验证视频是否存在/)
+    assert.equal(calls.length, 0, 'mount must not access network')
+    await control(tree, '查看公开评论').props.onClick()
+    assert.deepEqual(toasts, [['请输入 BV 号', 'warn']])
+    field(tree, 'B站 BV 号').props.onChange({ target: { value: 'BV1xx411c7mD' } })
+    tree = render()
+    const pending = control(tree, '查看公开评论').props.onClick()
+    await control(tree, '生成分享链接').props.onClick()
+    assert.equal(calls.length, 1)
+    assert.equal(field(render(), 'B站 BV 号').props.disabled, true)
+    assert.equal(control(render(), '生成分享链接').props.disabled, true)
+    assert.equal(calls[0], panel.API_PREFIX + '/content/bilibili/comments?bvid=BV1xx411c7mD')
+    release({ ok: true, items: [{ author: '测试作者', like: 8, content: '<img src=x onerror=alert(1)>正文' }] })
+    await pending
+    tree = render()
+    assert.ok(treeNodes(tree).some((node) => node.type === 'strong' && node.children.includes('测试作者 · 赞 8')))
+    assert.ok(treeNodes(tree).some((node) => node.type === 'p' && node.children.includes('<img src=x onerror=alert(1)>正文')))
+    assert.ok(!treeNodes(tree).some((node) => node.props?.dangerouslySetInnerHTML))
+    assert.equal(field(tree, 'B站 BV 号').props.disabled, false)
+    const sharing = control(tree, '生成分享链接').props.onClick()
+    release({ ok: true, url: 'https://www.bilibili.com/video/BV1xx411c7mD' })
+    await sharing
+    tree = render()
+    assert.ok(treeNodes(tree).some((node) => node.type === 'a' && node.props.href === 'https://www.bilibili.com/video/BV1xx411c7mD'))
+    assert.ok(calls.every((path) => path.startsWith(panel.API_PREFIX + '/content/bilibili/')))
+    field(tree, 'B站 BV 号').props.onChange({ target: { value: 'BV2xx411c7mD' } })
+    assert.ok(!treeNodes(render()).some((node) => node.type === 'a' && node.props.href.includes('BV1xx411c7mD')))
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('ContentPage：空评论、服务关闭/风控与网络失败明确展示，失败后可重试', async () => {
+  const originalFetch = globalThis.fetch
+  const render = mountNode({ type: panel.ContentPage, props: { toast() {} } })
+  let payload = { ok: true, items: [] }, failure = false
+  globalThis.fetch = async () => {
+    if (failure) throw new Error('本地请求失败')
+    return { ok: true, json: async () => payload }
+  }
+  try {
+    field(render(), 'B站 BV 号').props.onChange({ target: { value: 'BV1xx411c7mD' } })
+    await control(render(), '查看公开评论').props.onClick()
+    assert.match(JSON.stringify(render()), /没有可显示的 B站公开评论/)
+    for (const message of ['B站内容未启用', 'B站公开接口要求登录或当前访问被限制；本服务不使用 Cookie/WBI']) {
+      payload = { ok: false, message }
+      await control(render(), '生成分享链接').props.onClick()
+      assert.ok(JSON.stringify(render()).includes(message))
+      assert.equal(control(render(), '查看公开评论').props.disabled, false)
+    }
+    failure = true
+    await control(render(), '查看公开评论').props.onClick()
+    assert.match(JSON.stringify(render()), /本地请求失败/)
+    failure = false
+    payload = { ok: true, items: [] }
+    await control(render(), '查看公开评论').props.onClick()
+    assert.doesNotMatch(JSON.stringify(render()), /本地请求失败/)
+  } finally { globalThis.fetch = originalFetch }
+})
