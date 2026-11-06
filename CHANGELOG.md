@@ -1,5 +1,9 @@
 # 变更记录
 
+## 0.11.5（2026-11-06，修复 Agent preset）
+
+- 修复 `dsh-bot-private` 预设 compaction 组缺少 `compaction`/`toolResultPruner` isolate realm，导致真实 Agent 生成失败 `Preset services require isolate realms`；补上与 DSH 标准预设一致的 isolate 映射。
+
 ## 0.11.4（2026-11-06，用户接受当前 parity）
 
 - 用户于 2026-11-06 明确接受当前 parity 并收束；remaining 47、8 项豁免，不宣称全量对齐。
