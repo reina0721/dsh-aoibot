@@ -249,3 +249,13 @@ test('embedding config: opt-in defaults, memory fields and normalized bounds', (
   assert.deepEqual(normalize({ enabled: true, baseUrl: 'https://embedding.invalid/v1', model: 'custom', apiKeyEnv: 'EMBED_KEY', weight: 0.5 }),
     { enabled: true, baseUrl: 'https://embedding.invalid/v1', model: 'custom', apiKeyEnv: 'EMBED_KEY', weight: 0.5 })
 })
+
+test('operator config: empty upgrade default, normalized QQ list and access string-list field', () => {
+  assert.deepEqual(DEFAULTS.access.operators, [])
+  assert.deepEqual(normalizeConfig({ access: { ownerQQ: '10001' } }).config.access.operators, [])
+  assert.deepEqual(normalizeConfig({ access: { operators: [' 10002 ', 10003, '10002', ''] } }).config.access.operators, ['10002', '10003'])
+  const field = CONFIG_GROUPS.find((group) => group.id === 'access').fields.find((item) => item.path === 'access.operators')
+  assert.equal(field.type, 'string-list')
+  assert.deepEqual(field.default, [])
+  assert.match(field.help, /500/)
+})

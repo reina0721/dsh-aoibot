@@ -174,7 +174,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 仅主人显式命令触发，非主人在私聊/群聊均静默；不会把普通群成员消息自动升级为 steer。命令受访问控制与命令禁用列表约束，不写配置、不直接调用模型，没有插话面板/API。M7-q 另有默认关闭的私聊输入状态开关，见下文；steer 仅 fake agent 离线测试，真实 DSH/QQ 未验证，GAP #9 仍为 partial。
 
-### 3.3 按聊天选模型与 QQ 命令（主人）
+### 3.3 按聊天选模型与 QQ 命令（主人/只读操作员）
 
 **按聊天选模型**（「配置 → 模型路由与预算」）：
 
@@ -184,9 +184,13 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 只影响认知分析与回复生成，不改变 DSH 面板的默认模型；`agent` 引擎的 Session 模型仍由 DSH preset 决定。
 
-**QQ 命令**（仅主人，非主人静默忽略；回复也受访问控制/频率限制）：
+**QQ 命令**（主人全量；只读操作员固定集；其他用户静默，公开模块命令例外；回复仍受访问控制/频率限制）：
 
-操作员可在「配置 → 命令权限 → 禁用命令」填写不带 `/` 的小写命令名，例如 `kick`、`draw` 或模块命令名（`cognition.permissions.deniedCommands`）。默认空列表不改变行为；仅数组、每项匹配 `^[a-z][a-z0-9_-]{0,31}$`、去重最多 100 个，非法项忽略并报告。保存后命中命令时主人收到「该命令已被操作员禁用。」，不会调用对应服务/模块 handler 或写配置；`/DRAW` 也不能绕过 `draw`。非主人命中时静默；未禁用的公开模块命令仍按模块原设置开放。`/help` 保持原帮助，未知命令仍给原提示。整个命令名一起禁用，独立命令名需分别填写；此设置不覆盖 API、Agent 工具或直接服务调用，没有统一审批，#14 仍 partial。详见[配置](CONFIG.md#命令禁用列表m7-n)。
+**只读操作员（M7-r）**：在「配置 → 访问控制 → 只读操作员 QQ」添加 QQ 号（`access.operators`，默认 `[]`，按私聊列表规则去空白/去重，最多 500 项）。allowlist 自动放行其私聊入站与出站，原因 `operator`；群聊仍须群白名单。主人身份优先，不因同时列入操作员而失去权限。
+
+操作员仅可用 `/help`、`/status`、`/model`（无参数）、`/bili`、`/groupinfo`、`/memberinfo`。`/model provider/model`、`/model clear` 及其他内置/未知命令均静默，不写配置或执行服务。操作员帮助只列出这六个命令和公开模块命令；模块默认 `ownerOnly:true` 仍仅主人，显式公开命令保持原设置。禁用列表同样约束操作员且命中静默。此档位不提供面板配置管理、主人特权或完整 per-tool/per-action RBAC，无 admin/approval 档位；#13 partial、#14 仍 partial，remaining 47。
+
+本机面板维护者可在「配置 → 命令权限 → 禁用命令」填写不带 `/` 的小写命令名，例如 `kick`、`draw` 或模块命令名（`cognition.permissions.deniedCommands`）。默认空列表不改变行为；仅数组、每项匹配 `^[a-z][a-z0-9_-]{0,31}$`、去重最多 100 个，非法项忽略并报告。保存后命中命令时主人收到「该命令已被操作员禁用。」，不会调用对应服务/模块 handler 或写配置；`/DRAW` 也不能绕过 `draw`。非主人命中时静默；未禁用的公开模块命令仍按模块原设置开放。`/help` 按身份显示帮助，未知命令仅主人收到提示。整个命令名一起禁用，独立命令名需分别填写；此设置不覆盖 API、Agent 工具或直接服务调用，没有统一审批，#14 仍 partial。详见[配置](CONFIG.md#命令禁用列表m7-n)。
 
 | 命令 | 作用 |
 |---|---|
@@ -237,7 +241,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 
 `/file` 还需开启媒体总开关和 `media.files.enabled`；路径相对于 `media.dir`（留空用默认媒体目录），仅白名单扩展名/大小内普通文件；拒绝绝对路径、`..`、Windows 路径和符号链接逃逸。文件在网关进程可读路径下才可上传。未开放任意 action 透传或新增 Agent 工具。真实 QQ 管理、资料、文件动作未验证；修改昵称遭网关拒绝会明确显示 `UNSUPPORTED_SET_QQ_PROFILE`。先用测试群/账号受控验证。
 
-命令在轮次聚合的快速路径上处理，不进入分析/策略；`/quiet` `/active` `/model` 会写回配置并立即生效。
+命令在轮次聚合的快速路径上处理，不进入分析/策略；主人 `/quiet`、`/active`、带设置/清除参数的 `/model` 会写回配置并立即生效；操作员 `/model` 只读。
 
 **通知与请求（M7-j）**：默认启用 `cognition.notices.enabled`、`cognition.requests.enabled`，在配置页可关闭。已接受的进退群、管理员、禁言、名片、群名、头衔、精华、好友添加和离线文件通知会出现在当前人格时间轴「事件」中；不下载文件、不自动回应。原撤回/拍一拍/表态仍走原管线，未知事件忽略；暂停/拒收时不新增记录。
 
@@ -274,8 +278,7 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
   拍别人不会触发。
 - **表情回应**：有人给机器人刚发的消息点表态时，记为一次正向 outcome，参与策略学习；
   不会额外回复。
-- **QQ 动作命令**：`/like` `/poke` `/groupinfo` `/memberinfo` 仅主人可用，且只能作用于当前会话对象，
-  不能通过参数跨群/跨用户操作。
+- **QQ 动作命令**：`/like`、`/poke` 仅主人；`/groupinfo`、`/memberinfo [QQ]` 也允许只读操作员查询当前允许群，不能通过参数跨群。
 
 ### 3.6 目的与记忆整理
 
@@ -361,7 +364,7 @@ API 时间轴请求示例：
 
 ### 3.8 B站公共内容与 QQ空间边界（M5-b / M7-m）
 
-在「配置 → 内容」打开 `content.bilibili.enabled` 后，可以使用主人命令 `/bili hot`、`/bili 关键词`、`/bili BV号`、`/bili comments BV号`、`/bili share BV号`。顶层「内容」页提供搜索/热门，以及 BV 输入框、公开评论查询与分享链接显示。BV 号须为 BV 加 10 位字母或数字，不接受整条 URL。
+在「配置 → 内容」打开 `content.bilibili.enabled` 后，主人与只读操作员可以使用 `/bili hot`、`/bili 关键词`、`/bili BV号`、`/bili comments BV号`、`/bili share BV号`。顶层「内容」页提供搜索/热门，以及 BV 输入框、公开评论查询与分享链接显示。BV 号须为 BV 加 10 位字母或数字，不接受整条 URL。
 
 REST 路由统一以 `/onebot-qq/api` 为前缀：`GET /content/bilibili?q=`、`GET /content/bilibili/hot`、`GET /content/bilibili/comments?bvid=&limit=`、`GET /content/bilibili/share?bvid=`。评论 limit 默认 10，取整后限制为 1–20；置顶在前、按 rpid 去重、保留 API 顺序，正文去标签/控制字符、最多 500 Unicode 字符。只读取第一页和接口自带的一层楼中楼样本，无缓存或翻页。
 

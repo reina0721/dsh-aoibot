@@ -141,11 +141,12 @@ export const DEFAULTS = {
   content: {
     bilibili: { enabled: false, timeoutMs: 15000, maxResults: 5 },
   },
-  // 访问控制：open 保持现状；allowlist 只允许主人 + 白名单触发回复/主动行为。
+  // 访问控制：open 保持现状；allowlist 只允许主人 + 只读操作员 + 白名单触发回复/主动行为。
   access: {
     mode: 'open',
     ownerQQ: '',
     ownerName: '主人',
+    operators: [],
     private: [],
     groups: [],
     auditSize: 100,
@@ -630,18 +631,19 @@ export const CONFIG_GROUPS = [
   {
     id: 'access',
     title: '访问控制',
-    description: '谁能触发回复与主动行为。默认 open 保持现有行为；切换 allowlist 后按主人与私聊/群白名单放行。',
+    description: '谁能触发回复与主动行为。默认 open 保持现有行为；切换 allowlist 后按主人、只读操作员与私聊/群白名单放行。',
     fields: [
       {
         path: 'access.mode', label: '模式', type: 'select', default: 'open',
         options: [
           { value: 'open', label: 'open：任何私聊/群都能触发（当前行为）' },
-          { value: 'allowlist', label: 'allowlist：仅主人与白名单' },
+          { value: 'allowlist', label: 'allowlist：仅主人、操作员与白名单' },
         ],
-        help: 'allowlist 下：主人私聊与私聊白名单可触发；群聊只有群白名单可触发；被拒绝的消息不落库、不回复。',
+        help: 'allowlist 下：主人、只读操作员私聊与私聊白名单可触发；群聊只有群白名单可触发；被拒绝的消息不落库、不回复。',
       },
-      { path: 'access.ownerQQ', label: '主人 QQ', type: 'text', default: '', placeholder: '例如 123456789', help: 'allowlist 下用于识别主人；留空则没有主人特权，仅白名单生效。' },
+      { path: 'access.ownerQQ', label: '主人 QQ', type: 'text', default: '', placeholder: '例如 123456789', help: 'allowlist 下用于识别主人；留空则没有主人特权，操作员与白名单仍生效。' },
       { path: 'access.ownerName', label: '主人称呼', type: 'text', default: '主人', placeholder: '主人', help: '面板/提示词/审计里显示的主人称呼。' },
+      { path: 'access.operators', label: '只读操作员 QQ', type: 'string-list', default: [], placeholder: '输入 QQ 号后回车', help: '最多 500 个；仅开放 help/status/model（只读）/bili/groupinfo/memberinfo。allowlist 放行操作员私聊，群聊仍需群白名单；不授予主人权限。' },
       { path: 'access.private', label: '私聊白名单', type: 'string-list', default: [], placeholder: '输入 QQ 号后回车' },
       { path: 'access.groups', label: '群白名单', type: 'string-list', default: [], placeholder: '输入群号后回车' },
       { path: 'access.auditSize', label: '审计条数', type: 'number', default: 100, min: 0, max: 1000, step: 1, help: '内存环形缓冲；只存会话/发送者/原因/时间，不存消息正文，重启清空。' },

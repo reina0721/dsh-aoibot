@@ -240,15 +240,21 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
 |---|---|---|---|---|---|
-| `access.mode` | select | `open` | `open` / `allowlist` | `open` 保持现有行为；`allowlist` 只放行主人与白名单 | ✅ |
+| `access.mode` | select | `open` | `open` / `allowlist` | `open` 保持现有行为；`allowlist` 只放行主人、操作员与白名单 | ✅ |
 | `access.ownerQQ` | text | `''` | 数字 QQ 号 | 主人 QQ；`allowlist` 下识别主人私聊/主动目标 | ✅ |
 | `access.ownerName` | text | `主人` | ≤32 字 | 面板/审计显示的主人称呼 | ✅ |
+| `access.operators` | string-list | `[]` | QQ 号列表，最多 500 项 | 固定只读操作员；主人优先，allowlist 放行其私聊，群仍需白名单 | ✅ |
 | `access.private` | string-list | `[]` | QQ 号列表 | 非主人私聊白名单 | ✅ |
 | `access.groups` | string-list | `[]` | 群号列表 | 群白名单；群内任何人可触发 | ✅ |
 | `access.auditSize` | number | `100` | 0–1000 | 内存审计环形缓冲条数；只存元数据，不存正文 | ✅ |
 
 `access` 是增量字段，老配置由 `deepMerge` 自动补齐，不需要迁移脚本；默认 `open` 保证升级后行为不变。
-`allowlist` 但 `ownerQQ` 为空时不会出现「人人可私聊」：私聊只按白名单放行，且 `normalizeConfig` 会给出 issue。
+`allowlist` 但 `ownerQQ` 为空时不会出现「人人可私聊」：私聊只按操作员与白名单放行，且 `normalizeConfig` 会给出 issue。
+
+**只读操作员（M7-r）**：在「配置 → 访问控制」设置 `access.operators`，默认空列表不改变升级行为。规范化与 `access.private` 一致：必须是数组，转字符串、去空白/去重、单项最多 32 字符、最多 500 项；非法非数组忽略。主人即使列在其中也仍为主人，`isOperator` 返回 false。allowlist 的操作员私聊入站与出站原因均为 `operator`；不赋予群白名单或主人权限。
+
+操作员内置命令固定为 `/help`、`/status`、`/model`（无参数，只读）、`/bili`、`/groupinfo`、`/memberinfo`。模型设置/清除、管理/请求/提醒/steer/记忆/目的/点赞/戳/媒体/文件等其他命令及未知命令均静默；群/成员查询只作用于当前允许群。公开模块命令仍按模块 `ownerOnly:false` 开放，默认 `ownerOnly:true` 不因操作员身份放行。`deniedCommands` 同样约束操作员，命中静默；`/help` 只展示操作员集与公开模块。仅 QQ 命令入口与两个只读 QQ 查询服务的受限档位，无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批；面板/API/Agent 工具保留原有边界。#13 partial，#14 仍 partial，remaining 47。
+
 
 ### 3.11 会话运行时（`runtime`）
 
@@ -583,11 +589,11 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 |---|---|---|---|
 | `cognition.permissions.deniedCommands` | string[] | `[]` | 只接受数组；每项必须为匹配 `^[a-z][a-z0-9_-]{0,31}$` 的字符串，去重后按输入顺序最多保留 100 个 |
 
-配置页「命令权限」（`cog-permissions`）的「禁用命令」为 `string-list`。例如填 `kick`、`draw` 或模块命令名，不带 `/`；大写、空白、非字符串、过长等非法项忽略并报告 issue，非数组回退空列表并报告，超过 100 个不同有效名也报告。默认空列表不改变行为，保存后后续命令读取当前策略。
+本机面板的配置页「命令权限」（`cog-permissions`）的「禁用命令」为 `string-list`。例如填 `kick`、`draw` 或模块命令名，不带 `/`；大写、空白、非字符串、过长等非法项忽略并报告 issue，非数组回退空列表并报告，超过 100 个不同有效名也报告。默认空列表不改变行为，保存后后续命令读取当前策略。
 
-现有身份检查后、派发前，内置与已注册模块命令按解析后的小写名称检查；命中时主人收到「该命令已被操作员禁用。」，回复仍走统一 outbound，不调用命令服务/模块 handler 或写配置。非主人命中时静默，包括模块显式开放的命令；未禁用的公开模块命令保留原行为。未知/未注册命令保持原有提示，`/help` 仍列出原帮助，不标记禁用状态。整个命令名被禁用，不能按子命令或参数区分；`tts` 与 `say` 等独立注册名需要分别列出。
+现有身份检查后、派发前，内置与已注册模块命令按解析后的小写名称检查；命中时主人收到「该命令已被操作员禁用。」，回复仍走统一 outbound，不调用命令服务/模块 handler 或写配置。非主人命中时静默，包括模块显式开放的命令；未禁用的公开模块命令保留原行为。未知/未注册命令保持原有提示，`/help` 按主人/只读操作员档位显示帮助，不标记禁用状态；操作员档位见[访问控制](#310-访问控制access)。整个命令名被禁用，不能按子命令或参数区分；`tts` 与 `say` 等独立注册名需要分别列出。
 
-仅覆盖 QQ 文本命令入口，不约束 REST API、直接服务调用、Agent 工具或模块同进程代码；不是所有服务/工具的逐项 allow/deny 矩阵或统一审批。#14 仍 partial，remaining 47；#31/#42/#49/#50 不变。
+仅覆盖 QQ 文本命令入口，不约束 REST API、直接服务调用、Agent 工具或模块同进程代码；与 M7-r 固定只读操作员档位（#13）共同构成受限入口控制，仍不是所有服务/工具的逐项 allow/deny 矩阵或统一审批。#14 仍 partial，remaining 47；#31/#42/#49/#50 不变。
 
 ## QQ 管理命令（M7-b）
 

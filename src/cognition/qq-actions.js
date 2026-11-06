@@ -1,8 +1,10 @@
 // QQ 动作服务：点赞、拍一拍、群/成员信息。
 //
-// 只给「主人命令」和后续 agent 工具复用；每个动作都先校验调用者与当前会话，
+// 写动作只给「主人命令」和后续 agent 工具复用；群/成员只读查询也开放给操作员。每个动作先校验调用者与当前会话，
 // 不允许通过参数任意跨群/跨用户操作。返回值只保留可展示字段，避免把网关原始
 // 响应里的敏感字段带进聊天或日志。
+
+import { isOperator, canSend } from '../core/access.js'
 
 function text(value) {
   return String(value ?? '').trim()
@@ -22,6 +24,13 @@ export function createQqActions({ gateway = null, getConfig = null, logger = nul
       try { return getConfig?.() || {} } catch (error) { return {} }
     })()
     return text(config.access?.ownerQQ || config.ownerQQ || '') === text(operatorId) && Boolean(text(operatorId))
+  }
+
+  function canRead({ operatorId, chatType, chatId }) {
+    if (ownerId(operatorId)) return true
+    let cfg
+    try { cfg = getConfig?.() || {} } catch { return false }
+    return isOperator(cfg, operatorId) && canSend(cfg, { chatType, chatId }).allowed
   }
 
   function currentTarget({ chatType, chatId, userId }) {
@@ -69,7 +78,7 @@ export function createQqActions({ gateway = null, getConfig = null, logger = nul
   }
 
   async function groupInfo({ operatorId, chatType, chatId } = {}) {
-    if (!ownerId(operatorId)) return { ok: false, error: 'NOT_OWNER' }
+    if (!canRead({ operatorId, chatType, chatId })) return { ok: false, error: 'NOT_OWNER' }
     if (chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }
     const api = actions()
     if (!api?.getGroupInfo) return { ok: false, error: 'GATEWAY_UNAVAILABLE' }
@@ -90,7 +99,7 @@ export function createQqActions({ gateway = null, getConfig = null, logger = nul
   }
 
   async function memberInfo({ operatorId, chatType, chatId, userId } = {}) {
-    if (!ownerId(operatorId)) return { ok: false, error: 'NOT_OWNER' }
+    if (!canRead({ operatorId, chatType, chatId })) return { ok: false, error: 'NOT_OWNER' }
     if (chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }
     const target = text(userId || operatorId)
     const api = actions()

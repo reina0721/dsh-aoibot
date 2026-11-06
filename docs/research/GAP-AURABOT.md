@@ -62,15 +62,15 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | M7-l 默认关闭的主人本地固定文本提醒；一次/重复、人格与聊天隔离、统一 outbound、延迟安全重试；离线测试 | 部分（M7-l） | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
 | 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | M7-o 主人显式 steer；M7-q 默认关闭的私聊/C2C 输入状态，轮次前 1/finally 2、失败隔离与配置开关；仅离线测试 | 部分（M7-o/M7-q，steer + 私聊 typing） | M1 剩余：无群聊 typing/群 set_input_status、输入状态限频或专用状态面板，真实 DSH/QQ 未验证 |
 | 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | `cognition.modelRouting`：私聊/群默认 + 会话覆盖；`/model` 写回 | 部分（M1-c，仅认知 LLM） | M1 剩余：agent Session 模型 |
-| 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；非主人静默 | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
+| 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；M7-r 操作员固定只读集，其余非主人静默（公开模块命令例外） | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
 
 ### 3.3 权限与安全
 
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
-| 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
-| 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
-| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b 管理/文件默认关、主人/当前会话/确认/access/realpath；M7-n 默认空 deniedCommands，身份检查后拦截内置/模块命令，小写匹配、最多100、非法项 issue，无处理服务调用或配置写入 | 部分（M7-n） | M2 剩余/M5：仅命令 deny-list，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
+| 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人/只读操作员 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
+| 13 | 权限档位 | full / social / chat；preset 按档位 | M7-r 默认空 access.operators：主人全量、操作员固定 help/status/model（无参数）/bili/groupinfo/memberinfo；allowlist 放行操作员私聊，群仍需白名单，禁用命令静默 | 部分（M7-r） | M1 剩余：无完整 per-tool/per-action RBAC，无 admin/approval 档位 |
+| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b 管理/文件默认关、主人/当前会话/确认/access/realpath；M7-n 默认空 deniedCommands，身份检查后拦截内置/模块命令，小写匹配、最多100、非法项 issue，无处理服务调用或配置写入；M7-r 固定只读操作员档位（见 #13），仍受 deny-list 约束 | 部分（M7-n/M7-r） | M2 剩余/M5：仅命令 deny-list + 固定只读操作员集，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
 | 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；M7-j 主人请求列表与 approve/reject 字面量 confirm，固定 action、无 flag/原始错误日志 | 部分（M7-j） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 豁免（用户批准） | 2026-11-06 用户批准：仅远端 API 鉴权；保留本机-only/CSRF 行为（见 §8.1） |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
@@ -432,3 +432,11 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action 时，在处理前 await 输入中 1、finally await 暂停 2。两次异常全部捕获，不影响回复或覆盖原处理异常，不记录可能包含聊天 ID 的网关错误；命令提前返回也尝试暂停。关闭/群聊/缺方法旁路，outbound/sendMedia/发送 API 不增加 typing，入站 `input_status` 仍忽略。等待沿用网关超时/重试，可能增加轮次耗时。
 
 证据：[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，均为离线/fake 网关，覆盖 payload/边界/错误、默认与严格布尔/配置字段、私聊 1/2、群聊零调用、缺方法、同步/异步失败不改回复且无 ID 日志、命令早退、处理异常与等待清理。无新增依赖；真实 QQ 未验证，没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板（仅配置开关），未完成全量验收。#9 为 steer + 私聊 typing，仍 partial；矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变。
+
+### M7-r 固定只读操作员（#13 partial，#14 仍 partial）
+
+`access.operators=[]` 默认保持现有行为，在 `access` 配置组提供 string-list；按私聊白名单规则转字符串、去空白/去重、单项最多 32 字符、最多 500 项。主人优先且不属于操作员；`isOperator(cfg,userId)` 与 `createAccess().isOperator(turn|id)` 读取当前配置。allowlist 对操作员私聊入站与出站返回 `operator`，群白名单与主人权限不变。
+
+操作员只能使用 `/help`、`/status`、无参数 `/model`、`/bili`、`/groupinfo`、`/memberinfo`。`/model clear`、模型设置及其他内置/未知命令均静默，不调用服务或写配置。查询仍受当前会话访问限制；模块命令保留 ownerOnly 默认 true 与显式公开规则；deniedCommands 仍先于派发，操作员命中静默。帮助只显示该档可用命令，不列出主人模块命令。
+
+离线访问/配置/命令/QQ 查询服务测试；无新增依赖、网络调用或真实 QQ 验证。#13 从 none 改为 partial，#14 交叉引用此档位但仍 partial；没有完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。

@@ -8,6 +8,8 @@
 
 ## 未发布
 
+- M7-r：新增默认空的 `access.operators`（string-list、同私聊列表规范化、去重最多 500 项）。主人优先；操作员可在 allowlist 私聊入站/出站（原因 `operator`），群仍需白名单。固定只读命令为 help/status/model（无参数）/bili/groupinfo/memberinfo，其他内置、模型设置/清除和未知命令静默；查询服务仅开放允许群的只读操作。模块默认 ownerOnly 保留，显式公开命令不变；deniedCommands 仍优先拦截且操作员静默。新增离线访问/配置/命令/查询服务测试，无新依赖。#13 从 none 改为 partial，#14 交叉引用并保持 partial；无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变，真实 QQ 未验证。
+
 
 ## 0.11.0（2026-11-06，部分真机验收）
 

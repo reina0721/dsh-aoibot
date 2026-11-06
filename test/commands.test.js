@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { createCommandService, parseCommand } from '../src/cognition/commands.js'
-import { normalizeAccess } from '../src/core/access.js'
+import { createQqActions } from '../src/cognition/qq-actions.js'
+import { createAccess, normalizeAccess } from '../src/core/access.js'
 
 function harness(overrides = {}, services = {}) {
   let config = {
@@ -54,7 +55,7 @@ function harness(overrides = {}, services = {}) {
     async groupInfo(args) { if (args.chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }; return { ok: true, groupId: 'g1', groupName: '测试群', memberCount: 3, maxMemberCount: 200, ownerId: '10001' } },
     async memberInfo(args) { if (args.chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }; return { ok: true, userId: args.userId || '10001', nickname: '小明', card: '小明卡', role: 'owner' } },
   }
-  const access = {
+  const access = services.access || {
     isOwner: (cfg, id) => String(id) === '10001',
     summary: () => ({ mode: 'allowlist' }),
     canSend: () => ({ allowed: services.allowSend !== false }),
@@ -743,4 +744,120 @@ test('steer command: unavailable, inactive race and runtime failures produce saf
   const { reply } = await h.service.handle(turn('/steer hello'))
   assert.match(reply, /插话失败/)
   assert.doesNotMatch(reply, /raw-secret/)
+})
+
+function operatorHarness(services = {}) {
+  let h
+  const queries = []
+  const access = createAccess({ getConfig: () => h.getConfig() })
+  const qqActions = createQqActions({ getConfig: () => h.getConfig(), gateway: { actions: {
+    async getGroupInfo(id) { queries.push(['group', id]); return { group_name: '操作员测试群', member_count: 3 } },
+    async getGroupMemberInfo(id, user) { queries.push(['member', id, user]); return { user_id: user, nickname: '操作员测试成员' } },
+  } } })
+  h = harness({ access: normalizeAccess({ mode: 'allowlist', ownerQQ: '10001', operators: ['10001', '10002'], groups: ['20001'] }),
+    content: { bilibili: { enabled: true } } }, { access, qqActions,
+    bilibili: { async hot() { return { items: [{ title: '离线视频', url: 'offline' }] } } }, ...services })
+  return { ...h, queries, access }
+}
+
+test('operators: fixed safe commands work for owner/operator, strangers remain silent in private/group', async () => {
+  for (const chatType of ['private', 'group']) {
+    const h = operatorHarness()
+    for (const senderId of ['10001', '10002', '10003']) {
+      const context = { chatType, chatId: chatType === 'group' ? '20001' : senderId, senderId }
+      for (const command of ['help', 'status', 'model', 'bili hot', 'groupinfo', 'memberinfo 10004']) {
+        const before = h.sent.length
+        const result = await h.service.handle(turn('/' + command, context))
+        assert.equal(result.handled, true)
+        assert.equal(Boolean(result.reply), senderId !== '10003', `${senderId} ${chatType} ${command}`)
+        assert.equal(h.sent.length - before, senderId === '10003' ? 0 : 1)
+      }
+    }
+    assert.deepEqual(h.configWrites, [])
+    if (chatType === 'group') assert.deepEqual(h.queries, [
+      ['group', '20001'], ['member', '20001', '10004'], ['group', '20001'], ['member', '20001', '10004'],
+    ])
+    else assert.deepEqual(h.queries, [])
+  }
+})
+
+test('operators: unsafe/unknown commands and all model arguments are silent without side effects', async () => {
+  const calls = []
+  const tracked = new Proxy({}, { get: (_target, key) => (...args) => { calls.push([key, ...args]); return { ok: true } } })
+  const h = operatorHarness({ runtime: tracked, requests: tracked, reminders: tracked, media: tracked, stickers: tracked, qqActions: tracked })
+  const original = structuredClone(h.getConfig())
+  const commands = ['profile name', 'card 10003 name', 'groupname name', 'admin 10003 on', 'mute 10003 1',
+    'wholemute on', 'kick 10003 confirm', 'essence 1', 'recall 1 confirm', 'file files/a.txt',
+    'requests', 'approve req_fake confirm', 'reject req_fake confirm', 'remind 60 text', 'reminders', 'forgetreminder rem_fake',
+    'steer text', 'quiet', 'active', 'remember text', 'forget text', 'like', 'poke', 'purpose', 'purpose add text',
+    'tts text', 'say text', 'draw cat', 'redraw a.png cat', 'image a.png', 'sticker', 'unknown',
+    'model clear', 'MODEL p/m', 'model invalid']
+  for (const chatType of ['private', 'group']) {
+    for (const command of commands) {
+      assert.deepEqual(await h.service.handle(turn('/' + command, { chatType, chatId: chatType === 'group' ? '20001' : '10002', senderId: '10002' })),
+        { handled: true, reply: '' }, command)
+    }
+  }
+  assert.deepEqual(calls, [])
+  assert.deepEqual(h.sent, [])
+  assert.deepEqual(h.configWrites, [])
+  assert.deepEqual(h.memory.remembered, [])
+  assert.deepEqual(h.memory.forgotten, [])
+  assert.deepEqual(h.getConfig(), original)
+})
+
+test('operators: owner precedence retains writes, model settings and unknown-command reply', async () => {
+  const h = operatorHarness()
+  assert.match((await h.service.handle(turn('/model p/m'))).reply, /已设为/)
+  assert.match((await h.service.handle(turn('/model clear'))).reply, /已清除/)
+  assert.match((await h.service.handle(turn('/quiet'))).reply, /安静模式/)
+  assert.match((await h.service.handle(turn('/unknown'))).reply, /未知命令/)
+  assert.equal(h.configWrites.length, 3)
+})
+
+test('operators: external ownerOnly defaults remain, public commands preserve stranger access', async () => {
+  const h = operatorHarness()
+  const calls = []
+  h.service.registerCommand('secret', () => { calls.push('secret'); return 'private module' })
+  h.service.registerCommand('publiccmd', () => { calls.push('public'); return 'public module' }, { ownerOnly: false })
+  for (const senderId of ['10001', '10002', '10003']) {
+    const context = { senderId, chatId: senderId }
+    assert.equal((await h.service.handle(turn('/secret', context))).reply, senderId === '10001' ? 'private module' : '')
+    assert.equal((await h.service.handle(turn('/publiccmd', context))).reply, 'public module')
+  }
+  assert.deepEqual(calls, ['secret', 'public', 'public', 'public'])
+  const help = (await h.service.handle(turn('/help', { senderId: '10002', chatId: '10002' }))).reply
+  for (const name of ['help', 'status', 'model', 'bili', 'groupinfo', 'memberinfo', 'publiccmd']) assert.ok(help.includes('/' + name))
+  assert.doesNotMatch(help, /secret|quiet|steer|remember|provider\/model|model clear/)
+})
+
+test('operators: deny list blocks safe and public module commands silently, empty policy restores reads', async () => {
+  const h = operatorHarness()
+  let calls = 0
+  h.service.registerCommand('publiccmd', () => { calls++; return 'public reply' }, { ownerOnly: false })
+  h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition,
+    permissions: { deniedCommands: ['help', 'status', 'model', 'bili', 'groupinfo', 'memberinfo', 'publiccmd'] } } })
+  for (const name of ['HELP', 'status', 'model', 'bili hot', 'groupinfo', 'memberinfo', 'PublicCmd']) {
+    assert.deepEqual(await h.service.handle(turn('/' + name, { senderId: '10002', chatId: '10002' })), { handled: true, reply: '' })
+  }
+  assert.equal(calls, 0)
+  assert.deepEqual(h.sent, [])
+  assert.deepEqual(h.queries, [])
+  assert.equal((await h.service.handle(turn('/status'))).reply, '该命令已被操作员禁用。')
+  h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition, permissions: { deniedCommands: [] } } })
+  assert.match((await h.service.handle(turn('/status', { senderId: '10002', chatId: '10002' }))).reply, /dsh-bot 状态/)
+  assert.equal((await h.service.handle(turn('/publiccmd', { senderId: '10002', chatId: '10002' }))).reply, 'public reply')
+  assert.equal(calls, 1)
+  h.setConfig({ ...h.getConfig(), access: { ...h.getConfig().access, operators: [] } })
+  assert.deepEqual(await h.service.handle(turn('/status', { senderId: '10002', chatId: '10002' })), { handled: true, reply: '' })
+})
+
+test('operators: safe commands cannot query or reply in groups outside allowlist', async () => {
+  const h = operatorHarness()
+  for (const name of ['help', 'status', 'model', 'bili hot', 'groupinfo', 'memberinfo']) {
+    assert.deepEqual(await h.service.handle(turn('/' + name, { chatType: 'group', chatId: '20002', senderId: '10002' })),
+      { handled: true, reply: '', error: 'ACCESS_DENIED' })
+  }
+  assert.deepEqual(h.queries, [])
+  assert.deepEqual(h.sent, [])
 })

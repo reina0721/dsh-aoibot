@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-r 更新 #13/#14：`access.operators=[]` 默认保持行为，按私聊列表规范化/去重/最多500，access 配置组 string-list；主人优先且不属于操作员。allowlist 操作员私聊入站/出站原因 `operator`，群仍需白名单；固定 help/status/model（无参数）/bili/groupinfo/memberinfo，其他内置、模型设置/清除与未知命令静默，不调用服务或写配置。群/成员只读服务支持操作员但不扩大群访问；模块 ownerOnly 默认 true 与显式公开规则保持，deniedCommands 对操作员命中静默，帮助按档位显示。仅离线 fake 网关/配置/访问/命令测试，无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。#13 none → partial，#14 仍 partial；当前 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变。v0.11.1 已发布/live，M7-r 未发布、未部署，真实 QQ 未验证。
 
 M7-q 更新 #9：`cognition.typing={enabled:false}` 默认零调用，`cog-turn` 私聊/C2C 配置开关；gateway action 严格字符串安全整数 ID、event_type 1/2 与固定 payload。pipeline 在原处理前 await 1、finally await 2，两次错误全捕获、不改回复/原处理异常、不记录原始网关错误或聊天 ID；群聊/缺方法旁路，命令早退也清理，不改 outbound/sendMedia/发送 API，入站 `input_status` 仍忽略。仅离线 action/配置/fake 网关集成测试，没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板（仅配置开关），真实 QQ 未验证，未完成全量验收。#9 为 steer + 私聊 typing，仍 partial，38 partial / 2 none、remaining 47，#31/#42/#49/#50 行逐字不变。
 
@@ -62,10 +64,10 @@ npm run check:docs
 <!-- parity-snapshot:start -->
 # 对标审计（并非全量对齐 / not full parity）
 
-矩阵 61 项；has: 6，partial: 38，none: 2，limited: 1，leading: 6，exempt: 8。
+矩阵 61 项；has: 6，partial: 39，none: 1，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：66 个 JS 文件 / 16942 行。
-测试静态计数：46 个文件 / 10544 行 / 454 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：66 个 JS 文件 / 16975 行。
+测试静态计数：46 个文件 / 10752 行 / 466 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -79,7 +81,7 @@ npm run check:docs
 | 10 | 按聊天选模型 | partial | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | partial | M1 剩余：`/sing` 等媒体命令 |
 | 12 | 主人/私聊白名单/群白名单 | partial | M1 剩余：工具级权限 |
-| 13 | 权限档位 | none | M1 |
+| 13 | 权限档位 | partial | M1 剩余：无完整 per-tool/per-action RBAC，无 admin/approval 档位 |
 
 ## M1 / M2
 
@@ -105,7 +107,7 @@ npm run check:docs
 
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
-| 14 | 逐项权限 | partial | M2 剩余/M5：仅命令 deny-list，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
+| 14 | 逐项权限 | partial | M2 剩余/M5：仅命令 deny-list + 固定只读操作员集，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
 
 ## M2-b
 

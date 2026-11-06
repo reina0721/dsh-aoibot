@@ -150,3 +150,21 @@ test('qq admin: unsupported profile, gateway rejection and destructive audit con
   delete api.setProfile
   assert.equal((await service.setProfile({ ...adminContext, chatType: 'private', chatId: '10001', nickname: '名' })).error, 'UNSUPPORTED_SET_QQ_PROFILE')
 })
+
+test('qq-actions: operators may read allowed groups but never use owner actions', async () => {
+  const calls = []
+  const service = createQqActions({ getConfig: () => ({ access: { mode: 'allowlist', ownerQQ: '10001', operators: ['10002'], groups: ['20001'] }, cognition: { qqAdmin: { enabled: true } } }),
+    gateway: { actions: new Proxy({}, { get: (_target, name) => async (...args) => { calls.push([name, ...args]); return {} } }) } })
+  const context = { operatorId: '10002', chatType: 'group', chatId: '20001' }
+  assert.equal((await service.groupInfo(context)).ok, true)
+  assert.equal((await service.memberInfo(context)).ok, true)
+  assert.deepEqual(calls, [['getGroupInfo', '20001'], ['getGroupMemberInfo', '20001', '10002']])
+  for (const method of ['groupInfo', 'memberInfo']) {
+    assert.equal((await service[method]({ ...context, chatId: '20002' })).ok, false)
+    assert.equal((await service[method]({ ...context, operatorId: '10003' })).error, 'NOT_OWNER')
+  }
+  for (const method of ['like', 'poke', 'setProfile', 'setGroupBan', 'setGroupKick']) {
+    assert.equal((await service[method](context)).error, 'NOT_OWNER')
+  }
+  assert.equal(calls.length, 2)
+})

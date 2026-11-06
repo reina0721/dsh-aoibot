@@ -3,7 +3,7 @@
 // 设计原则：
 //   1. 纯函数判定（decideInbound/canSend）可单独测试，不依赖 DSH/网关；
 //   2. createAccess 负责把配置、审计环形缓冲与计数粘起来，供 host/routes/outbound 共用；
-//   3. 默认 open：升级后行为不变；allowlist 才启用主人 + 白名单规则；
+//   3. 默认 open：升级后行为不变；allowlist 才启用主人 + 只读操作员 + 白名单规则；
 //   4. 审计只存元数据（会话/发送者/原因/时间），不存消息正文，重启清空。
 
 export const ACCESS_MODES = ['open', 'allowlist']
@@ -11,6 +11,7 @@ export const ACCESS_MODES = ['open', 'allowlist']
 const REASONS = {
   mode_open: '访问控制未启用（open）',
   owner: '主人',
+  operator: '只读操作员',
   private_allowlist: '私聊白名单',
   group_allowlist: '群白名单',
   self: '机器人自己',
@@ -63,6 +64,7 @@ export function normalizeAccess(raw, issues = []) {
     ? src.ownerName.trim().slice(0, 32)
     : '主人'
 
+  const operators = asList(src.operators, issues, 'access.operators')
   const priv = asList(src.private, issues, 'access.private')
   const groups = asList(src.groups, issues, 'access.groups')
 
@@ -71,10 +73,10 @@ export function normalizeAccess(raw, issues = []) {
   if (src.auditSize !== undefined && !Number.isFinite(rawSize)) issues.push('access.auditSize 非法，已回退 100')
 
   if (mode === 'allowlist' && !ownerQQ) {
-    issues.push('access.mode=allowlist 但未填写主人 QQ：私聊只按白名单放行，没有主人特权')
+    issues.push('access.mode=allowlist 但未填写主人 QQ：私聊只按操作员与白名单放行，没有主人特权')
   }
 
-  return { mode, ownerQQ, ownerName, private: priv, groups, auditSize }
+  return { mode, ownerQQ, ownerName, operators, private: priv, groups, auditSize }
 }
 
 function accessOf(cfg) {
@@ -85,6 +87,13 @@ export function isOwner(cfg, userId) {
   const owner = String(accessOf(cfg).ownerQQ || '')
   const id = String(userId ?? '').trim()
   return Boolean(owner && id && owner === id)
+}
+
+/** 只读操作员不包含主人；主人身份始终优先。 */
+export function isOperator(cfg, userId) {
+  const id = String(userId ?? '').trim()
+  const operators = accessOf(cfg).operators
+  return Boolean(id && !isOwner(cfg, id) && Array.isArray(operators) && operators.includes(id))
 }
 
 /**
@@ -114,6 +123,7 @@ export function decideInbound(cfg, msg = {}) {
   }
   if (chatType === 'private') {
     if (senderId && isOwner(cfg, senderId)) return { allowed: true, reason: 'owner' }
+    if (isOperator(cfg, senderId)) return { allowed: true, reason: 'operator' }
     if (senderId && (access.private || []).includes(senderId)) return { allowed: true, reason: 'private_allowlist' }
     return { allowed: false, reason: 'private_not_allowed' }
   }
@@ -135,6 +145,7 @@ export function canSend(cfg, { chatType, chatId } = {}) {
   }
   if (type === 'private') {
     if (id && isOwner(cfg, id)) return { allowed: true, reason: 'owner' }
+    if (isOperator(cfg, id)) return { allowed: true, reason: 'operator' }
     if (id && (access.private || []).includes(id)) return { allowed: true, reason: 'private_allowlist' }
     return { allowed: false, reason: 'private_not_allowed' }
   }
@@ -257,6 +268,7 @@ export function createAccess({ getConfig, clock = () => Date.now(), logger = nul
   }
 
   return {
+    isOperator: (turnOrId) => isOperator(cfg(), turnOrId && typeof turnOrId === 'object' ? turnOrId.senderId : turnOrId),
     decideRaw,
     check,
     canSend: canSendOut,

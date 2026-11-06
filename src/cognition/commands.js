@@ -1,15 +1,16 @@
 // QQ 内命令：主人用 /status /quiet /active /model /remember /forget /help 管理 bot。
 //
-// 只处理文本命令，不做自然语言解析；非主人静默忽略（避免群里被刷）。
+// 只处理文本命令，不做自然语言解析；主人全量、操作员固定只读集，其余静默（公开模块命令除外）。
 // 命令回复也走 outbound，因此受访问控制与频率上限约束。
 
-import { isOwner } from '../core/access.js'
+import { isOwner, isOperator } from '../core/access.js'
 import { redactText } from '../core/leak-guard.js'
 
 const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
 const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
 const REMINDER_COMMANDS = ['remind', 'reminders', 'forgetreminder']
 const COMMANDS = [...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const OPERATOR_COMMANDS = ['help', 'status', 'model', 'bili', 'groupinfo', 'memberinfo']
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -296,8 +297,10 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return send(turn, '未知命令。发送 /help 查看可用命令。')
     }
     const owner = ownerCheck(turn)
-    if ((!external || external.ownerOnly) && !owner) {
-      log.debug?.('非主人命令已忽略：', `${turn.chatType}:${turn.chatId}/${turn.senderId}`)
+    const operator = !owner && isOperator(currentConfig(), turn.senderId)
+    const operatorSafe = operator && OPERATOR_COMMANDS.includes(parsed.name) && (parsed.name !== 'model' || !parsed.args)
+    if (!owner && (external ? external.ownerOnly : !operatorSafe)) {
+      log.debug?.('无命令权限，已忽略：', `${turn.chatType}:${turn.chatId}/${turn.senderId}`)
       return { handled: true, reply: '' }
     }
 
@@ -306,6 +309,9 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       if (!owner) return { handled: true, reply: '' }
       return send(turn, '该命令已被操作员禁用。')
     }
+
+    // 操作员只读查询也须先通过当前会话出站访问，不能借身份绕过群白名单。
+    if (operatorSafe && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
 
     if (external) {
       try {
@@ -346,7 +352,11 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         .filter(([, item]) => owner || !item.ownerOnly)
         .map(([name]) => `/${name}`)
         .sort()
-      return send(turn, HELP_TEXT + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
+      const help = owner ? HELP_TEXT : HELP_TEXT.split('\n').filter((line) => {
+        const name = /^\/([a-z]+)/.exec(line)?.[1]
+        return name && OPERATOR_COMMANDS.includes(name) && (name !== 'model' || line.startsWith('/model —'))
+      }).join('\n')
+      return send(turn, help + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
     }
     if (parsed.name === 'status') return send(turn, await statusText(turn))
 
