@@ -131,7 +131,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 42 | 翻唱/RVC | 网易云→分离→RVC→混音 | 无 | 豁免（用户批准） | 2026-11-06 用户批准：依赖外部 RVC 模型/客户端，退出发布门槛 |
 | 43 | 表情包 | 收集/尺寸/去重/打标/按语境发/商城 | 面板手动上传；PNG/JPG/JPEG/GIF/WebP；默认 5 MiB/张、200 张；SHA-256 去重；人工标签；`/sticker [标签]` 随机发 | 部分（M4-b） | 不自动收集、缩放转码、语境/情绪选择或接商城 |
 | 44 | 图片收发/视觉/生图/改图 | 有 | M7-c：入站/Vision/base64 出站；主人 /image 普通图片、/draw 生图、/redraw 兼容 edits；媒体页生图/改图只落盘，状态 flags；默认关闭、env 密钥、prompt 1–1000、五档尺寸、限大小 PNG b64_json、PNG 头边长≤1792/像素≤1792×1024；根内相对路径/realpath/扩展名/大小与 access 闸门 | 部分（M7-c） | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
-| 45 | 文件发送/接收 | 有 | 白名单扩展名下载；OneBot 群/私聊上传服务；主人 /file 根内相对路径；M7-k 文件上传/列表/刷新面板及本地 API，安全 basename/严格 base64/大小限制、固定 files 目录/realpath/wx、最新 500 项与总字节数 | 部分（M7-k） | 无文件发送/删除/下载面板；上传/列表需 media.enabled/files.enabled，主人发送另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
+| 45 | 文件发送/接收 | 有 | 白名单扩展名下载；OneBot 群/私聊上传服务；主人 /file 根内相对路径；M7-k 上传/列表/刷新，M7-u 本地下载/确认删除及 API；安全存储 basename≤120/严格 base64/大小限制、固定 files 目录/realpath/非符号链接普通文件/wx、最新 500 项与总字节数 | 部分（M7-u） | 本地上传/列表/下载/删除需 media.enabled/files.enabled，无任意本地路径；无发送面板，主人 /file 另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
 | 46 | 本地接口（TTS/生图/识别脚本） | 有 | M7-c：`/media/status|test|tts`、`POST /media/image/generate {prompt,size?}` / `edit {path,prompt,size?}` 返回根内生成路径；表情包按 ID 取图；默认零网络；超时/大小/五档尺寸限制，只接受 PNG b64_json | 部分（M7-c） | M7：无本地识别脚本桥/任意本地路径/新图片上传下载接口；不抓 provider 返回 URL，只支持兼容 edits；真实 provider/QQ 未验证，面板/API 不自动发送 |
 
 ### 3.10 社交内容
@@ -392,7 +392,7 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`；媒体与文件开关均需开启，关闭时报错。上传只接受安全 basename≤120、FILE_EXTENSIONS、非空严格规范 base64 与大小内内容；固定 files 目录、根/目录 realpath、拒绝目录符号链接、wx 防覆盖。列表不递归、不跟随符号链接，仅白名单扩展名/大小内普通文件，mtime 最新优先最多 500 项，totalBytes 统计全部合格文件。新增本地 GET `/media/files` / POST `/media/file/upload`，POST 请求体固定 15 MiB；媒体页增加客户端预检、上传防重、路径/大小/时间列表、刷新与独立错误显示。
 
-证据：[media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。无文件发送/删除/下载面板；发送仍使用主人 `/file 相对路径`。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。
+证据：[media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。M7-u 后续增加本地下载/确认删除面板（见下文）；发送仍使用主人 `/file 相对路径`，无发送面板。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。
 
 ### M7-l 主人本地提醒（#8/#40 partial）
 
@@ -450,3 +450,10 @@ pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action �
 批准先消耗 pending，再由 handleAdmin 重放固定动作到原聊天，重新检查身份/原聊天访问/开关/禁用列表/参数及原 QQ/媒体限制；外部 approvalBypass 无效。拒绝无动作，批准后 executed/failed；未知/过期/已处理不可重复，失败/批准后中断无自动重试。原 req_ 请求处理与踢人/撤回 confirm 保留，不影响非管理命令。审批跨重启/人格切换保留，不随人格复制。
 
 证据：[approvals.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/approvals.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，全部本地存储/fake QQ，无新依赖或外部调用。#15 为持久化管理审批 + 既有请求审批/leak guard，仍无所有服务/工具统一审批、审批面板/HTTP、PII/媒体扫描；#14 操作员档位/命令 deny-list 仍 partial。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变；真实 QQ 未验证。
+
+
+### M7-u 安全本地文件下载/删除（#45 仍 partial，未发布）
+
+新增 `readFile(name)` / `removeFile(name)`，只接受 files 目录内存储 basename（≤120，与上传同字符/扩展名白名单）；媒体与文件双开关，拒绝路径/控制字符/目录/符号链接，realpath 限定普通文件。下载句柄不跟随符号链接、校验普通文件及 inode，并按 maxBytes 有界读取；返回规范 base64、名称、大小与 MIME；删除不要求文件小于 maxBytes。缺失文件静态安全错误，不创建目录或覆盖文件。新上传长名称保留扩展名并缩短存储名；旧超过 120 字符的存储 basename 不自动迁移，新操作安全拒绝。
+
+本地 GET `/media/file/download?name=` 返回 base64 JSON；POST `/media/file/delete {name}` 删除。媒体页列表增加下载转 Blob/显示文件名保存、删除确认、共享上传/下载/删除忙碌锁、错误 toast 与删除后刷新。证据为 [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) 的临时文件/fake 宿主/mock UI；无新依赖、配置、外部调用、自动发送或任意本地路径。默认仍关闭，发送沿用主人 `/file`，无发送面板，真实 QQ 文件兼容性与本轮真实浏览器未验证。#45 保持 partial；6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。

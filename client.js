@@ -621,6 +621,8 @@ window.__ModuleLoader__.load({
 
     const get = (path) => request(path)
     const post = (path, body) => request(path, { method: 'POST', body: body === undefined ? {} : body })
+    const downloadMediaFile = (name) => get('/media/file/download?name=' + encodeURIComponent(name))
+    const deleteMediaFile = (name) => post('/media/file/delete', { name })
 
     function pageHidden() {
       return typeof document !== 'undefined' && document.visibilityState === 'hidden'
@@ -6822,7 +6824,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const uploadFile = async (event) => {
         const file = event.target.files && event.target.files[0]
         event.target.value = ''
-        if (!file || fileBusy.current) return
+        if (!file || fileBusy.current || busy || !mediaStatus?.enabled || !mediaStatus?.files?.enabled) return
         const limit = Number(mediaStatus?.maxBytes) || 10 * 1024 * 1024
         if (!file.size || file.size > limit) return setFilesError('文件为空或超过大小限制 ' + limit + ' bytes')
         const extension = '.' + String(file.name).split('.').pop().toLowerCase()
@@ -6847,6 +6849,45 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           await refreshFiles()
         } catch (error) { setFilesError(String(error?.message || '文件上传失败')) }
         finally { fileBusy.current = false; setBusy('') }
+      }
+
+      const fileAction = async (kind, item) => {
+        if (fileBusy.current || busy || filesLoading || !mediaStatus?.enabled || !mediaStatus?.files?.enabled) return
+        if (kind === 'delete' && (typeof window === 'undefined' || typeof window.confirm !== 'function' || !window.confirm('删除本地文件“' + String(item.name || '') + '”？删除后无法恢复。'))) return
+        fileBusy.current = true
+        setBusy('file-' + kind)
+        setFilesError('')
+        try {
+          const path = String(item.path || '')
+          const name = path.startsWith('files/') ? path.slice(6) : ''
+          if (!name || /[\\/]/.test(name)) throw new Error('文件名无效，请刷新文件列表')
+          const result = safeObject(await (kind === 'delete' ? deleteMediaFile(name) : downloadMediaFile(name)))
+          if (!result.ok) throw new Error(result.message || '文件操作失败')
+          if (kind === 'delete') {
+            props.toast('文件已删除', 'ok')
+            await refreshFiles()
+          } else {
+            if (typeof result.dataBase64 !== 'string') throw new Error('文件下载数据无效')
+            const binary = atob(result.dataBase64)
+            const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0))
+            const blob = new Blob([bytes], { type: result.mime || 'application/octet-stream' })
+            const link = document.createElement('a')
+            const url = URL.createObjectURL(blob)
+            try {
+              link.href = url
+              link.download = String(item.name || result.name)
+              document.body.appendChild(link)
+              link.click()
+            } finally {
+              link.remove()
+              URL.revokeObjectURL(url)
+            }
+          }
+        } catch (error) {
+          const message = String(error?.message || '文件操作失败')
+          setFilesError(message)
+          props.toast(message, 'err')
+        } finally { fileBusy.current = false; setBusy('') }
       }
 
       const editTags = async (item) => {
@@ -6905,12 +6946,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           ),
         ),
         h(Panel, {
-          title: '文件', description: '上传后由主人使用 /file 相对路径 发送到当前 QQ 会话。',
+          title: '文件', description: '本地上传、下载与删除；发送到当前 QQ 会话由主人使用 /file 相对路径。',
           actions: h('div', { className: 'ob-row' },
             h('label', { className: cx('ob-btn small secondary', (Boolean(busy) || !status.enabled || !status.files?.enabled) && 'disabled') },
               busy === 'file' ? '上传中…' : '上传文件',
               h('input', { className: 'ob-sr-only', type: 'file', 'aria-label': '上传文件', accept: fileAccept, disabled: Boolean(busy) || !status.enabled || !status.files?.enabled, onChange: uploadFile })),
-            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: filesLoading, disabled: busy === 'file', onClick: refreshFiles }, '刷新文件')),
+            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: filesLoading, disabled: Boolean(busy) || filesLoading, onClick: () => { if (!fileBusy.current) return refreshFiles() } }, '刷新文件')),
         },
           h('p', { className: 'ob-note' }, '单文件上限 ' + (Number(status.maxBytes) || 10 * 1024 * 1024) + ' bytes；按修改时间显示最新 500 项，合计 ' + (Number(filesData.totalBytes) || 0) + ' bytes。'),
           filesError ? h(Banner, { tone: 'err', message: filesError }) : null,
@@ -6918,6 +6959,9 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('p', { className: 'ob-media-name' }, String(item.name || '未命名')),
             h('p', { className: 'ob-note ob-mono' }, String(item.path || '')),
             h('p', { className: 'ob-note' }, String(Number(item.size) || 0) + ' bytes · ' + formatDateTime(item.at)),
+            h('div', { className: 'ob-row' },
+              h(Btn, { small: true, kind: 'ghost', disabled: Boolean(busy) || filesLoading || !status.enabled || !status.files?.enabled, onClick: () => fileAction('download', item) }, '下载'),
+              h(Btn, { small: true, kind: 'danger', icon: 'trash', disabled: Boolean(busy) || filesLoading || !status.enabled || !status.files?.enabled, onClick: () => fileAction('delete', item) }, '删除')),
           ))) : !filesError ? h('p', { className: 'ob-note' }, '还没有文件') : null,
         ),
         h(Panel, {

@@ -873,9 +873,9 @@ test('e2e: timeline archive route imports current persona events and filters sco
   }
 })
 
-test('media file routes: disabled gates, large local upload/list and 15 MiB body cap without QQ sends', async (t) => {
+test('media file routes: disabled gates, local upload/list/download/delete and 15 MiB body cap without QQ sends', async (t) => {
   const { fake, mock, dir } = await boot(t)
-  for (const [path, body, method] of [['/media/files', undefined, 'GET'], ['/media/file/upload', { name: 'a.txt', dataBase64: 'YQ==' }, 'POST']]) {
+  for (const [path, body, method] of [['/media/files', undefined, 'GET'], ['/media/file/upload', { name: 'a.txt', dataBase64: 'YQ==' }, 'POST'], ['/media/file/download?name=a.txt', undefined, 'GET'], ['/media/file/delete', { name: 'a.txt' }, 'POST']]) {
     const rejected = await fake.call(API + path, body, { method })
     assert.equal(rejected.json.ok, false)
     assert.match(rejected.json.message, /文件功能未启用/)
@@ -891,15 +891,38 @@ test('media file routes: disabled gates, large local upload/list and 15 MiB body
   const listed = await getJson(fake, '/media/files')
   assert.equal(listed.items[0].path, saved.path)
   assert.equal(listed.totalBytes, buffer.length)
+  const name = saved.path.slice(6)
+  const downloaded = await getJson(fake, '/media/file/download?name=' + encodeURIComponent(name))
+  assert.deepEqual(downloaded, { ok: true, name, size: buffer.length, mime: 'application/pdf', dataBase64: buffer.toString('base64') })
+  for (const invalid of [undefined, '', '../report.pdf', saved.path, '/etc/passwd', 'C:\\report.pdf', 'a\0.txt', 'a'.repeat(121), 'bad.exe', 'missing.txt']) {
+    for (const [path, body, method] of [
+      ['/media/file/download' + (invalid === undefined ? '' : '?name=' + encodeURIComponent(invalid)), undefined, 'GET'],
+      ['/media/file/delete', { name: invalid }, 'POST'],
+    ]) {
+      const result = await fake.call(API + path, body, { method })
+      assert.equal(result.json.ok, false)
+      assert.doesNotMatch(result.text, new RegExp(dir))
+    }
+  }
+  for (const [path, method] of [['/media/file/download', 'POST'], ['/media/file/delete', 'GET']]) {
+    assert.equal((await fake.call(API + path, { name }, { method })).status, 405)
+  }
+  for (const body of [null, [], { path: saved.path }, { name: {} }]) assert.equal((await fake.call(API + '/media/file/delete', body, { method: 'POST' })).json.ok, false)
   for (const body of [null, [], { name: '../a.txt', dataBase64: 'YQ==' }, { name: 'a.txt', dataBase64: 'data:text/plain;base64,YQ==' }, { name: 'a.exe', dataBase64: 'YQ==' }]) {
     assert.equal((await fake.call(API + '/media/file/upload', body, { method: 'POST' })).json.ok, false)
   }
   const oversized = await fake.call(API + '/media/file/upload', { name: 'big.txt', dataBase64: 'A'.repeat(15 * 1024 * 1024) }, { method: 'POST' })
   assert.equal(oversized.json.ok, false)
   assert.match(oversized.json.message, /请求体过大/)
+  assert.deepEqual(await postJson(fake, '/media/file/delete', { name }), { ok: true, name, removed: true })
+  assert.deepEqual((await getJson(fake, '/media/files')).items, [])
+  assert.equal((await fake.call(API + '/media/file/download?name=' + encodeURIComponent(name), undefined, { method: 'GET' })).json.message, '文件不存在')
+  assert.equal((await fake.call(API + '/media/file/delete', { name }, { method: 'POST' })).json.message, '文件不存在')
   await patchConfig(fake, { media: { files: { enabled: false } } })
   assert.equal((await fake.call(API + '/media/files', undefined, { method: 'GET' })).json.ok, false)
-  assert.equal(mock.calls.length, 0, 'upload/list must not call QQ gateway')
+  assert.match((await fake.call(API + '/media/file/download?name=a.txt', undefined, { method: 'GET' })).json.message, /文件功能未启用/)
+  assert.match((await fake.call(API + '/media/file/delete', { name: 'a.txt' }, { method: 'POST' })).json.message, /文件功能未启用/)
+  assert.equal(mock.calls.length, 0, 'local file operations must not call QQ gateway')
 })
 
 

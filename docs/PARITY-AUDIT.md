@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s/M7-t/M7-u 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-u 更新 #45（未发布）：文件列表增加本地下载/确认删除、共享上传/下载/删除忙碌锁、错误 toast、删除后刷新；GET `/media/file/download?name=` 返回 base64 JSON，POST `/media/file/delete {name}` 只操作固定 files 目录的安全存储 basename≤120、白名单扩展名、普通非符号链接文件。媒体/文件双开关、realpath、no-follow 句柄及 maxBytes 有界读取，缺失安全错误；新上传长名称保留扩展名缩短存储名，不覆盖或自动迁移旧文件。默认仍关闭，无新依赖/配置、外部调用、发送面板或任意本地路径；发送仍由主人 `/file`，真实 QQ 文件兼容性/本轮真实浏览器未验证。#45 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
 
 M7-t 更新 #38：新增主人 `/purpose plan ID`，仅活跃 goal 的非空标题/描述，显式调用既有 JSON LLM；严格校验 1–8 条非空唯一步骤、去控制字符与每条 200 UTF-16 单元上限；只写 steps，等待期间目标变化拒绝覆盖。`/purpose step ID N [done|undo]`（1–20，默认 done）只修改选中步骤完成标记，steps 查看进度；沿用服务既有自动完成规则，undo 不自动 resume。owner/禁用/访问与参数闸门，缺服务/异常静态安全失败，仅当前聊天回复。无新配置/依赖、隐式 LLM 调用或后台执行；没有自主执行器、动作绑定、审批集成，真实模型/QQ 未验证、未部署。#38 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
 
@@ -26,7 +28,7 @@ M7-g 更新 #29：当前人格 facet（含 group-scope 群印象）可编辑内�
 
 M7-h 更新 #30：通用 JSON/JSONL 新增时间轴事件导入（默认仍为记忆），事件时间必填、独立存储/幂等 ID、当前人格及 scope 隔离；面板种类选择与 event 筛选。仅合成数据/离线服务、API 与面板测试；无 Aurabot 专用迁移或真实旧档案样本，#30 保持 partial，#31/#42/#49/#50 状态不变。
 
-M7-k 更新 #45：本地文件上传/列表 API 与媒体页文件区，固定 files 目录、媒体/文件双开关、安全 basename≤120、严格规范 base64、解码大小与 15 MiB JSON 体积上限、realpath/符号链接检查和 wx 防覆盖；最新 500 项、全部合格文件总字节数、客户端预检/防重/错误/刷新。仅离线服务/fake 宿主/mock 面板证据；无文件发送/删除/下载面板，发送仍用主人 `/file`，真实 QQ 未验证。#45 仍 partial，#31/#42/#49/#50 不变，remaining 47。
+M7-k 更新 #45：本地文件上传/列表 API 与媒体页文件区，固定 files 目录、媒体/文件双开关、安全 basename≤120、严格规范 base64、解码大小与 15 MiB JSON 体积上限、realpath/符号链接检查和 wx 防覆盖；最新 500 项、全部合格文件总字节数、客户端预检/防重/错误/刷新。仅离线服务/fake 宿主/mock 面板证据；M7-u 后续增加本地下载/确认删除（见上文），无发送面板，发送仍用主人 `/file`，真实 QQ 文件兼容性未验证。#45 仍 partial，#31/#42/#49/#50 不变，remaining 47。
 
 M7-j 更新 #3/#15：十种已知通知（含群名/头衔/精华/离线文件）校验/去重写当前人格时间轴；好友/群请求只存 pending，主人列表与 approve/reject 固定 confirm，服务复核身份/开关/状态，固定请求 action、并发防重及原人格完成写入。flag 不进公共列表/回复/日志，备注和通知文本限长/去控制字符/已知密钥脱敏；新增 requests 人格数据组。仅合成事件/fake 网关证据，无自动审批/审批面板/新增请求 API/Agent 工具，无通用审批/逐项权限或 PII 检测，真实 QQ 未验证；#3/#15 仍 partial，#31/#42/#49/#50 不变，remaining 47。
 
@@ -70,8 +72,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 39，none: 1，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：67 个 JS 文件 / 17145 行。
-测试静态计数：47 个文件 / 11290 行 / 493 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：67 个 JS 文件 / 17221 行。
+测试静态计数：47 个文件 / 11521 行 / 502 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -186,7 +188,7 @@ npm run check:docs
 | 37 | 候选效用/bandit/结果归因 | leading | 已领先（无缺口） |
 | 41 | TTS/语音条/ASR | partial | 无自动语音策略、多音色编排、RVC/翻唱或 Agent 工具；待真机 |
 | 43 | 表情包 | partial | 不自动收集、缩放转码、语境/情绪选择或接商城 |
-| 45 | 文件发送/接收 | partial | 无文件发送/删除/下载面板；上传/列表需 media.enabled/files.enabled，主人发送另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
+| 45 | 文件发送/接收 | partial | 本地上传/列表/下载/删除需 media.enabled/files.enabled，无任意本地路径；无发送面板，主人 /file 另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
 | 48 | B 站浏览/评论/分享 | partial | 仅公开评论/离线分享；无登录/WBI/字幕/发布评论，真实接口未验证 |
 | 56 | 设置向导 | partial | 无独立向导/自动修复；模块始终人工待检查，媒体只检查字段，不验密钥/服务；无 API 鉴权变更，仍依赖 DSH 本机信任边界；未做真实浏览器 V |
 | 57 | 备份/恢复 | partial | 复制 SQLite 前停写，恢复后重启；无在线一致性/整目录事务、云端上传下载、自动恢复或迁移 |
@@ -204,7 +206,7 @@ npm run check:docs
 | M7-t 目的规划/步骤标记 | [commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[purpose.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/purpose.test.js)：fake LLM/真实进度、JSON/数量/长度/控制字符/去重、缺服务/目标/歧义/状态、等待期间变化、done/undo/越界、owner/禁用/访问、坏输入零服务调用、仅当前聊天回复及无动作调用 | 无自主执行器/动作绑定/审批集成、真实模型/QQ 验证；#38 仍 partial |
 | M7-m B站公开评论/分享 | [bilibili.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/bilibili.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[e2e.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：合成响应/fake 宿主/mock UI，评论去重/限额/纯文本/默认关闭/离线分享/HTTP/超时/风控 | 真实 B站/QQ/浏览器；无登录/WBI/字幕/发布评论；#48 仍 partial |
 | M7-l 主人本地提醒 | [reminders.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/reminders.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)：默认关闭/owner/scope/时间/Unicode/重复与限额、一次/重复成功、安全失败重试、最多20/不重叠/dispose、人格复制/删除/切换、真实 outbound 闸门、命令及 cognition 重启持久化；全部使用 fake 时间/网关 | 真实定时器/QQ；无 DSH jobs、长任务、LLM 任务执行、提醒 HTTP/管理面板；#8/#40 仅 partial |
-| M7-k 本地文件上传/列表 | [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
+| M7-k/M7-u 本地文件上传/列表/下载/删除 | [media.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/media.test.js)、[API](https://github.com/reina0721/dsh-bot/blob/main/test/e2e.test.js)、[面板](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 本地下载/确认删除、路径/目录/符号链接/大小/缺失/开关、MIME/严格 base64、Blob/文件名/URL 清理、防重/错误 toast 有离线测试；无发送面板/任意本地路径，真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
 | M7-j 通知/主人请求审批 | [notices.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/notices.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
 | M7-i 出站文本防泄漏 | [leak-guard.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/leak-guard.test.js)、[outbound.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/outbound.test.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js)：本地规则、重叠/上限、配置回退、访问/限频/dry-run、错误隐私与只读状态 | 统一审批/逐项权限、PII/熵检测、媒体/文件及独立发送路径、跨段/跨消息密钥；可能误报/漏报，未做真实 QQ/浏览器验证；#15 仍 partial |
 | M7-g 人物/群印象与关系编辑 | [client.js](../client.js)、[panel.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/panel.test.js) 新增 6 项；mock API、原作用域/差量保存、Unicode/数值校验、取消/禁用/失败/刷新 | 本轮真实浏览器验证、独立人物说话方式编辑器、Aurabot 专用人物/群档案导入；既有后端 UTF-16 截断未改；#29 仍 partial |
@@ -279,3 +281,10 @@ M7-p 本次最终 `npm test` 退出 **0**：505 项，501 通过、0 失败、4 
 M7-t 本次最终 `npm test` 退出 **0**：559 项，555 通过、0 失败、4 跳过（既有 live 模型测试），耗时 136734.573957 ms；新增 11 个顶层命令测试声明，最终 commands/purpose 专项 71 项全部通过。覆盖 fake LLM 的有效/无效 JSON、1/8 步与 200 字符边界、控制字符、非空/唯一/类型校验，缺少模型/目的/目标信息、目标状态/歧义、等待期间暂停/删除/修改、步骤 done/undo/20步边界/越界、坏输入零服务调用、owner/操作员/访问/禁用闸门、静态安全错误、无隐式模型调用和无动作执行。出站仅 fake 当前聊天命令回复；未配置 outbound 的手动标记与查看也返回摘要，无真实模型/QQ 或网络调用。
 
 `npm run check:docs` 与 `npm run check:parity` 均退出 **0**。审计快照为源码 67 个 JS 文件 / 17145 行，测试 47 个文件 / 11290 行 / 493 个顶层声明；矩阵仍为 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。#38 仅增加计划生成与手动步骤标记，仍 partial；没有自主执行器、动作绑定或审批集成。无新配置字段/依赖、后台执行、默认行为变化或 git 操作；`cordis.patch.yml` 的 SHA-256 与 #31/#42/#49/#50 行均已对照任务前副本确认未变，未部署。
+
+
+### M7-u 本地文件下载/删除验证（2026-11-06，未发布）
+
+`npm test` 退出 **0**：568 项，564 通过、0 失败、4 跳过（既有 live 模型测试），耗时 135370.129349 ms。新增 9 个顶层测试声明；媒体/面板专项 72 项全通过，文件路由专项 1 项通过。覆盖完整存储 basename、二进制严格 base64/MIME、重复名称隔离、读取/删除、缺失/禁用/大小边界、超大文件可删除、路径/Windows/控制字符/扩展名、文件与目录符号链接、目录/FIFO、长名称上限、HTTP 方法/坏参数/安全错误、删除确认/取消、共享忙碌锁及旧 handler 防重、刷新、下载 Blob/文件名/object URL 清理、接口/连接/数据错误 toast；所有服务调用均为临时文件/fake 宿主/mock fetch，不调用真实 QQ 或媒体 provider。
+
+`npm run check:docs` 与 `npm run check:parity` 均退出 **0**。当前审计为源码 67 个 JS 文件 / 17221 行，测试 47 个文件 / 11521 行 / 502 个顶层声明；6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。`cordis.patch.yml` SHA-256 与 #31/#42/#49/#50 矩阵行均对照任务前快照确认未变。无新增依赖/配置、外部网络请求、git 操作、自动发送、任意本地路径或部署；发送沿用主人 `/file`，真实 QQ 文件兼容性及本轮真实浏览器未验证，#45 保持 partial。

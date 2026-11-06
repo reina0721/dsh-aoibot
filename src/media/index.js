@@ -1,11 +1,20 @@
 // Media ingest/outbound foundation. External providers are opt-in and all failures are non-fatal.
-import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, open, readFile, readdir, realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import { basename, extname, isAbsolute, join, resolve, sep, win32 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.amr', '.silk'])
 const FILE_EXTENSIONS = new Set(['.txt', '.md', '.json', '.csv', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.zip', '.7z', '.rar'])
+const FILE_MIME = {
+  '.txt': 'text/plain', '.md': 'text/markdown', '.json': 'application/json', '.csv': 'text/csv',
+  '.pdf': 'application/pdf', '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel', '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.ppt': 'application/vnd.ms-powerpoint', '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.zip': 'application/zip', '.7z': 'application/x-7z-compressed', '.rar': 'application/vnd.rar',
+}
 const MIME_EXT = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/bmp': '.bmp',
   'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/x-wav': '.wav', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a',
@@ -17,6 +26,13 @@ const DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 function safeName(value, fallback = 'media') {
   const name = basename(String(value || fallback)).replace(/[^\p{L}\p{N}._ -]/gu, '_').slice(0, 120)
   return name && name !== '.' && name !== '..' ? name : fallback
+}
+
+function requireFileName(name) {
+  if (typeof name !== 'string' || !name.trim() || name.length > 120 || name !== basename(name) || name !== win32.basename(name) || !/^[\p{L}\p{N}._ -]+$/u.test(name) || name === '.' || name === '..') throw new Error('文件名必须是 1–120 字符的安全 basename')
+  const extension = extname(name).toLowerCase()
+  if (!FILE_EXTENSIONS.has(extension)) throw new Error('文件扩展名不在允许列表')
+  if (!name.slice(0, -extension.length).replace(/[. ]/g, '')) throw new Error('文件名缺少有效名称')
 }
 
 function endpoint(base, suffix) {
@@ -235,10 +251,7 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
 
   async function saveFile({ name, dataBase64 } = {}) {
     requireFiles()
-    if (typeof name !== 'string' || !name.trim() || name.length > 120 || name !== basename(name) || name !== win32.basename(name) || !/^[\p{L}\p{N}._ -]+$/u.test(name) || name === '.' || name === '..') throw new Error('文件名必须是 1–120 字符的安全 basename')
-    const extension = extname(name).toLowerCase()
-    if (!FILE_EXTENSIONS.has(extension)) throw new Error('文件扩展名不在允许列表')
-    if (!name.slice(0, -extension.length).replace(/[. ]/g, '')) throw new Error('文件名缺少有效名称')
+    requireFileName(name)
     if (typeof dataBase64 !== 'string' || !dataBase64) throw new Error('dataBase64 必须是非空的严格 base64（不支持 data URL）')
     if (dataBase64.length > Math.ceil(maxBytes() / 3) * 4) throw new Error(`文件超过大小限制 ${maxBytes()} bytes`)
     if (dataBase64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) throw new Error('dataBase64 必须是严格 base64（不支持 data URL）')
@@ -246,7 +259,11 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     if (buffer.toString('base64') !== dataBase64) throw new Error('dataBase64 必须是严格 base64')
     if (!buffer.length || buffer.length > maxBytes()) throw new Error(`文件为空或超过大小限制 ${maxBytes()} bytes`)
     const dir = await filesDir(true)
-    const storedName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeName(name)}`
+    const prefix = `${Date.now()}-${randomUUID().slice(0, 8)}-`
+    const extension = extname(name)
+    let stem = name.slice(0, -extension.length).slice(0, 120 - prefix.length - extension.length)
+    if (/[\uD800-\uDBFF]$/.test(stem)) stem = stem.slice(0, -1)
+    const storedName = prefix + stem + extension
     await writeFile(join(dir, storedName), buffer, { flag: 'wx' })
     return { ok: true, path: `files/${storedName}`, name, size: buffer.length }
   }
@@ -273,6 +290,60 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     }
     items.sort((a, b) => b.at - a.at || b.path.localeCompare(a.path))
     return { items: items.slice(0, 500), totalBytes }
+  }
+
+  async function localFile(name) {
+    requireFiles()
+    requireFileName(name)
+    const dir = await filesDir()
+    if (!dir) throw new Error('文件不存在')
+    const file = join(dir, name)
+    const info = await lstat(file)
+    if (info.isSymbolicLink() || !info.isFile()) throw new Error('文件必须是普通文件，不能是目录或符号链接')
+    const realFile = await realpath(file)
+    if (realFile !== file || !realFile.startsWith(`${dir}${sep}`)) throw new Error('文件必须位于本地 files 目录内')
+    return { file, info }
+  }
+
+  async function removeFile(name) {
+    try {
+      const { file } = await localFile(name)
+      await unlink(file)
+      return { name, removed: true }
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new Error('文件不存在')
+      if (error.code) throw new Error('删除本地文件失败')
+      throw error
+    }
+  }
+
+  async function readLocalFile(name) {
+    let handle
+    try {
+      const { file, info } = await localFile(name)
+      const limit = maxBytes()
+      if (info.size > limit) throw new Error(`文件超过大小限制 ${limit} bytes`)
+      // No-follow and non-blocking open also protect against replacement by a symlink/FIFO.
+      handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+      const opened = await handle.stat()
+      if (!opened.isFile() || opened.dev !== info.dev || opened.ino !== info.ino) throw new Error('本地文件已变化，请刷新后重试')
+      if (opened.size > limit) throw new Error(`文件超过大小限制 ${limit} bytes`)
+      const chunks = []
+      let size = 0
+      while (true) {
+        const chunk = Buffer.alloc(Math.min(65536, limit + 1 - size))
+        const { bytesRead } = await handle.read(chunk, 0, chunk.length, null)
+        if (!bytesRead) break
+        size += bytesRead
+        if (size > limit) throw new Error(`文件超过大小限制 ${limit} bytes`)
+        chunks.push(chunk.subarray(0, bytesRead))
+      }
+      return { name, size, mime: FILE_MIME[extname(name).toLowerCase()], dataBase64: Buffer.concat(chunks, size).toString('base64') }
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new Error('文件不存在')
+      if (error.code) throw new Error('读取本地文件失败')
+      throw error
+    } finally { await handle?.close() }
   }
 
   async function confinedFile(kind, { relativePath, filePath } = {}) {
@@ -418,5 +489,5 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     throw new Error('kind 必须是 tts、asr 或 vision')
   }
 
-  return { ingestTurn, sendMedia, synthesize, generateImage, editImage, saveFile, listFiles, status, test: testProvider }
+  return { ingestTurn, sendMedia, synthesize, generateImage, editImage, saveFile, listFiles, removeFile, readFile: readLocalFile, status, test: testProvider }
 }

@@ -198,6 +198,11 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   if (media) {
     route('GET', '/media/status', async () => ({ ok: true, ...media.status(), stickers: stickers ? await stickers.status() : null }))
     route('GET', '/media/files', async () => ({ ok: true, ...await media.listFiles() }))
+    route('GET', '/media/file/download', async (req) => ({ ok: true, ...await media.readFile(queryOf(req).name) }))
+    route('POST', '/media/file/delete', async (req) => {
+      const body = await readBody(req)
+      return { ok: true, ...await media.removeFile(body?.name) }
+    })
     route('POST', '/media/file/upload', async (req) => {
       const body = await readBody(req, 15 * 1024 * 1024)
       return media.saveFile({ name: body?.name, dataBase64: body?.dataBase64 })

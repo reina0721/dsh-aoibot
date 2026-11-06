@@ -372,12 +372,14 @@ test('files: size boundary, allowed extensions and safe basename validation', as
   assert.equal((await media.listFiles()).items.length, 15)
 })
 
-test('files: total/media switches gate upload and list without creating directories', async (t) => {
+test('files: total/media switches gate upload/list/read/delete without creating directories', async (t) => {
   const { media, cfg, root } = filesHarness(t, { enabled: false })
   for (const switches of [{ enabled: false, files: { enabled: true } }, { enabled: true, files: { enabled: false } }]) {
     Object.assign(cfg.media, switches)
     await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /文件功能未启用/)
     await assert.rejects(media.listFiles(), /文件功能未启用/)
+    await assert.rejects(media.readFile('a.txt'), /文件功能未启用/)
+    await assert.rejects(media.removeFile('a.txt'), /文件功能未启用/)
   }
   assert.throws(() => readFileSync(root), /ENOENT/)
 })
@@ -411,12 +413,102 @@ test('files: upload/list reject files-directory symlinks inside or outside root 
     symlinkSync(directory, join(root, 'files'), 'dir')
     await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /符号链接/)
     await assert.rejects(media.listFiles(), /符号链接/)
+    await assert.rejects(media.readFile('a.txt'), /符号链接/)
+    await assert.rejects(media.removeFile('a.txt'), /符号链接/)
     rmSync(join(root, 'files'))
   }
   writeFileSync(join(root, 'files'), 'untouched')
   await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /不是目录/)
   await assert.rejects(media.listFiles(), /不是目录/)
+  await assert.rejects(media.readFile('a.txt'), /不是目录/)
+  await assert.rejects(media.removeFile('a.txt'), /不是目录/)
   assert.equal(readFileSync(join(root, 'files'), 'utf8'), 'untouched')
+})
+
+test('files: read/delete exact stored basename, canonical binary base64, MIME and duplicate-name isolation', async (t) => {
+  const { media, root } = filesHarness(t)
+  const bytes = Buffer.from([0, 1, 255, 254, 128])
+  const first = await media.saveFile({ name: '报告.PDF', dataBase64: bytes.toString('base64') })
+  const second = await media.saveFile({ name: '报告.PDF', dataBase64: 'YQ==' })
+  const name = basename(first.path)
+  assert.deepEqual(await media.readFile(name), { name, size: 5, mime: 'application/pdf', dataBase64: 'AAH//oA=' })
+  assert.deepEqual(await media.removeFile(name), { name, removed: true })
+  assert.equal(existsSync(join(root, first.path)), false)
+  assert.equal(readFileSync(join(root, second.path), 'utf8'), 'a')
+  assert.equal((await media.listFiles()).items.length, 1)
+  for (const action of ['readFile', 'removeFile']) {
+    await assert.rejects(media[action](name), { message: '文件不存在' })
+    await assert.rejects(media[action]('missing.txt'), { message: '文件不存在' })
+  }
+})
+
+test('files: read/delete missing directories fail safely and never create them', async (t) => {
+  const { media, root } = filesHarness(t)
+  for (const action of ['readFile', 'removeFile']) await assert.rejects(media[action]('missing.txt'), { message: '文件不存在' })
+  assert.equal(existsSync(root), false)
+  mkdirSync(root)
+  for (const action of ['readFile', 'removeFile']) await assert.rejects(media[action]('missing.txt'), { message: '文件不存在' })
+  assert.equal(existsSync(join(root, 'files')), false)
+})
+
+test('files: read/delete reject traversal, absolute/Windows/control names, bad extensions and overlong names', async (t) => {
+  const { media, root } = filesHarness(t)
+  const saved = await media.saveFile({ name: 'keep.txt', dataBase64: 'YQ==' })
+  const invalid = [undefined, null, 1, {}, '', ' ', '.', '..', '../keep.txt', '/keep.txt', 'files/keep.txt',
+    'a\\keep.txt', 'C:keep.txt', 'C:\\keep.txt', '\\\\host\\keep.txt', '%2e%2e%2fkeep.txt',
+    'a\0.txt', 'a\n.txt', 'a\r.txt', 'a\t.txt', 'a\x7f.txt', 'a\x85.txt', 'a'.repeat(117) + '.txt', 'bad.exe', '.txt']
+  for (const action of ['readFile', 'removeFile']) for (const name of invalid) await assert.rejects(media[action](name))
+  assert.equal(readFileSync(join(root, saved.path), 'utf8'), 'a')
+})
+
+test('files: read/delete reject file symlinks inside/outside root, dangling links, directories and FIFOs', async (t) => {
+  const { media, root, base } = filesHarness(t)
+  const saved = await media.saveFile({ name: 'keep.txt', dataBase64: 'YQ==' })
+  const dir = join(root, 'files')
+  writeFileSync(join(base, 'outside.txt'), 'secret')
+  symlinkSync(join(base, 'outside.txt'), join(dir, 'outside.txt'))
+  symlinkSync(join(root, saved.path), join(dir, 'inside.txt'))
+  symlinkSync(join(base, 'missing.txt'), join(dir, 'dangling.txt'))
+  mkdirSync(join(dir, 'directory.txt'))
+  const names = ['outside.txt', 'inside.txt', 'dangling.txt', 'directory.txt']
+  if (process.platform !== 'win32') {
+    const { execFileSync } = await import('node:child_process')
+    execFileSync('mkfifo', [join(dir, 'pipe.txt')])
+    names.push('pipe.txt')
+  }
+  for (const action of ['readFile', 'removeFile']) for (const name of names) await assert.rejects(media[action](name), /普通文件/)
+  assert.equal(readFileSync(join(base, 'outside.txt'), 'utf8'), 'secret')
+  assert.equal(readFileSync(join(root, saved.path), 'utf8'), 'a')
+})
+
+test('files: bounded reads at maxBytes, empty regular files and deletion of oversized files', async (t) => {
+  const { media, root } = filesHarness(t, { maxBytes: 1024 })
+  const saved = await media.saveFile({ name: 'a.txt', dataBase64: Buffer.alloc(1024, 255).toString('base64') })
+  const name = basename(saved.path)
+  const result = await media.readFile(name)
+  assert.equal(result.size, 1024)
+  assert.deepEqual(Buffer.from(result.dataBase64, 'base64'), Buffer.alloc(1024, 255))
+  assert.equal(result.dataBase64, Buffer.from(result.dataBase64, 'base64').toString('base64'))
+  writeFileSync(join(root, saved.path), Buffer.alloc(1025))
+  await assert.rejects(media.readFile(name), /大小限制 1024/)
+  assert.deepEqual(await media.removeFile(name), { name, removed: true })
+  writeFileSync(join(root, 'files', 'empty.txt'), '')
+  assert.deepEqual(await media.readFile('empty.txt'), { name: 'empty.txt', size: 0, mime: 'text/plain', dataBase64: '' })
+})
+
+test('files: 120-character uploads keep a manageable stored basename and preserve extensions/MIME', async (t) => {
+  const { media } = filesHarness(t)
+  for (const ext of ['txt', 'md', 'json', 'csv', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', '7z', 'rar']) {
+    const saved = await media.saveFile({ name: 'a'.repeat(119 - ext.length) + '.' + ext, dataBase64: 'YQ==' })
+    const name = basename(saved.path)
+    assert.equal(name.length, 120)
+    assert.ok(name.endsWith('.' + ext))
+    const result = await media.readFile(name)
+    assert.ok(result.mime)
+    assert.equal(result.dataBase64, 'YQ==')
+    await media.removeFile(name)
+  }
+  assert.deepEqual(await media.listFiles(), { items: [], totalBytes: 0 })
 })
 
 test('files: same-name concurrent uploads at one timestamp preserve existing contents without overwriting', async (t) => {

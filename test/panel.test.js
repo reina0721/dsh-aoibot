@@ -1319,7 +1319,7 @@ const filePanel = (tree) => treeNodes(tree).find((node) => node.type?.name === '
 const fileInput = (tree) => field(filePanel(tree).props.actions, '上传文件')
 const refreshFilesButton = (tree) => control(filePanel(tree).props.actions, '刷新文件')
 
-test('MediaPage files: base64 upload, busy guard, refresh and path/size/time rendering without send/delete/download', async () => {
+test('MediaPage files: base64 upload, busy guard, refresh and path/size/time rendering without send', async () => {
   const originalFetch = globalThis.fetch, OriginalReader = globalThis.FileReader
   const calls = [], toasts = [], render = mountMediaFiles((...args) => toasts.push(args))
   let reader, reads = 0
@@ -1356,10 +1356,126 @@ test('MediaPage files: base64 upload, busy guard, refresh and path/size/time ren
     assert.equal(fileInput(done).props.disabled, false)
     assert.deepEqual(toasts, [['文件已上传', 'ok']])
     const fileNodes = [...treeNodes(filePanel(done)), ...treeNodes(filePanel(done).props.actions)]
-    assert.ok(!fileNodes.some((node) => node.type === 'a' || node.props?.download || node.children?.some((child) => typeof child === 'string' && /^(发送|删除|下载)/.test(child))))
+    assert.ok(!fileNodes.some((node) => node.children?.includes('发送')))
+    assert.equal(control(filePanel(done), '下载').props.disabled, false)
+    assert.equal(control(filePanel(done), '删除').props.disabled, false)
     await refreshFilesButton(done).props.onClick()
     assert.equal(calls.at(-1).method, 'GET')
   } finally { globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader }
+})
+
+test('MediaPage files: confirmed delete, cancellation, shared busy guard, list refresh and no QQ sends', async () => {
+  const originalFetch = globalThis.fetch, originalConfirm = window.confirm
+  const calls = [], toasts = [], confirmations = [], render = mountMediaFiles((...args) => toasts.push(args))
+  const item = { path: 'files/1-deadbeef-报告.txt', name: '报告.txt', size: 6, at: Date.now() }
+  let deleted = false, release
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : undefined })
+    if (path.endsWith('/delete')) return new Promise((resolve) => { release = () => { deleted = true; resolve({ ok: true, json: async () => ({ ok: true, removed: true }) }) } })
+    assert.ok(path.endsWith('/media/files'))
+    return { ok: true, json: async () => ({ ok: true, items: deleted ? [] : [item], totalBytes: deleted ? 0 : 6 }) }
+  }
+  try {
+    await refreshFilesButton(render()).props.onClick()
+    const tree = render(), remove = control(filePanel(tree), '删除'), download = control(filePanel(tree), '下载')
+    window.confirm = (text) => { confirmations.push(text); return false }
+    await remove.props.onClick()
+    assert.match(confirmations[0], /报告.txt.*无法恢复/)
+    assert.equal(calls.length, 1)
+    delete window.confirm
+    await remove.props.onClick()
+    assert.equal(calls.length, 1, 'delete requires a confirmation dialog')
+    window.confirm = () => true
+    const pending = remove.props.onClick()
+    assert.deepEqual(calls[1], { path: panel.API_PREFIX + '/media/file/delete', method: 'POST', body: { name: '1-deadbeef-报告.txt' } })
+    for (const label of ['下载', '删除']) assert.equal(control(filePanel(render()), label).props.disabled, true)
+    assert.equal(fileInput(render()).props.disabled, true)
+    assert.equal(refreshFilesButton(render()).props.disabled, true)
+    await download.props.onClick()
+    await remove.props.onClick()
+    await refreshFilesButton(tree).props.onClick()
+    await fileInput(tree).props.onChange({ target: { files: [{ name: 'a.txt', size: 1 }], value: 'selected' } })
+    assert.equal(calls.length, 2, 'stale handlers must share the in-flight guard')
+    release()
+    await pending
+    assert.deepEqual(toasts, [['文件已删除', 'ok']])
+    assert.equal(calls.at(-1).path, panel.API_PREFIX + '/media/files')
+    assert.match(JSON.stringify(filePanel(render())), /还没有文件/)
+    assert.equal(fileInput(render()).props.disabled, false)
+  } finally { globalThis.fetch = originalFetch; window.confirm = originalConfirm }
+})
+
+test('MediaPage files: download JSON to binary Blob, original filename, click and object URL cleanup', async (t) => {
+  const originalFetch = globalThis.fetch, originalDocument = globalThis.document
+  const render = mountMediaFiles(), calls = [], events = []
+  let blob, link
+  t.mock.method(URL, 'createObjectURL', (value) => { blob = value; return 'blob:local-file' })
+  t.mock.method(URL, 'revokeObjectURL', (value) => events.push(['revoke', value]))
+  globalThis.document = {
+    body: { appendChild(value) { assert.equal(value, link); events.push(['append']) } },
+    createElement(tag) {
+      assert.equal(tag, 'a')
+      link = { click() { events.push(['click', this.href, this.download]) }, remove() { events.push(['remove']) } }
+      return link
+    },
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method })
+    return { ok: true, json: async () => path.endsWith('/media/files')
+      ? { ok: true, items: [{ path: 'files/1-deadbeef-报告.PDF', name: '报告.PDF', size: 5 }] }
+      : { ok: true, name: '1-deadbeef-报告.PDF', size: 5, mime: 'application/pdf', dataBase64: 'AAH//oA=' } }
+  }
+  try {
+    await refreshFilesButton(render()).props.onClick()
+    await control(filePanel(render()), '下载').props.onClick()
+    assert.deepEqual(calls[1], { path: panel.API_PREFIX + '/media/file/download?name=' + encodeURIComponent('1-deadbeef-报告.PDF'), method: 'GET' })
+    assert.equal(blob.type, 'application/pdf')
+    assert.deepEqual(Buffer.from(await blob.arrayBuffer()), Buffer.from([0, 1, 255, 254, 128]))
+    assert.deepEqual(events, [['append'], ['click', 'blob:local-file', '报告.PDF'], ['remove'], ['revoke', 'blob:local-file']])
+    assert.equal(control(filePanel(render()), '下载').props.disabled, false)
+  } finally { globalThis.fetch = originalFetch; globalThis.document = originalDocument }
+})
+
+test('MediaPage files: action/API/network/data errors toast and release busy state, disabled switches block actions', async () => {
+  const originalFetch = globalThis.fetch, originalConfirm = window.confirm
+  const toasts = [], render = mountMediaFiles((...args) => toasts.push(args))
+  let failed = false, requests = 0, payload = { ok: false, message: '文件不存在' }
+  globalThis.fetch = async (path) => {
+    requests++
+    if (path.endsWith('/media/files')) return { ok: true, json: async () => ({ ok: true, items: [{ path: 'files/1-deadbeef-a.txt', name: 'a.txt', size: 1 }] }) }
+    if (failed) throw new Error('本地连接失败')
+    return { ok: true, json: async () => payload }
+  }
+  window.confirm = () => true
+  try {
+    await refreshFilesButton(render()).props.onClick()
+    for (const label of ['下载', '删除']) {
+      await control(filePanel(render()), label).props.onClick()
+      assert.deepEqual(toasts.at(-1), ['文件不存在', 'err'])
+      assert.match(JSON.stringify(filePanel(render())), /文件不存在/)
+      assert.equal(control(filePanel(render()), label).props.disabled, false)
+    }
+    failed = true
+    await control(filePanel(render()), '下载').props.onClick()
+    assert.match(toasts.at(-1)[0], /本地连接失败/)
+    assert.equal(control(filePanel(render()), '删除').props.disabled, false)
+    failed = false
+    payload = { ok: true }
+    await control(filePanel(render()), '下载').props.onClick()
+    assert.deepEqual(toasts.at(-1), ['文件下载数据无效', 'err'])
+    const before = requests
+    for (const enabled of [false, true]) {
+      stateOverrides = [{ enabled, files: { enabled: !enabled } }, [], false, '', '', '', '', '1024x1024', '', '', '', '', { items: [{ path: 'files/a.txt', name: 'a.txt' }] }]
+      const tree = panel.MediaPage({ toast() {} })
+      stateOverrides = null
+      for (const label of ['下载', '删除']) {
+        const button = control(filePanel(tree), label)
+        assert.equal(button.props.disabled, true)
+        await button.props.onClick()
+      }
+    }
+    assert.equal(requests, before)
+  } finally { stateOverrides = null; globalThis.fetch = originalFetch; window.confirm = originalConfirm }
 })
 
 test('MediaPage files: size/extension checks before reading, read/upload/list errors and disabled input', async () => {
