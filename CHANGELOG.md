@@ -1,6 +1,8 @@
 # 变更记录
 
-## 0.11.3（2026-11-06）
+## 0.11.3（2026-11-06，live 文件面板已验证）
+
+- live 0.11.3 上传/列表/下载/删除 `smoke.txt` 成功，随后恢复 media/files 关闭；真实 QQ 文件发送仍未验证。
 
 - M7-u：媒体页文件列表新增本地「下载」「删除」，删除需确认，上传/下载/删除共用忙碌锁，错误 toast，删除后刷新。新增 `readFile(name)` / `removeFile(name)`、`GET /media/file/download?name=`（base64 JSON）和 `POST /media/file/delete {name}`；只接受固定 files 目录中的存储 basename（≤120），沿用媒体/文件双开关及扩展名白名单，拒绝路径、控制字符、目录和符号链接，校验 realpath/普通文件。读取受 maxBytes 限制并以不跟随符号链接的句柄有界读取，缺失文件安全报错；新上传的长名称保留扩展名、缩短存储名以满足 120 字符上限，wx 不覆盖。无新依赖/配置或外部调用，默认仍关闭；面板不发送，发送沿用主人 `/file`，真实 QQ 文件兼容性未验证。#45 仍 partial；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变。
 
