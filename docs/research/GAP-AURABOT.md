@@ -101,7 +101,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 27 | 记忆类型 | 本地索引 + 原话/梗概/事实分层 + 人物/群档案 | 工作/情景/语义/情绪/社会/程序 + FTS5 | 部分 | M3 |
 | 28 | 每日整理/空闲提炼 | 有；预算/批次/重试/保留 | 每日 04:00 巩固 + 按作用域 LLM 反思；手动触发；私聊隔离 | 部分（M3-b） | M3 剩余：批次/重试/保留 |
 | 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | person/relationship 数据有，UI 只有条数；目的已有独立页 | 部分 | M3 剩余 |
-| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 无独立时间轴；原始事件/记忆/决策可查 | 无 | M3 剩余 |
+| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 轮次/记忆/决策只读时间轴；无导入旧档案 | 部分（M3-c） | M3 剩余 |
 | 31 | 语义检索/embedding | 可选，默认关 | 只有 seam，未接真实向量 | 部分 | M3 |
 | 32 | 跨平台身份 | 有 | 无 | 无 | M3 |
 
@@ -267,6 +267,11 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 命令在 pipeline 的分析/策略前处理；`/quiet` `/active` 写回群聊参与/主动开关；`/remember` `/forget` 使用记忆服务。
 - 测试：`test/commands.test.js`、`test/model-llm.test.js` 的按聊天覆盖用例。
 - 边界：仅认知 LLM；agent Session 模型、`/sing` 等媒体命令留到后续。
+
+**M3-c（时间轴）**
+- `cognition/timeline.js`：turn/memory/decision 合并、倒序、before 分页、types/scope 过滤；API `/cognition/timeline`；认知「时间轴」页。
+- 测试：`test/timeline.test.js`（排序/before/type/scope/空输入）。
+- 边界：只读；无导入旧档案、无编辑。
 
 **M3-a（目的系统）**
 - `cognition/purpose.js`：goal/plan/intent，active/paused/done/abandoned；优先级/进度/步骤/截止/作用域；`promptContext` 限量注入 compose；`tick` 给建议不执行。

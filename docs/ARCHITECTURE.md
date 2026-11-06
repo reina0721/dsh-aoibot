@@ -329,7 +329,8 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
   只压缩已有记忆，结果写回同一 scope 的 semantic 记忆（source=`reflection`）；私聊不跨聊、不写 global。
 - 面板：认知 → 目的（增删改/进度/状态）；记忆页「整理/反思」手动触发；API `GET /cognition/purpose`、
   `POST /cognition/purpose/create|update|delete`、`POST /cognition/consolidation/run`。
-- 边界：目的不执行工具、不自动发消息；时间轴/人物档案编辑/向量检索仍在 M3 剩余。
+- `src/cognition/timeline.js`：只读聚合 turn/memory/decision，支持 `before` 分页、types 与 scope 过滤；面板「时间轴」按类型筛选。
+- 边界：目的不执行工具、不自动发消息；导入旧档案/人物档案编辑/向量检索仍在 M3 剩余。
 
 ## 4. 数据目录
 

@@ -5239,6 +5239,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'persons', label: '人物', icon: 'users' },
       { id: 'relationships', label: '关系', icon: 'link' },
       { id: 'memories', label: '记忆', icon: 'memory' },
+      { id: 'timeline', label: '时间轴', icon: 'clock' },
       { id: 'emotion', label: '情绪', icon: 'heart' },
       { id: 'purpose', label: '目的', icon: 'target' },
       { id: 'policy', label: '策略', icon: 'target' },
@@ -5382,6 +5383,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (section === 'persons') page = h(CogPersons, { ...props, data })
       else if (section === 'relationships') page = h(CogRelationships, props)
       else if (section === 'memories') page = h(CogMemories, props)
+      else if (section === 'timeline') page = h(CogTimeline, props)
       else if (section === 'emotion') page = h(CogEmotion, props)
       else if (section === 'purpose') page = h(CogPurpose, props)
       else if (section === 'policy') page = h(CogPolicy, props)
@@ -5744,6 +5746,51 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           h('div', { className: 'ob-cog-divider' }),
           h('div', { className: 'ob-row' }, top.length ? top.map(([key, value]) => h(CogTag, { key, tone: 'brand' }, key + ' ' + Math.round(Number(value) * 100) + '%')) : h('span', { className: 'ob-small ob-muted' }, '当前没有显著离散情绪')),
           emotion.appraisal ? h('p', { className: 'ob-field-help' }, '最近评价：' + JSON.stringify(emotion.appraisal)) : null,
+        ),
+      )
+    }
+
+    function CogTimeline(props) {
+      const [type, setType] = useState('')
+      const path = '/cognition/timeline?limit=120' + (type ? '&types=' + encodeURIComponent(type) : '')
+      const api = useCogApi(props, path)
+      const items = safeArray(api.data && api.data.items)
+      const toneOf = (value) => value === 'turn' ? 'brand' : value === 'memory' ? 'ok' : 'muted'
+      const timeOf = (at) => {
+        const value = Number(at) || 0
+        return value ? new Date(value).toLocaleString() : '—'
+      }
+      return h(
+        'div',
+        { className: 'ob-stack', style: { gap: '14px' } },
+        h(Panel, {
+          title: '时间轴',
+          description: '轮次、记忆、决策按时间合并；只读回忆日志，不改变任何状态。',
+          actions: h('div', { className: 'ob-row' },
+            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: api.reload }, '刷新'),
+          ),
+        },
+          h(CogToolbar, null,
+            [['', '全部'], ['turn', '轮次'], ['memory', '记忆'], ['decision', '决策']].map(([value, label]) =>
+              h(Btn, { key: value || 'all', small: true, kind: type === value ? 'primary' : 'ghost', onClick: () => setType(value) }, label),
+            ),
+          ),
+          api.error ? h(Banner, { tone: 'err', message: '时间轴 API 不可用：' + api.error }) : null,
+          api.loading ? h(CogLoading) : items.length
+            ? h('div', { className: 'ob-stack', style: { gap: '8px' } }, items.map((item) => h(
+                'div',
+                { key: item.id, className: 'ob-cog-line', style: { alignItems: 'flex-start' } },
+                h('div', { className: 'ob-stack', style: { flex: 1, gap: '2px' } },
+                  h('div', { className: 'ob-row' },
+                    h(CogTag, { tone: toneOf(item.type) }, item.type),
+                    h('strong', null, item.title || ''),
+                    h('span', { className: 'ob-muted ob-small', style: { marginLeft: 'auto' } }, timeOf(item.at)),
+                  ),
+                  item.detail ? h('p', { className: 'ob-small', style: { margin: 0 } }, item.detail) : null,
+                  h('span', { className: 'ob-muted ob-small' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')),
+                ),
+              )))
+            : h(CogEmpty, { title: '暂无记录', description: '收到消息、形成记忆或产生决策后会出现在这里。', icon: 'clock' }),
         ),
       )
     }

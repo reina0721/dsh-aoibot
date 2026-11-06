@@ -235,6 +235,20 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       if (!body?.id || !body?.action) throw new Error('缺少 id/action')
       return { ok: true, result: cognition.memoryAction(body.id, body.action) }
     })
+    route('GET', '/cognition/timeline', async (req) => {
+      const query = queryOf(req)
+      return {
+        ok: true,
+        items: cognition.timeline({
+          limit: toInt(query.limit, 100, 1, 200),
+          before: Number(query.before) || 0,
+          scopeType: query.scopeType || '',
+          scopeId: query.scopeId || '',
+          types: query.types ? String(query.types).split(',') : [],
+        }),
+        stats: cognition.timelineStats(),
+      }
+    })
     route('GET', '/cognition/consolidation', async () => ({ ok: true, ...(cognition.consolidationStats() || {}) }))
     route('POST', '/cognition/consolidation/run', async (req) => {
       const body = await readBody(req)

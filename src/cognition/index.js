@@ -33,6 +33,7 @@ import { createCommandService } from './commands.js'
 import { createQqActions } from './qq-actions.js'
 import { createPurposeService } from './purpose.js'
 import { createConsolidationService } from './consolidation.js'
+import { createTimelineService } from './timeline.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
 export function createCognition({
@@ -101,6 +102,7 @@ export function createCognition({
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
       state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
       state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
+      state.services.timeline = createTimelineService({ store: state.store, scopedStore: personaStore, clock })
       state.services.consolidation = createConsolidationService({
         memory: state.services.memory,
         llm: state.services.llm,
@@ -541,6 +543,14 @@ export function createCognition({
     try { return state.scopedStore.tx(fn) } catch (error) { log.warn?.('认知事务失败：', error.message); return null }
   }
 
+  function timeline(options = {}) {
+    return state.services.timeline?.timeline?.(options) || []
+  }
+
+  function timelineStats() {
+    return state.services.timeline?.stats?.() || null
+  }
+
   function consolidationStats() {
     return state.services.consolidation?.status?.() || null
   }
@@ -643,6 +653,8 @@ export function createCognition({
     purposeCreate,
     purposeUpdate,
     purposeDelete,
+    timeline,
+    timelineStats,
     consolidationStats,
     runConsolidation,
     runtimeStats: () => state.services.runtime?.summary?.() || null,
