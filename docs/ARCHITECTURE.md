@@ -352,15 +352,17 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
 - 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 媒体工具、RVC 仍未实现；受限图片生成/编辑见 §3.19；真实网关/provider 兼容性仍需 M7 实机验证。
 
-### 3.18 本地模块内核（M5-a）
+### 3.18 统一模块内核（模块架构 v2）
 
-- `src/modules/kernel.js` 扫描 `<dataDir>/modules/<id>/module.json`，只动态 import 操作员已经放到本机的数据目录中的 `.js`/`.mjs`；entry 的词法路径与 realpath 都必须留在模块目录内，拒绝路径遍历和符号链接逃逸。
-- manifest 要求合法 `id` 与 `entry`，可声明 name/version/description/permissions/enabled；启停覆盖原子写入 `modules/state.json`，缺失/损坏按空状态处理。无效 manifest 也保留为 error 列表项。
-- 生命周期：setup 可异步并返回 cleanup；reload/disable/dispose 先清理 cleanup、命令、事件、知识源和 capability。加载、setup 与事件错误都隔离并写入模块状态，绝不向 host 抛出。
-- 稳定 API 以权限门控：`events`、`commands`、`send:text`、`cognition:read`、`knowledge`、`capabilities`、`storage`。模块文本发送只能走 cognition outbound（`source=module:<id>`），继续受访问控制与频率限制；认知只暴露六个只读查询。
-- 存储为模块目录内 `data.json`，原子串行写、最多 1 MiB。命令不能覆盖内置或其它模块命令；默认 ownerOnly。
-- host 提供 `onebotModules`，在接受的规范化事件上非阻塞 dispatch；REST 为 `/modules`、`/modules/reload`、`/modules/toggle`，面板提供列表/启停/重载，不提供上传。
-- 安全边界：模块是宿主进程中的任意本地代码，permissions 不是 Node.js 沙箱。M5-a 不含远程下载、依赖安装、签名、marketplace、自动更新或文件监视。详见 `docs/MODULES.md`。
+- `src/modules/registry.js` 为冻结的包内静态注册表，lazy import；内置 ID 保留 `builtin-` 前缀。外部扫描 `<dataDir>/modules/<id>/module.json`，拒绝此前缀并跳过 `.builtin`；entry 词法路径与 realpath 都必须留在模块目录内。
+- `manifest.js` 共享 id/name/version/description/entry/permissions/enabled 校验，apiVersion 默认且仅支持 1，requires 默认 []、最多 16、合法 ID、无重复/自身。来源与 canReload/canToggle 由加载器赋值。
+- `dependencies.js` 先校验完整依赖图再导入：稳定拓扑排序，就绪内置优先再按 ID；缺失/环节点 error，下游 blocked，禁用/失败依赖也阻塞下游，无关模块继续。不会自动启用或下载依赖。
+- 生命周期操作串行；setup 可异步返回 cleanup，按下游到依赖逆序清理命令/事件/知识源/capability。外部 reload 会停止并恢复符合条件的下游；内置禁止直接 reload，协调时只用缓存代码重新 setup。旧 runtime 的迟到事件错误不能污染新状态。
+- `modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}` 与缺失/损坏状态。外部 `manifestEnabled && !disabled`，清单 false 不能 API/UI 启用；内置 disabled 优先，再 enabled，再 defaultEnabled。先成功写状态再改变 live，失败保持原状。
+- 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。发送仍走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
+- 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后只提供主人 `/module-sample` 固定回复。
+- host 显式传入生产 registry，保持 modulesReady/startup 顺序与规范化事件 dispatch。GET /modules 返回 items 和 summary；记录新增来源、API 版本、requires、操作能力及 blocked，不返回绝对路径。面板按能力提供启停/外部重载与刷新。
+- 模块仍与宿主同进程，permissions 不是沙箱；无核心功能迁移、远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
 
 ### 旧档案导入（M7-d）
 
@@ -406,7 +408,7 @@ REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBy
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
 ├── media/               # 可选：inbound/、outbound/、generated/、files/、stickers/ 与 stickers.json
-├── modules/             # 操作员安装的本地模块、state.json 与各模块 data.json
+├── modules/             # 外部模块、state.json、各模块 data.json 与 .builtin/<id>/data.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）

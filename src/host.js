@@ -28,6 +28,7 @@ import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
+import { builtinRegistry } from './modules/registry.js'
 import { personaProfileText } from './cognition/persona.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -95,6 +96,7 @@ export function apply(ctx, rowConfig) {
   })
   const modules = createModuleKernel({
     dataDir: dataDir('modules'),
+    registry: builtinRegistry,
     getConfig,
     ctx,
     logger,

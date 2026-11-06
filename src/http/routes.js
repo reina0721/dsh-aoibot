@@ -184,16 +184,21 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   if (modules) {
-    route('GET', '/modules', async () => ({ ok: true, items: modules.list() }))
+    route('GET', '/modules', async () => {
+      const items = modules.list()
+      return { ok: true, items, summary: { builtin: items.filter((item) => item.builtin).length, external: items.filter((item) => !item.builtin).length } }
+    })
     route('POST', '/modules/reload', async (req) => {
       const body = await readBody(req)
       if (!body?.id) throw new Error('缺少 id')
-      return { ok: true, item: await modules.reload(String(body.id)) }
+      try { return { ok: true, item: await modules.reload(String(body.id)) } }
+      catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
     route('POST', '/modules/toggle', async (req) => {
       const body = await readBody(req)
       if (!body?.id || typeof body.enabled !== 'boolean') throw new Error('需要 id 与 enabled(boolean)')
-      return { ok: true, item: await modules.setEnabled(String(body.id), body.enabled) }
+      try { return { ok: true, item: await modules.setEnabled(String(body.id), body.enabled) } }
+      catch (error) { if (error.code?.startsWith('MODULE_')) return { ok: false, code: error.code, message: error.message }; throw error }
     })
   }
 

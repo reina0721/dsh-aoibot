@@ -22,7 +22,7 @@ function fixture(t, patch = {}) {
 
 test('backup: default directory snapshot, manifest and public list; excludes unsafe/temporary/inbound data', async (t) => {
   const { root, service, put, read, load } = fixture(t)
-  const paths = ['config.json', 'models.json', 'cognition/state.json', 'cognition/persona/notes.txt', 'modules/state.json', 'modules/demo/module.json', 'modules/demo/index.js', 'modules/demo/data.json', 'media/stickers.json', 'media/stickers/a.png']
+  const paths = ['config.json', 'models.json', 'cognition/state.json', 'cognition/persona/notes.txt', 'modules/state.json', 'modules/demo/module.json', 'modules/demo/index.js', 'modules/demo/data.json', 'modules/.builtin/builtin-sample/data.json', 'media/stickers.json', 'media/stickers/a.png']
   for (const path of paths) put(path)
   for (const path of ['logs/a.log', 'backups/unrelated/old', 'restore-old/config.json', 'modules/demo/backups/old', 'cognition/restore-old/state', 'cognition/state.tmp-42', 'cognition/a.swp', 'cognition/a~', 'media/inbound/a.png', 'media/tts/a.mp3']) put(path)
   const outside = mkdtempSync(join(tmpdir(), 'dsh-backup-outside-'))
@@ -262,4 +262,17 @@ test('backup routes: create, list, default staged restore, denied apply, delete 
   assert.equal((await call('/restore', { id, apply: 'false' })).ok, false)
   assert.equal((await call('/delete', { id })).ok, true)
   assert.equal((await call('')).items.length, 0)
+})
+
+
+test('backup: 内置 enabled/disabled 状态与 .builtin 数据可快照和暂存恢复', async (t) => {
+  const { service, put, read } = fixture(t)
+  const state = JSON.stringify({ disabled: ['external'], enabled: ['builtin-sample'] })
+  put('modules/state.json', state)
+  put('modules/.builtin/builtin-sample/data.json', '{"count":1}')
+  const item = await service.create()
+  put('modules/state.json', '{}')
+  const result = await service.restore(item.id)
+  assert.equal(read(`${result.stagedPath}/modules/state.json`), state)
+  assert.equal(read(`${result.stagedPath}/modules/.builtin/builtin-sample/data.json`), '{"count":1}')
 })
