@@ -244,6 +244,94 @@ test('集成：群聊冷却跳过后不产生第二个决策，仍写入记忆',
     rmSync(dir, { recursive: true, force: true })
   }
 })
+test('集成：群聊可选词法相关度门控，边界、旁路与失败放行', async (t) => {
+  const hit = (relevance, summary = 'unrelated') => ({ memory: { id: 'prior', summary }, signals: { relevance }, score: 1 })
+  const broken = hit(0)
+  Object.defineProperty(broken.signals, 'relevance', { get() { throw new Error('scoring bug') } })
+  const cases = [
+    { name: 'default disabled with no memories', relevance: undefined, memories: [], allow: true },
+    { name: 'disabled does not inspect relevance', relevance: { enabled: false }, memories: [broken], allow: true },
+    { name: 'no memories even at zero threshold', memories: [], minScore: 0 },
+    { name: 'low signal ignores high composite/embedding scores', memories: [{ ...hit(0.1, '猫咪 coffee'), signals: { relevance: 0.1, embedding: 1 } }] },
+    { name: 'maximum signal exactly at threshold', memories: [hit(0), hit(0.15)], allow: true },
+    { name: 'above threshold', memories: [hit(0.8)], allow: true },
+    { name: 'addressed bypass without memories', memories: [], addressed: true, allow: true },
+    { name: 'private bypass without memories', memories: [], chatType: 'private', allow: true },
+    { name: 'summary overlap for Chinese and Latin', memories: [hit(undefined, '猫咪 COFFEE')], allow: true },
+    { name: 'missing signal unrelated summary', memories: [hit(undefined)] },
+    { name: 'invalid signal falls back to summary', memories: [hit(NaN, '猫咪 coffee')], allow: true },
+    { name: 'bounded summary overlap', memories: [hit(undefined, 'x'.repeat(4000) + ' 猫咪 coffee')] },
+    { name: 'negative relevance clamped', memories: [hit(-1)], minScore: 0, allow: true },
+    { name: 'upper threshold clamped', memories: [hit(0.9)], minScore: 2 },
+    { name: 'lower threshold clamped', memories: [hit(0)], minScore: -1, allow: true },
+    { name: 'unexpected scoring error allows', memories: [broken], allow: true },
+    { name: 'probability miss precedes relevance', memories: [], turn: { groupReplyMode: 'probability', groupReplyProbability: 0 }, reason: 'probability_miss' },
+    { name: 'addressed-only precedes relevance', memories: [], turn: { groupReplyMode: 'addressed' }, reason: 'addressed_only' },
+  ]
+  for (const item of cases) await t.test(item.name, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-relevance-'))
+    const capture = [], sent = []
+    const relevance = Object.hasOwn(item, 'relevance') ? item.relevance : { enabled: true, minScore: item.minScore ?? 0.15 }
+    const cog = makeCog({ dir, scheduler: createFakeScheduler(), llm: fakeLlm(capture),
+      gateway: { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 100 } } } },
+      configOverride: { turn: groupTurnConfig({ groupReplyMode: 'all', groupRelevance: relevance, ...item.turn }) },
+    })
+    try {
+      cog.services.memory.retrieveAsync = async () => item.memories
+      const result = await cog.services.pipeline.handleTurn({ id: 'relevance-turn', text: '猫咪 coffee', chatType: item.chatType || 'group', chatId: 'g1', senderId: '10001', selfId: '999', addressed: Boolean(item.addressed), messages: [], messageIds: [] })
+      const stats = cog.services.pipeline.stats()
+      if (item.allow) {
+        assert.ok(result.decision, 'allowed turn reaches policy')
+        assert.ok(capture.length > 0, 'allowed turn reaches analysis LLM')
+        assert.equal(stats.groupSkipped, 0)
+      } else {
+        const reason = item.reason || 'low_relevance'
+        assert.equal(result.error, `group_${reason}`)
+        assert.equal(result.analysis, null)
+        assert.equal(result.decision, null)
+        assert.equal(capture.length, 0, 'skip never calls analysis/compose LLM')
+        assert.equal(sent.length, 0)
+        assert.equal(stats.lastTurn.reason, reason)
+        assert.equal(stats.groupSkippedByReason[reason], 1)
+      }
+      assert.equal(cog.services.memory.list({ query: 'coffee' }).length, 1, 'allowed and skipped turns both encode memory')
+    } finally {
+      cog.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+test('集成：群聊相关度复用实际词法检索，既有频率/连续/冷却优先', async (t) => {
+  for (const [reason, limits] of [
+    ['rate_limited', { groupMaxRepliesPerMinute: 1 }],
+    ['consecutive_limit', { maxConsecutiveGroupReplies: 1 }],
+    ['cooldown', { groupCooldownMs: 60000 }],
+  ]) await t.test(reason, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-relevance-order-'))
+    const capture = []
+    const cog = makeCog({ dir, scheduler: createFakeScheduler(), llm: fakeLlm(capture),
+      gateway: { actions: { sendMessage: async () => ({ message_id: 101 }) } },
+      configOverride: { turn: groupTurnConfig({ groupReplyMode: 'all', groupRelevance: { enabled: true }, ...limits }) },
+    })
+    try {
+      const turn = { id: 'first', text: '咖啡 coffee', chatType: 'group', chatId: 'g1', senderId: '10001', selfId: '999', addressed: false, messages: [], messageIds: [] }
+      cog.services.memory.encodeTurn({ ...turn, id: 'seed' })
+      const first = await cog.services.pipeline.handleTurn(turn)
+      assert.ok(first.reply, 'real retrieved lexical relevance allows reply')
+      const calls = capture.length
+      const second = await cog.services.pipeline.handleTurn({ ...turn, id: 'second', text: 'unrelated topic' })
+      assert.equal(second.error, `group_${reason}`)
+      assert.equal(capture.length, calls, 'existing limit skips before analysis')
+      assert.equal(cog.services.pipeline.stats().groupSkippedByReason.low_relevance, undefined)
+      assert.equal(cog.services.memory.list({ query: 'unrelated' }).length, 1)
+    } finally {
+      cog.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 test('集成：切换 active 人格后，下一轮 compose prompt 使用新 profile', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-persona-switch-'))
   const scheduler = createFakeScheduler()

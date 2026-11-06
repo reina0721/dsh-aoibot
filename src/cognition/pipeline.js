@@ -5,7 +5,7 @@
 
 import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
 import { analyzeTurn, composeReply } from './analysis.js'
-import { defaultScope } from './memory.js'
+import { defaultScope, memoryText, relevanceScore } from './memory.js'
 import { splitReply } from './reply-split.js'
 import { flattenForward, forwardIdsOf } from '../gateway/forward.js'
 
@@ -86,6 +86,30 @@ export function createPipeline({
     groupReplyTimes.push(now)
     if (turn.addressed) consecutiveAmbientReplies.set(key, 0)
     else consecutiveAmbientReplies.set(key, (consecutiveAmbientReplies.get(key) || 0) + 1)
+  }
+
+  function groupRelevanceAllowed(turn, memories) {
+    try {
+      const config = cfg().turn?.groupRelevance
+      if (turn.addressed || !config?.enabled) return true
+      if (!memories.length) return false
+      const threshold = Number(config.minScore ?? 0.15)
+      const minScore = Number.isFinite(threshold) ? clamp(threshold, 0, 1) : 0.15
+      // 只复用词法 relevance，不用综合检索分数或 embedding；兼容缺失信号的记忆。
+      const query = String(turn.text || '').slice(0, 4000)
+      let score = 0
+      for (const item of memories.slice(0, 32)) {
+        const relevance = item.signals?.relevance
+        const value = Number.isFinite(relevance)
+          ? clamp(relevance, 0, 1)
+          : relevanceScore(query, memoryText(item.memory).slice(0, 4000))
+        score = Math.max(score, value)
+      }
+      return score >= minScore
+    } catch (error) {
+      log.debug?.('群聊词法相关度检查失败，继续处理')
+      return true
+    }
   }
 
   function markLast(turn, outcome, reason = '', extra = {}) {
@@ -595,6 +619,10 @@ export function createPipeline({
       }
       const allowed = groupReplyAllowed(turn)
       if (!allowed.ok) return skipGroup(turn, personRecord, emotionState, scope, allowed.reason)
+      // 顺序：点名模式 → 概率 → 分钟上限 → 连续上限 → 冷却 → 可选词法相关度。
+      if (!groupRelevanceAllowed(turn, memories)) {
+        return skipGroup(turn, personRecord, emotionState, scope, 'low_relevance')
+      }
     }
     const analysis = await analyzeTurn({
       turn, person: personRecord?.person, relationship: rel, emotion: emotionState, memories, persona: personaState,

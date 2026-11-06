@@ -173,6 +173,7 @@ export const DEFAULTS = {
       maxAggregateMessages: 20,
       groupReplyMode: 'addressed', // addressed | probability | all
       groupReplyProbability: 0.2,
+      groupRelevance: { enabled: false, minScore: 0.15 },
       groupCooldownMs: 3000,
       groupMaxRepliesPerMinute: 6,
       maxConsecutiveGroupReplies: 3,
@@ -740,6 +741,8 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.turn.groupCooldownMs', label: '同群回复冷却', type: 'number', default: 3000, min: 0, max: 60000, step: 500, unit: 'ms' },
       { path: 'cognition.turn.groupMaxRepliesPerMinute', label: '群聊每分钟上限', type: 'number', default: 6, min: 1, max: 60, step: 1 },
       { path: 'cognition.turn.maxConsecutiveGroupReplies', label: '连续接话上限', type: 'number', default: 3, min: 1, max: 20, step: 1, help: '连续多少次未点名接话后暂停主动接话；点名/唤醒仍会回复。' },
+      { path: 'cognition.turn.groupRelevance.enabled', label: '群聊词法相关度门控', type: 'switch', default: false, help: '仅未点名群消息：复用已检索记忆的词法相关度，无记忆或低于阈值时只写记忆、不分析；默认关闭，无新增外部调用。' },
+      { path: 'cognition.turn.groupRelevance.minScore', label: '群聊最低词法相关度', type: 'number', default: 0.15, min: 0, max: 1, step: 0.05, help: '0–1；点名消息绕过相关度检查，仍受既有分钟上限约束。' },
       { path: 'cognition.turn.wakeWords', label: '唤醒词', type: 'string-list', default: [], placeholder: '输入昵称后回车' },
     ],
   },
@@ -1311,6 +1314,11 @@ function normalizeCognition(raw, rawCognition = {}, issues = []) {
       maxAggregateMessages: pickNumber(src.turn?.maxAggregateMessages, d.turn.maxAggregateMessages, { min: 1, max: 50, integer: true }),
       groupReplyMode,
       groupReplyProbability: pickNumber(src.turn?.groupReplyProbability, d.turn.groupReplyProbability, { min: 0, max: 1 }),
+      groupRelevance: {
+        enabled: pickBool(src.turn?.groupRelevance?.enabled, d.turn.groupRelevance.enabled),
+        // Inspect raw input: JSON cloning during deepMerge turns NaN/Infinity into null.
+        minScore: pickNumber(rawCognition.turn?.groupRelevance?.minScore ?? d.turn.groupRelevance.minScore, d.turn.groupRelevance.minScore, { min: 0, max: 1 }),
+      },
       groupCooldownMs: pickNumber(src.turn?.groupCooldownMs, d.turn.groupCooldownMs, { min: 0, max: 60000, integer: true }),
       groupMaxRepliesPerMinute: pickNumber(src.turn?.groupMaxRepliesPerMinute, d.turn.groupMaxRepliesPerMinute, { min: 1, max: 60, integer: true }),
       maxConsecutiveGroupReplies: pickNumber(src.turn?.maxConsecutiveGroupReplies, d.turn.maxConsecutiveGroupReplies, { min: 1, max: 20, integer: true }),

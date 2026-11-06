@@ -60,6 +60,19 @@ test('字段表与 DEFAULTS 不漂移：每个面板字段的 default 都等于 
   assert.deepEqual(drift, [], 'DEFAULTS 与 CONFIG_GROUPS 必须一致（面板与后端共用同一份默认值）')
 })
 
+test('group relevance config: default off, threshold clamping and turn panel fields', () => {
+  assert.deepEqual(normalizeConfig({}).config.cognition.turn.groupRelevance, { enabled: false, minScore: 0.15 })
+  for (const [minScore, expected] of [[-1, 0], [2, 1], [0, 0], [1, 1], ['0.4', 0.4], ['bad', 0.15], [Infinity, 0.15], [NaN, 0.15], [null, 0.15]]) {
+    const { config } = normalizeConfig({ cognition: { turn: { groupRelevance: { enabled: true, minScore } } } })
+    assert.deepEqual(config.cognition.turn.groupRelevance, { enabled: true, minScore: expected })
+  }
+  assert.equal(normalizeConfig({ cognition: { turn: { groupRelevance: { enabled: 'true' } } } }).config.cognition.turn.groupRelevance.enabled, false)
+  const fields = CONFIG_GROUPS.find((group) => group.id === 'cog-turn').fields
+  assert.equal(fields.find((field) => field.path === 'cognition.turn.groupRelevance.enabled').type, 'switch')
+  const threshold = fields.find((field) => field.path === 'cognition.turn.groupRelevance.minScore')
+  assert.deepEqual([threshold.type, threshold.min, threshold.max, threshold.default], ['number', 0, 1, 0.15])
+})
+
 test('normalizeConfig：非法 wsUrl 也会产生可读 issue（不再静默清空）', () => {
   const { config, issues } = normalizeConfig({
     onebot: { wsUrl: 'ftp://127.0.0.1:3001', httpUrl: 'http://127.0.0.1:3000' },

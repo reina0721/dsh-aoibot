@@ -291,6 +291,16 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
 
+### 群聊词法相关度门控（M7-p）
+
+在「认知 → 设置 → 轮次与防抖」（`cog-turn`）配置 `cognition.turn.groupRelevance`，默认 `{enabled:false, minScore:0.15}`，关闭时保持原行为。`enabled` 只接受布尔值；`minScore` 为 0–1，超界夹取，非有限/非法数值回退 0.15。
+
+仅检查群聊未点名消息，顺序固定为：仅点名模式 → 概率命中 → 每分钟上限 → 连续接话上限 → 同群冷却 → 可选词法相关度 → 分析。点名/回复/唤醒词绕过相关度检查，仍受既有每分钟上限约束；私聊不受影响。
+
+分数取已检索记忆 `signals.relevance` 的最大值并夹取 0–1；缺失/非有限信号时，用当前文本与记忆摘要（无摘要则正文）的词法重合比例，中文单字/二元组、英文忽略大小写。最多检查 32 条，每段文本最多 4000 UTF-16 单元。无记忆（即使阈值为 0）或分数低于阈值时，调用既有 `skipGroup`，仍编码 ambient 记忆，`lastTurn.reason` / `groupSkippedByReason` 记录 `low_relevance`，不进入分析/回复 LLM；计算异常放行。
+
+门控不新增外部调用，不使用综合检索分数、embedding 或 LLM 语义分数；既有检索仍先运行，单独启用的 embedding 重排行为不变。词法重合可能误判，尚无 LLM 话题判断或接梗，GAP #20 仍 partial，remaining 47。
+
 ### 可选语义检索（`cognition.memory.embedding`，M7-f）
 
 在「认知 → 设置 → 记忆」配置；默认关闭，无 embedding 网络请求。启用后会把查询及当前人格、可见作用域的候选记忆文本发送到所配 provider，失败回退原词法检索。只支持 OpenAI 兼容 `/embeddings`；无本地模型、独立 reranker 或向量数据库。自动化只用 fake provider，真实 provider 未验证，GAP #31 仍 partial。

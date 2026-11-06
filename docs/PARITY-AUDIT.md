@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-p 更新 #20：默认关闭的 `cognition.turn.groupRelevance` 与 `cog-turn` 开关/0–1 阈值（默认 0.15）。未点名群消息按原点名模式/概率/分钟上限/连续上限/冷却顺序通过后，复用已检索记忆最高词法 relevance，缺信号则有界摘要重合；无记忆/低分仍编码 ambient 记忆、记录 low_relevance 并跳过分析/回复 LLM，点名/私聊绕过相关度、异常放行。关闭保持原行为，无新增依赖或外部调用；仅词法记忆相关度，无 LLM 话题判断/接梗/语义分数。离线配置/fake LLM/实际记忆检索测试，真实 QQ/浏览器未验证。#20 仍 partial、remaining 47，#31/#42/#49/#50 行逐字不变。
 
 M7-o 更新 #9：主人显式 `/steer 文本`，1–1000 Unicode 字符、active/当前 private 或 group 数字 ID 校验；复用或创建 Session，固定 user payload、安全错误与 steers/lastAt 统计。Session 解析串行，插话可在 compose 等待期间送达；命令经 owner/禁用列表/访问检查，非主人静默。普通回合不自动 steer，不写配置/直接调用模型，无新配置/依赖或插话面板/API。typing/`set_input_status` 未实现；仅 fake agent 离线测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial，38 partial / 2 none，remaining 47，#31/#42/#49/#50 不变。
 
@@ -52,8 +54,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 38，none: 2，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：66 个 JS 文件 / 16880 行。
-测试静态计数：46 个文件 / 10306 行 / 445 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：66 个 JS 文件 / 16916 行。
+测试静态计数：46 个文件 / 10407 行 / 448 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -99,7 +101,7 @@ npm run check:docs
 
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
-| 20 | 群 admission | partial | M2-b：话题相关度/接梗 |
+| 20 | 群 admission | partial | M2-b：LLM 话题判断/接梗/语义相关度未实现 |
 
 ## M2-b / M4
 
@@ -250,3 +252,8 @@ M7-m 本次最终 `npm test` 退出 **0**：463 项，459 通过、0 失败、4 
 M7-n 本次最终 `npm test` 退出 **0**：472 项，468 通过、0 失败、4 跳过（既有 live 模型测试未配置 key），耗时 71014.21497 ms；新增 9 个顶层测试声明，配置/命令专项 49 项全部通过。覆盖默认空列表、严格数组/名称/长度/去重/100上限/issue/配置字段，内置 QQ 管理/生图/配置/记忆命令无服务调用或配置写入，模块命令与大小写无法绕过、非主人静默、未列入/公开模块/未知命令/帮助保持原行为，以及动态策略更新。首次专项因深合并吞掉非法数组类型而漏报 issue，已改为直接校验该原始字段，随后专项及完整测试通过。
 
 `npm run check:docs` 与 `npm run check:parity` 均退出 **0**。审计快照为源码 66 个 JS 文件 / 16836 行，测试 46 个文件 / 10152 行 / 436 个顶层声明；矩阵仍为 6 has / 37 partial / 3 none / 1 limited / 6 leading / 8 exempt，remaining 47。#14 仍 partial，仅新增命令 deny-list；无所有服务/工具逐项 allow/deny 矩阵或统一审批，不覆盖 API、直接服务、Agent 工具及模块同进程代码。#31/#42/#49/#50 矩阵行逐字不变。无新增依赖或外部调用，未改 `cordis.patch.yml`、未提交；仅保留本任务源码/测试/文档改动，无仓库内生成文件。
+
+
+M7-p 本次最终 `npm test` 退出 **0**：505 项，501 通过、0 失败、4 跳过（既有 live 模型测试未配置 key），耗时 123172.73717 ms；新增 3 个顶层测试声明与 21 个集成子测试。覆盖默认关闭、低分/无记忆、阈值夹取/等于阈值/高分、点名与私聊旁路、中文/英文摘要重合及有界截断、非法信号回退、计算异常放行、实际检索复用、概率/点名模式/分钟/连续/冷却优先与跳过仍编码记忆。首次专项及修复前启动的完整运行均发现 NaN/Infinity 被 deepMerge 的 JSON 克隆转为 null，现按原始输入校验该阈值；配置专项 13 项通过，随后干净完整运行通过。
+
+`npm run check:docs`、`npm run check:parity` 均退出 **0**。快照为源码 66 个 JS 文件 / 16916 行，测试 46 个文件 / 10407 行 / 448 个顶层声明；矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47。#20 仍 partial，仅词法记忆相关度；无 LLM 话题判断/接梗/语义分数。#31/#42/#49/#50 行逐字不变，`cordis.patch.yml` 校验未变。无新增依赖或外部调用，无 git 写入或提交；仅离线 fake LLM/网关与本地记忆测试，真实 QQ/浏览器未验证。

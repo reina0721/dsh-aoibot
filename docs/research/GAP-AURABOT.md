@@ -81,7 +81,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 19 | 轮次聚合/防抖/硬截止 | 有 | 有（完整度、软/硬截止、命令快路径） | **有** | — |
-| 20 | 群 admission | 点名必回、话题相关度、概率插话、防刷屏、连续发言自知 | addressed/probability/all + 冷却/分钟上限 + 连续未点名接话上限 | 部分（M2-a） | M2-b：话题相关度/接梗 |
+| 20 | 群 admission | 点名必回、话题相关度、概率插话、防刷屏、连续发言自知 | addressed/probability/all + 冷却/分钟上限 + 连续未点名接话上限；M7-p 默认关闭的词法记忆相关度门控，低分/无记忆仍编码并跳过分析，点名绕过、异常放行 | 部分（M7-p，仅词法） | M2-b：LLM 话题判断/接梗/语义相关度未实现 |
 | 21 | 分条回复/引用/@/表情 | 有 | 分条 + 引用 + 群聊 @ 可配；表情/语音未接 | 部分（M2-a） | M2-b/M4 |
 | 22 | 合并转发展开/拍一拍/表情回应/通知 | 有 | 合并转发展开、拍一拍回应、表情表态归因；其他通知类型未处理 | 部分（M2-b） | M2 剩余 |
 | 23 | QQ 动作工具 | 改资料/群管/文件/点赞/撤回/精华等 | 原 4 个主人命令 + M7-b 默认关的资料/群管/文件/精华/撤回命令；仅主人私聊 Session 保留原 3 个工具，social/group 仍 0 个 | 部分（M7-b） | 新增仅命令：昵称、名片/群名、管理员、禁言（0–30 天）/全禁、踢人、当前会话精华/撤回、媒体根内文件；无逐项权限矩阵/任意 action 透传/Agent 新工具；get_msg 缺归属则拒绝；真实 QQ 管理/资料/文件动作未验证 |
@@ -417,3 +417,9 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 主人 `/steer 文本` 经命令身份/禁用列表/访问检查后调用 `runtime.steer(turn,text)`；active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。`sessionFor(turn)` 复用或创建当前 Session，向 `agent.steer` 传入 text content 与 user source；缺方法返回 STEER_UNAVAILABLE，异常返回固定 STEER_FAILED，不回显原始异常/文本；成功更新 steers/lastAt。Session 解析串行防并发新建，插话不等待普通 compose 的 turn/end。
 
 普通回合仍走 followup，不自动 steer；非主人私聊/群聊静默，不允许群成员通过此命令注入插话。无新配置/依赖，不写配置或直接调用模型，无插话面板/API。typing/`set_input_status` 未实现；仅 fake agent 离线服务/命令测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial（38 partial / 2 none），remaining 47；#31/#42/#49/#50 保持原状态与豁免。
+
+### M7-p 可选群聊词法记忆相关度（#20 仍 partial）
+
+`cognition.turn.groupRelevance={enabled:false,minScore:0.15}` 默认不改变行为，`cog-turn` 提供开关与 0–1 阈值（超界夹取、非法值回退）。仅群聊未点名消息，在既有点名模式/概率/分钟上限/连续上限/冷却之后、分析之前，复用已检索记忆最高 `signals.relevance`；缺信号时用有界文本/摘要词法重合。无记忆或低分走既有 `skipGroup`，仍编码 ambient 记忆，记录 `low_relevance`，不调用分析/回复 LLM；点名/私聊绕过相关度，计算异常放行。
+
+证据：[配置测试](../../test/config.test.js)、[集成测试](../../test/cognition-integration.test.js)，离线覆盖默认关闭、阈值夹取、低分/无记忆/等于或超过阈值、点名/私聊旁路、中文/英文摘要重合与边界、计算异常、实际检索复用、既有跳过优先级和跳过仍记忆。门控无新增依赖或外部调用，不用综合检索分数/embedding；既有检索仍先执行。仅词法记忆相关度，没有 LLM 话题判断/接梗/语义分数，真实 QQ/浏览器未验证。#20 保持 partial，矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。
