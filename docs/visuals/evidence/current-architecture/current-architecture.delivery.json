@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
-  "receiptId": "8ffa7cb7-b7b9-454e-94d5-c2fa45fb5c65",
+  "receiptId": "7ab8e061-5f75-4b5f-bc2c-9f3b354b6243",
   "status": "current",
   "command": "deliver",
   "type": "architecture",
   "input": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
   "output": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
   "specification": {
-    "sha256": "131456ae89a8c400b0b833562e34c146d23b454255e7f52e2ee60576e7822c1d",
+    "sha256": "cc964c7ab232737c93458059f2d9ab6c61075fb88a3fd5de4594db86b7307d23",
     "bytes": 7101
   },
   "artifact": {
-    "sha256": "dd4ee251f4f02f316cda2c6345c56a00b54bcb96e20c9a970bb41364135602a8",
+    "sha256": "4ce49ae1c6f63065c51174b949d84b9fe4c6efcd811f84dd9f9a11252a32da44",
     "bytes": 777695
   }
 }

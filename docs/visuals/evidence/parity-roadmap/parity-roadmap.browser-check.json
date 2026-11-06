@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "fd0cc5c7-8b50-4b4d-808c-bc1e86d116a5",
+  "deliveryReceiptId": "007fbc68-6de1-4469-99fc-72f636c65e38",
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "a2701f8808c52c43deabd7804cb370ba68c8f78ab43f4602f5947e2b77304eda",
+    "sha256": "232f418f92d96a449dd1fc99bfdf7b059ed04c02dcc782dadfc249f4e06335dd",
     "bytes": 763400
   },
   "state": {
