@@ -6,10 +6,10 @@
   "status": "pass",
   "visualReview": "not-requested",
   "provenance": "current",
-  "deliveryReceiptId": "e001b6c6-7aec-4960-adcf-6efe3e55d2ca",
+  "deliveryReceiptId": "0369d578-55aa-45d3-95a9-e81b1a0562fc",
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-    "sha256": "49f9cecb71cdc9c42ef61475107f89d33a143bee36c2092e3cad7b91a78e8c35",
+    "sha256": "f8e2ac7d36a461c1cd7773b6d8757707c61b8017225f80cc23c8b924f76e8873",
     "bytes": 777695
   },
   "state": {

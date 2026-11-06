@@ -4,7 +4,7 @@
 
 ## 1. 当前结论
 
-- 版本：`package.json` 已升为 `0.11.0`；GitHub 标签/Release 与线上 `web` 安装状态见文末。
+- 版本：`package.json` 为 `0.11.1`；GitHub 标签/Release 与线上 `web` 安装状态见文末。
 - 审计：61 项中 `has 6`、`partial 38`、`none 2`、`limited 1`、`leading 6`、`exempt 8`；**47 项非 has/exempt**。完整快照见 [PARITY-AUDIT.md](PARITY-AUDIT.md)。
 - 用户已批准 8 项发布门槛豁免（2026-11-06）：#16 远端 API 鉴权、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 工作区迁移/离峰省钱、#42 RVC/翻唱、#49 抖音/小黑盒、#50 桌宠。豁免是用户决定，不是实现证据；见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)。
 - 未豁免且影响发布陈述：生图/改图 #44（受限实现）、向量检索 #31、时间轴事件导入 #30 等。
@@ -67,8 +67,8 @@ git diff --check
 
 ## 7. 版本与发布状态
 
-- 标签/Release：`v0.11.0` 已推送并由 GitHub Actions 发布 tgz/zip/SHA256SUMS（2026-11-06）。
-- 线上 `web`：已升级到本地 0.11.0 构建并完成部分真实 smoke；未完成主人命令/媒体 provider/审批/typing/提醒投递等验收，不得写“全量实机验收”。
+- 标签/Release：`v0.11.0` 已发布；`v0.11.1` 为 M7-q typing 补丁发布，资产由 GitHub Actions 生成。
+- 线上 `web`：已升级到 0.11.0 构建并完成部分真实 smoke；未完成主人命令/媒体 provider/审批/typing/提醒投递等验收，不得写“全量实机验收”。
 - 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 通过；GitHub Release 已上传。
 
 ## 8. 建议的下一步

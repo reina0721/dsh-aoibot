@@ -2,7 +2,7 @@
 
 > 快照：2026-11-06（Asia/Shanghai）。
 > Aurabot：`aureth-labs/dsh-aurabot-qq`，`dd1911f`，v1.2.0，MIT。
-> dsh-bot：`reina0721/dsh-bot`，`d2da394`，v0.11.0（候选），MIT。
+> dsh-bot：`reina0721/dsh-bot`，`d2da394`，v0.11.1，MIT。
 > 本文是差距清单 + 里程碑计划；**不把设计当成已实现**。状态以「代码 + 测试 + 受控真机验证」为准。
 
 ## 0. 一句话结论

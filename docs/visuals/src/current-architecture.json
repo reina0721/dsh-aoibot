@@ -222,7 +222,7 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "DSH web profile · dsh-bot 0.11.0（M7 发布候选，待真机验收）",
+      "label": "DSH web profile · dsh-bot 0.11.1（M7 发布候选，待真机验收）",
       "wraps": [
         "panel",
         "api",
