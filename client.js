@@ -3189,6 +3189,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const recent = safeArray(status && status.recentEvents)
       const access = safeObject(status && status.access)
       const accessCounters = safeObject(access.counters)
+      const runtimeInfo = safeObject(status && status.runtime)
       const now = props.now || Date.now()
       const [busy, setBusy] = useState('')
       const connected = gateway.state === 'connected'
@@ -3365,6 +3366,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('div', { className: 'ob-diagnostic-row', style: { marginBottom: '8px' } },
               h(Badge, { tone: 'info' }, '群聊：' + (cogPipeline.groupMode === 'all' ? '所有消息' : cogPipeline.groupMode === 'probability' ? '按概率参与' : '仅 @/唤醒词')),
               h(Badge, { tone: Number(cogPipeline.groupSkipped) ? 'warn' : 'muted' }, '跳过 ' + String(Number(cogPipeline.groupSkipped) || 0)),
+              h(Badge, { tone: runtimeInfo.active ? 'ok' : 'muted' }, '运行时：' + (runtimeInfo.active ? 'agent' : 'oneshot') + (runtimeInfo.available ? '' : ' / 不可用')),
+              h(Badge, { tone: 'muted' }, '会话 ' + String(Number(runtimeInfo.sessions) || 0)),
             ),
             cogPipeline.lastTurn
               ? h('div', { className: 'ob-stack', style: { gap: '4px' } },

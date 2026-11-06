@@ -119,6 +119,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       events: events.stats(),
       logs: logger.stats(),
       access: access?.summary?.() || { mode: 'open', configured: false },
+      runtime: cognition?.runtimeStats?.() || null,
       recentEvents: events.recent(20),
     }
   }
@@ -129,6 +130,8 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   // ---- 访问控制：面板/诊断只读接口 ----
   if (access) {
     route('GET', '/access/stats', async () => ({ ok: true, ...(access.summary?.() || {}) }))
+    route('GET', '/runtime/stats', async () => ({ ok: true, ...(cognition.runtimeStats?.() || {}) }))
+    route('GET', '/runtime/sessions', async () => ({ ok: true, items: cognition.runtimeSessions?.() || [] }))
     route('POST', '/access/check', async (req) => {
       const body = await readBody(req)
       const chatType = body?.chatType === 'group' ? 'group' : body?.chatType === 'private' ? 'private' : ''

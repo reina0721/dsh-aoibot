@@ -179,13 +179,24 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `access` 是增量字段，老配置由 `deepMerge` 自动补齐，不需要迁移脚本；默认 `open` 保证升级后行为不变。
 `allowlist` 但 `ownerQQ` 为空时不会出现「人人可私聊」：私聊只按白名单放行，且 `normalizeConfig` 会给出 issue。
 
-### 3.10 内部字段
+### 3.10 会话运行时（`runtime`）
+
+| 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
+|---|---|---|---|---|---|
+| `runtime.engine` | select | `oneshot` | `oneshot` / `agent` | 回复由一次性 LLM 还是 DSH Session 生成 | ✅ |
+| `runtime.workspaceDir` | text | `''` | 路径；空 = 数据目录/runtime/workspace | DSH Session 工作区 | ✅ |
+| `runtime.replyTimeoutMs` | number | `120000` | 5000–600000 | 等 Agent 完成一轮的上限；超时只放弃等待 | ✅ |
+
+`agent` 需要宿主提供 `sessionController` / `workspaceRegistry` / `agents`；缺失或失败自动回退 `oneshot`。
+`oneshot` 下配置不影响现有回复链路。
+
+### 3.11 内部字段
 
 | 路径 | 类型 | 默认值 | 作用 | 面板 |
 |---|---|---|---|---|
 | `version` | number | `2` | 配置版本号，用于升级时补齐默认值；不要手改 | — |
 
-### 3.11 认知（`cognition`）
+### 3.12 认知（`cognition`）
 
 认知字段按功能分为 11 个面板组（`GET /config` 的 `groups` 中 id 为 `cog-*`），全部持久化、可恢复默认、
 即时生效，不需要重连。完整字段/类型/范围/默认值以 `GET /onebot-qq/api/config` 的 `groups[].fields` 为准；
@@ -235,7 +246,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 `{name, profile, traits, style, values, locked, source, activate}`；服务端重新 sanitize/截断，
 设置为 active；不覆盖 `self`。`scripts/import-aoi-persona.mjs` 用于把外部蒸馏包转换成该格式。
 
-### 3.12 模型网关（`models.json`）
+### 3.13 模型网关（`models.json`）
 
 模型 provider 与密钥**不放在 `config.json`**，避免 `/config` 回传；它们存在单独的文件，由「模型」页
 和 `/onebot-qq/api/models/*` 管理：

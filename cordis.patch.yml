@@ -1,7 +1,73 @@
 # dsh-bot bundle patch
 #
-# 只插入插件本体（宿主半边 src/host.js + 网页半边 client.js 由 DSH 的
-# dsh.client 清单自动加载）。插件自带面板与配置，不需要额外 preset 行。
+# 1. 插件本体：宿主半边 src/host.js + 网页半边 client.js（由 dsh.client 清单加载）。
+# 2. 两个 agent preset：只在 runtime.engine=agent 时由插件创建 Session 使用。
+#    - dsh-bot-private：主人私聊，带本机工具（fs/web）。
+#    - dsh-bot-social ：群聊/他人私聊，不带本机工具。
+#    人格与规则通过插件注册的 {{dshbot_*}} 变量注入；preset 本身不读取用户配置。
 - insert:
     - id: onebot-qq
       name: dsh-bot
+
+    - id: preset-dsh-bot-private
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-bot-private
+        name: dsh-bot · 主人私聊
+        description: dsh-bot 在主人 QQ 私聊里使用：人格 + 本机工具
+        order: 70
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                {{dshbot_persona}}
+
+                {{dshbot_rules_private}}
+              complete: true
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: tool-web
+            name: '@deepseek-ai/dsh-tool-web'
+            config:
+              fetch: true
+              searchTimeoutMs: 60000
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: compaction
+            name: cordis:group
+            group: true
+            config:
+              - id: compaction-basic
+                name: '@deepseek-ai/dsh-compaction-basic'
+              - id: command-compact
+                name: '@deepseek-ai/dsh-command-compact'
+              - id: tool-result-pruner
+                name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+                config:
+                  thresholdChars: 8192
+                  headChars: 4096
+                  tailChars: 1024
+
+    - id: preset-dsh-bot-social
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: dsh-bot-social
+        name: dsh-bot · 群聊/他人私聊
+        description: dsh-bot 在群聊与他人私聊里使用：人格，没有本机工具
+        order: 71
+        plugins:
+          - id: persona
+            name: '@deepseek-ai/dsh-persona'
+            config:
+              prefix: |-
+                {{dshbot_persona}}
+
+                {{dshbot_rules_social}}
+              complete: true
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'

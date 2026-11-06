@@ -9,6 +9,12 @@
 5. 如需自定义路径，设置 `DSH_BOT_DATA_DIR`，移除旧变量；不要把两个插件配置到同一数据目录。
 6. 按[安装指南](INSTALLATION.md)安装新版，启动 profile，确认插件名、配置、人格列表、记忆与模型配置，以及 QQ 连接状态。
 
+### 会话运行时默认值
+
+新版 bundle 增加了两个 agent preset（`dsh-bot-private` / `dsh-bot-social`），但 `runtime.engine` 默认是
+`oneshot`，不会改变现有回复链路；preset 只有在手动切到 `agent` 后才用于创建 Session。`agent` 需要宿主
+提供 `sessionController` / `workspaceRegistry` / `agents`，缺失时自动回退。先备份数据目录，再在测试号上验证。
+
 ### 访问控制默认值
 
 新版新增 `access.*` 配置，默认 `mode: "open"`：升级后仍保持「任何私聊/群都能触发」的旧行为。建议上线前在

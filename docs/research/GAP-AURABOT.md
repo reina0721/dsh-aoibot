@@ -57,8 +57,8 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
-| 6 | 每聊天 DSH Session | `sessionController` + preset + 映射文件 | 无 | **无（结构性）** | M1 |
-| 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | 无 | **无（结构性）** | M1 |
+| 6 | 每聊天 DSH Session | `sessionController` + preset + 映射文件 | `src/runtime/agent.js`：Session 映射、preset、followup、超时、oneshot 回退 | 部分（M1-b） | M1 剩余：真机验证/工具面 |
+| 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | preset 内置 fs/fs-search/web；无 QQ 动作工具/MCP/子智能体 | 部分（M1-b） | M1/M2 |
 | 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | 无 | **无** | M1 |
 | 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | 无 | 无 | M1 |
 | 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | 全局路由 | 无 | M1 |
@@ -92,7 +92,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 24 | 人格编辑/切换 | 人格卡 Markdown（可多份、按节编辑、面板切换） | 多人格库、切换/复制/删除/导入；**人格级认知数据隔离** | 领先（隔离深度） | — |
 | 25 | 心情/情绪 | 关键词或模型判心情；影响语气/表情/语音/回复速度 | OCC 评价 → PAD/离散；惯性/衰减/调节/外显阈值 | 领先（但未影响媒体） | M4 |
-| 26 | 人格注入 | `@deepseek-ai/dsh-persona` + `{{aurabot_persona}}` | 本地拼 prompt | 部分 | M1 |
+| 26 | 人格注入 | `@deepseek-ai/dsh-persona` + `{{aurabot_persona}}` | `{{dshbot_persona}}` / rules 变量 + private/social preset | **有**（M1-b） | — |
 
 ### 3.6 记忆、人物与关系
 
@@ -244,6 +244,13 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 配置 `access.*` 与「配置 → 访问控制」分组；概览访问控制卡片；`/access/stats`、`/access/check`。
 - 测试：`test/access.test.js`、`test/outbound.test.js`、e2e allowlist 用例；默认 open 回归不变。
 - 边界：逐项工具权限/审批、真机 allowlist 验证留到 M1 剩余 / M2。
+
+**M1-b（DSH Session 运行时）**
+- `src/runtime/agent.js`：`sessionController` + `workspaceRegistry` + `agents` 探测；`sessions.json` 映射；`dsh-bot-private` / `dsh-bot-social` preset；`agent.followup` + `session/event` 取最终 assistant 文本；每聊天串行、超时、失败回退 `oneshot`。
+- `cordis.patch.yml` 增加两个 agent preset；`host.apply` 注册 `{{dshbot_persona}}` / `{{dshbot_rules_private}}` / `{{dshbot_rules_social}}`。
+- 配置 `runtime.*`；概览「运行诊断」显示 engine/active/会话数；`/runtime/stats`、`/runtime/sessions`。
+- 测试：`test/runtime.test.js`（Session 复用、preset 选择、工具中间文本丢弃、空回复/超时、并发串行、oneshot 回退）。
+- 边界：默认 `oneshot`；未在真实 DSH Session 上做 live smoke；QQ 动作工具/命令/按聊天模型留到 M1 剩余。
 
 **M0（视觉与矩阵）**
 - Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。

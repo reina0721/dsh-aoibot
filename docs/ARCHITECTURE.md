@@ -268,6 +268,26 @@ export function normalizeEvent(raw, cfg) -> null | {
 - `pipeline.sendDecision`、撤回处理与 `proactivity` 全部走 outbound；面板 `POST /send` 是人工操作，保留独立路径。
 - 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
 
+### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
+
+```js
+createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
+  available(), active(), engine(),
+  levelFor(turn), presetFor(level),
+  compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
+  summary(), sessions(), dispose(),
+}
+```
+
+- 服务探测：`ctx.get('sessionController')`、`workspaceRegistry`、`agents`、`systemPrompt`；缺一个则 `available=false`。
+- `runtime.engine` 默认 `oneshot`；只有 `agent` 且服务齐全时 `active=true`，否则 `compose` 返回 `RUNTIME_INACTIVE`，调用方回退一次性 LLM。
+- 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；preset/level 变化或恢复失败时新建。
+- preset：主人私聊 `dsh-bot-private`（fs/fs-search/web 工具），群聊/他人私聊 `dsh-bot-social`（无本机工具）。
+- 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
+- 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
+- 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
+- 边界：M1 只替换 compose；analysis/policy/记忆仍由认知内核负责；QQ 动作工具、命令、按聊天模型在后续里程碑。
+
 ## 4. 数据目录
 
 ```

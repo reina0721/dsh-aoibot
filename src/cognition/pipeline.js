@@ -11,7 +11,7 @@ export function createPipeline({
   store, getConfig, clock, logger,
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
-  beliefs = null, dryRun = null, outbound = null,
+  beliefs = null, dryRun = null, outbound = null, runtime = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -246,6 +246,7 @@ export function createPipeline({
       analysis: context.analysis,
       llm,
       config: c,
+      runtime,
     })
   }
 

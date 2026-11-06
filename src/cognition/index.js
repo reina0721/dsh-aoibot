@@ -28,6 +28,7 @@ import { createKnowledgeService, defaultSourceRegistry } from './knowledge.js'
 import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
+import { createAgentRuntime } from '../runtime/agent.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
 export function createCognition({
@@ -108,6 +109,13 @@ export function createCognition({
         logger: log,
         clock,
       })
+      state.services.runtime = createAgentRuntime({
+        ctx,
+        getConfig,
+        access,
+        logger: log,
+        dataRoot: pluginDataDir('runtime'),
+      })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
       state.services.beliefs = createBeliefService({ store: personaStore, getConfig, clock })
       state.services.sources = defaultSourceRegistry({ ctx, getConfig, clock, log })
@@ -131,6 +139,7 @@ export function createCognition({
         gateway,
         dryRun,
         outbound: state.services.outbound,
+        runtime: state.services.runtime,
         turnAggregator: null,
       })
       state.services.aggregator = createTurnAggregator({
@@ -485,6 +494,7 @@ export function createCognition({
   }
 
   function dispose() {
+    try { state.services.runtime?.dispose?.() } catch (error) {}
     try { scheduler.dispose?.() } catch (error) {}
     try { state.services.aggregator?.dispose?.() } catch (error) {}
     try { state.store?.close() } catch (error) {}
@@ -547,6 +557,8 @@ export function createCognition({
     cancelTask,
     metrics,
     outboundStats: () => state.services.outbound?.stats?.() || null,
+    runtimeStats: () => state.services.runtime?.summary?.() || null,
+    runtimeSessions: () => state.services.runtime?.sessions?.() || [],
     proactivityStats,
     runProactivity,
     insights,

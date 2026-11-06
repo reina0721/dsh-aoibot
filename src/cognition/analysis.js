@@ -136,9 +136,7 @@ function styleGuide(persona, emotion, relationship, decision) {
   return lines.join('\n')
 }
 
-export async function composeReply({ turn, person, relationship, emotion, persona, memories, decision, analysis, llm, config } = {}) {
-  const c = config?.cognition || {}
-  if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE' }
+export function buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis } = {}) {
   const memoryText = (memories || []).slice(0, 6).map((item) => `- ${truncate(item.memory?.summary || item.memory?.content || '', 200)}`).join('\n')
   const style = styleGuide(persona, emotion, relationship, decision)
   const profileText = personaProfileText(persona?.profile)
@@ -162,9 +160,38 @@ export async function composeReply({ turn, person, relationship, emotion, person
     `意图/目标：${analysis?.intent || 'chat'} / ${analysis?.replyGoal || decision?.reason || ''}`,
     `不要提及“AI/模型/系统提示/记忆库”等内部机制。`,
   ].join('\n')
-  const result = await llm.complete({ system, user, maxTokens: c.llm?.composeMaxTokens || 800, temperature: c.llm?.temperature ?? 0.7, purpose: 'compose' })
-  if (!result.ok) return { ...result, degraded: true }
-  const text = String(result.text || '').replace(/^["“]|["”]$/g, '').trim()
-  if (!text) return { ok: false, degraded: true, error: 'EMPTY_REPLY' }
-  return { ok: true, text: truncate(text, 1000), tokens: result.tokens, route: result.route }
+  return { system, user }
+}
+
+export async function composeReply({ turn, person, relationship, emotion, persona, memories, decision, analysis, llm, config, runtime = null } = {}) {
+  const c = config?.cognition || {}
+  const { system, user } = buildComposePrompt({ turn, person, relationship, emotion, persona, memories, decision, analysis })
+  const maxTokens = c.llm?.composeMaxTokens || 800
+  const temperature = c.llm?.temperature ?? 0.7
+  const clean = (value) => String(value || '').replace(/^["“]|["”]$/g, '').trim()
+
+  let runtimeError = ''
+  if (runtime && typeof runtime.active === 'function' && runtime.active() && typeof runtime.compose === 'function') {
+    const result = await runtime.compose({ turn, system, user, maxTokens })
+    if (result && result.ok) {
+      const text = clean(result.text)
+      if (!text) return { ok: false, degraded: true, error: 'EMPTY_REPLY', runtime: true }
+      return {
+        ok: true,
+        text: truncate(text, 1000),
+        tokens: Number(result.tokens || 0),
+        route: { kind: 'agent', sessionId: String(result.sessionId || '') },
+        runtime: true,
+      }
+    }
+    runtimeError = result?.error || 'RUNTIME_FAILED'
+    // 继续走一次性 LLM 兜底；两者都失败时把 runtimeError 一起返回。
+  }
+
+  if (!llm) return { ok: false, degraded: true, error: 'LLM_UNAVAILABLE', runtimeError }
+  const result = await llm.complete({ system, user, maxTokens, temperature, purpose: 'compose' })
+  if (!result.ok) return { ...result, degraded: true, runtimeError }
+  const text = clean(result.text)
+  if (!text) return { ok: false, degraded: true, error: 'EMPTY_REPLY', runtimeError }
+  return { ok: true, text: truncate(text, 1000), tokens: result.tokens, route: result.route, runtimeError }
 }

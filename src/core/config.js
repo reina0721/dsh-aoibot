@@ -104,6 +104,12 @@ export const DEFAULTS = {
     groups: [],
     auditSize: 100,
   },
+  // DSH Session 运行时：oneshot = 现有一次性 LLM；agent = 每聊天 DSH Session（默认先不切换）。
+  runtime: {
+    engine: 'oneshot',
+    workspaceDir: '',
+    replyTimeoutMs: 120000,
+  },
   cognition: {
     enabled: true,
     paused: false,
@@ -484,6 +490,23 @@ export const CONFIG_GROUPS = [
       { path: 'access.private', label: '私聊白名单', type: 'string-list', default: [], placeholder: '输入 QQ 号后回车' },
       { path: 'access.groups', label: '群白名单', type: 'string-list', default: [], placeholder: '输入群号后回车' },
       { path: 'access.auditSize', label: '审计条数', type: 'number', default: 100, min: 0, max: 1000, step: 1, help: '内存环形缓冲；只存会话/发送者/原因/时间，不存消息正文，重启清空。' },
+    ],
+  },
+  {
+    id: 'runtime',
+    title: '会话运行时',
+    description: '回复由一次性 LLM 生成，还是交给 DSH Agent（每聊天一个 Session，可用工具）。默认保持 oneshot。',
+    fields: [
+      {
+        path: 'runtime.engine', label: '引擎', type: 'select', default: 'oneshot',
+        options: [
+          { value: 'oneshot', label: 'oneshot：一次性 LLM（当前行为）' },
+          { value: 'agent', label: 'agent：DSH Session + Agent' },
+        ],
+        help: 'agent 需要宿主提供 sessionController / workspaceRegistry / agents；缺失或失败时自动回退 oneshot。',
+      },
+      { path: 'runtime.workspaceDir', label: '工作区目录', type: 'text', default: '', placeholder: '留空使用数据目录/runtime/workspace', help: 'DSH Session 的 workspace 路径；留空自动创建。' },
+      { path: 'runtime.replyTimeoutMs', label: '单轮回复超时', type: 'number', default: 120000, min: 5000, max: 600000, step: 1000, unit: 'ms', help: '等 DSH Agent 完成一轮的上限；超时只放弃等待，不强杀会话。' },
     ],
   },
   {
@@ -882,6 +905,11 @@ export function normalizeConfig(raw) {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
     },
     access: normalizeAccess(merged.access, issues),
+    runtime: {
+      engine: pickEnum(merged.runtime?.engine, DEFAULTS.runtime.engine, ['oneshot', 'agent']),
+      workspaceDir: pickString(merged.runtime?.workspaceDir, DEFAULTS.runtime.workspaceDir, { max: 1024 }),
+      replyTimeoutMs: pickNumber(merged.runtime?.replyTimeoutMs, DEFAULTS.runtime.replyTimeoutMs, { min: 5000, max: 600000 }),
+    },
   }
 
   if (cfg.reconnect.minDelayMs > cfg.reconnect.maxDelayMs) {

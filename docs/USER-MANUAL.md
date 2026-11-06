@@ -145,6 +145,30 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 - 面板「消息」页手动发送是人工操作，不受访问闸门限制。
 - 排查某条会话为什么被拒：面板概览计数，或 `POST /onebot-qq/api/access/check`（body：`chatType` / `chatId` / `senderId`）。
 
+### 3.2 会话运行时（实验，默认关闭）
+
+「配置 → 会话运行时 → 引擎」有两个选择：
+
+| 引擎 | 行为 | 适用 |
+|---|---|---|
+| `oneshot`（默认） | 认知 pipeline 拼 prompt，一次性调用 LLM 生成回复 | 现有部署；无需宿主提供会话服务 |
+| `agent` | 每个 QQ 聊天一个 DSH Session，由 Agent 生成回复，可用 preset 里的工具 | 想用工具/长上下文/DSH 原生能力时 |
+
+`agent` 需要当前 DSH profile 提供 `sessionController`、`workspaceRegistry`、`agents`；缺任何一个或调用失败时，
+本条消息自动回退到 `oneshot`，不会静默丢回复。
+
+两个 preset 由插件 bundle 声明：
+
+- `dsh-bot-private`：主人私聊，带 `tool-fs` / `tool-fs-search` / `tool-web`，人格与规则来自 `{{dshbot_persona}}` / `{{dshbot_rules_private}}`；
+- `dsh-bot-social`：群聊与他人私聊，只有人格与时间上下文，不挂本机工具。
+
+会话映射写在数据目录 `runtime/sessions.json`，工作区默认在 `runtime/workspace`；单轮等待上限由
+「会话运行时 → 单轮回复超时」控制（默认 120s，超时只放弃等待，不强杀会话）。概览「运行诊断」会显示
+`运行时：agent/oneshot` 与当前会话数；也可看 `GET /onebot-qq/api/runtime/stats`、`/runtime/sessions`。
+
+建议先在测试群/测试号打开 `agent`，确认回复、工具调用与回退都正常，再考虑默认开启。`agent` 仍是实验路径：
+工具清单、QQ 动作工具、按聊天选模型与命令会在后续里程碑补齐。
+
 ---
 
 ## 4. 面板十个标签
