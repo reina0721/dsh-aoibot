@@ -848,3 +848,27 @@ test('media image routes: disabled zero provider calls, local generate/edit resu
   assert.equal(calls.length, 2)
   assert.equal(mock.calls.filter((call) => ['send_group_msg', 'send_private_msg'].includes(call.action)).length, 0)
 })
+
+test('e2e: timeline archive route imports current persona events and filters scope without adding memories', async (t) => {
+  const { fake } = await boot(t)
+  const at = Date.parse('2020-01-01T00:00:00Z')
+  const body = { kind: 'timeline', format: 'jsonl', content: JSON.stringify({ kind: 'timeline', title: 'API 回忆', detail: 'archive event', at }), scopeType: 'group', scopeId: '12345' }
+  const imported = await postJson(fake, '/cognition/import', body)
+  assert.equal(imported.kind, 'timeline')
+  assert.equal(imported.imported, 1)
+  assert.equal((await postJson(fake, '/cognition/import', body)).skipped, 1)
+  const all = await getJson(fake, '/cognition/timeline')
+  assert.equal(all.items[0].type, 'event')
+  const events = await getJson(fake, '/cognition/timeline?types=event&scopeType=group&scopeId=12345')
+  assert.equal(events.items.length, 1)
+  assert.equal(events.items[0].title, 'API 回忆')
+  assert.equal(events.items[0].detail, 'archive event')
+  assert.equal(events.items[0].at, at)
+  assert.equal(events.stats.byType.event, 1)
+  assert.equal((await getJson(fake, '/cognition/timeline?types=event&scopeType=private&scopeId=12345')).items.length, 0)
+  assert.equal((await getJson(fake, '/cognition/memories')).items.length, 0)
+  for (const invalid of [{ ...body, kind: 'event' }, { ...body, content: '{"text":"missing time"}' }]) {
+    const response = await fake.call(API + '/cognition/import', invalid, { method: 'POST' })
+    assert.equal(response.json.ok, false)
+  }
+})

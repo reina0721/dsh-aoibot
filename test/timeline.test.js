@@ -51,3 +51,28 @@ test('timeline：空输入/未知类型安全降级', () => {
   assert.equal(service.timeline({ types: ['nope'] }).length, 0)
   assert.ok(service.stats().total > 0)
 })
+
+test('timeline：导入事件默认合并、event 过滤、标题/正文、时间分页和作用域', () => {
+  const events = [
+    { id: 'e1', at: 1000, text: 'global detail', scopeType: 'global', status: 'active' },
+    { id: 'e2', at: 3000, text: 'private detail', title: '旧日回忆', scopeType: 'private', scopeId: '123' },
+    { id: 'e3', at: 2000, text: 'group detail', scopeType: 'group', scopeId: '456' },
+  ]
+  const calls = []
+  const service = createTimelineService({
+    store: { list: () => [{ id: 't1', startedAt: 2500, text: 'turn' }] },
+    scopedStore: { list: (kind) => { calls.push(kind); return kind === 'timeline_event' ? events : [] } },
+  })
+  assert.deepEqual(service.timeline().map((row) => row.id), ['event:e2', 'turn:t1', 'event:e3', 'event:e1'])
+  const rows = service.timeline({ types: ['event'] })
+  assert.equal(rows.length, 3)
+  assert.deepEqual(rows[0], { id: 'event:e2', type: 'event', at: 3000, scopeType: 'private', scopeId: '123', title: '旧日回忆', detail: 'private detail', status: '' })
+  assert.equal(rows[2].title, '回忆事件')
+  assert.deepEqual(service.timeline({ types: ['event'], scopeType: 'private', scopeId: '123' }).map((row) => row.id), ['event:e2', 'event:e1'])
+  assert.deepEqual(service.timeline({ types: ['event'], scopeType: 'group', scopeId: '456' }).map((row) => row.id), ['event:e3', 'event:e1'])
+  assert.deepEqual(service.timeline({ types: ['event'], scopeType: 'private', scopeId: '999', before: 2000 }).map((row) => row.id), ['event:e1'])
+  assert.equal(service.stats().byType.event, 3)
+  calls.length = 0
+  service.timeline({ types: ['memory', 'nope'] })
+  assert.deepEqual(calls, ['memory'])
+})

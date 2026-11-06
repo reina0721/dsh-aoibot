@@ -101,8 +101,8 @@ test('CogMemories: import panel scopes, file size gate, payload, counts/error an
   const calls = [], originalFetch = globalThis.fetch
   const nodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(nodes) : [tree, ...nodes(tree.children)]
   const file = { size: 100, text: async () => '[{"text":"old archive"}]' }
-  const render = ({ archiveFile = file, scope = 'global', scopeId = '', result = null, error = '' } = {}) => {
-    stateOverrides = ['query', 'semantic', { items: [] }, false, '', archiveFile, scope, scopeId, false, result, error]
+  const render = ({ archiveFile = file, scope = 'global', scopeId = '', result = null, error = '', kind = 'memory' } = {}) => {
+    stateOverrides = ['query', 'semantic', { items: [] }, false, '', archiveFile, scope, scopeId, false, result, error, kind]
     try { return panel.CogMemories({ toast() {} }) } finally { stateOverrides = null }
   }
   globalThis.fetch = async (path, init) => {
@@ -112,6 +112,8 @@ test('CogMemories: import panel scopes, file size gate, payload, counts/error an
   try {
     const tree = render(), all = nodes(tree), json = JSON.stringify(tree)
     assert.match(json, /导入旧档案/); assert.match(json, /当前人格/); assert.match(json, /幂等/); assert.match(json, /不上传到外部服务/)
+    assert.equal(field(tree, '导入种类').props.value, 'memory')
+    assert.deepEqual(nodes(field(tree, '导入种类')).filter((node) => node.type === 'option').map((node) => node.props.value), ['memory', 'timeline'])
     const input = all.find((node) => node.props?.type === 'file')
     assert.equal(input.props.accept, '.json,.jsonl,.txt')
     const select = all.find((node) => node.props?.['aria-label'] === '导入作用域')
@@ -119,7 +121,7 @@ test('CogMemories: import panel scopes, file size gate, payload, counts/error an
     assert.deepEqual(nodes(select).filter((node) => node.type === 'option').map((node) => node.props.value), ['global', 'private', 'group'])
     assert.equal(all.some((node) => node.props?.['aria-label'] === '导入作用域 ID'), false)
     await all.find((node) => node.children?.includes('导入')).props.onClick()
-    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/cognition/import', method: 'POST', body: { format: 'auto', content: '[{"text":"old archive"}]', scopeType: 'global', scopeId: '' } })
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/cognition/import', method: 'POST', body: { format: 'auto', kind: 'memory', content: '[{"text":"old archive"}]', scopeType: 'global', scopeId: '' } })
     assert.equal(calls[1].method, 'GET')
     assert.match(calls[1].path, /query=query&type=semantic/)
     for (const scope of ['private', 'group']) {
@@ -129,6 +131,15 @@ test('CogMemories: import panel scopes, file size gate, payload, counts/error an
       assert.equal(calls.at(-2).body.scopeType, scope)
       assert.equal(calls.at(-2).body.scopeId, '12345')
     }
+    await control(render({ kind: 'timeline' }), '导入').props.onClick()
+    assert.equal(calls.at(-2).body.kind, 'timeline')
+    const mounted = mountNode({ type: panel.CogMemories, props: { toast() {} } })
+    field(mounted(), '旧档案文件').props.onChange({ target: { files: [file] } })
+    field(mounted(), '导入种类').props.onChange({ target: { value: 'timeline' } })
+    assert.equal(field(mounted(), '导入种类').props.value, 'timeline')
+    await control(mounted(), '导入').props.onClick()
+    assert.equal(calls.at(-2).body.kind, 'timeline')
+    assert.match(JSON.stringify(render({ result: { kind: 'timeline', imported: 2, skipped: 0, invalid: 1, bytes: 90 } })), /时间轴导入 2/)
     const previous = calls.length
     for (const options of [{ archiveFile: { size: 5242881, text: () => { throw new Error('must not read oversized file') } } }, { scope: 'group', scopeId: 'bad' }, { archiveFile: null }]) {
       await nodes(render(options)).find((node) => node.children?.includes('导入')).props.onClick()
@@ -1263,4 +1274,32 @@ test('MediaPage: image status, text-only source, generation/edit payloads and lo
     assert.ok(JSON.stringify(render('generated/result.png')).includes('生成路径：generated/result.png'))
     assert.ok(JSON.stringify(render('', 'provider HTTP 401')).includes('provider HTTP 401'))
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('CogTimeline: all remains default, Event filter queries API and renders event tone', async () => {
+  const calls = [], restore = mockCognitionApi(calls)
+  const refresh = (tree) => control(treeNodes(tree).find((node) => node.type?.name === 'Panel').props.actions, '刷新')
+  const render = (type = '') => {
+    stateOverrides = [type, { items: [{ id: 'event:e1', type: 'event', title: '旧日回忆', detail: '事件正文', at: 1000 }] }, '', false]
+    try { return panel.CogTimeline({ toast() {} }) } finally { stateOverrides = null }
+  }
+  try {
+    const all = render()
+    assert.equal(control(all, '全部').props.kind, 'primary')
+    assert.equal(control(all, '事件').props.kind, 'ghost')
+    await refresh(all).props.onClick()
+    assert.equal(calls.at(-1).path, panel.API_PREFIX + '/cognition/timeline?limit=120')
+    const event = render('event')
+    assert.equal(control(event, '事件').props.kind, 'primary')
+    const tag = treeNodes(event).find((node) => node.type?.name === 'CogTag' && node.children?.includes('event'))
+    assert.equal(tag.props.tone, 'warn')
+    assert.match(JSON.stringify(event), /旧日回忆/)
+    assert.match(JSON.stringify(event), /事件正文/)
+    await refresh(event).props.onClick()
+    assert.equal(calls.at(-1).path, panel.API_PREFIX + '/cognition/timeline?limit=120&types=event')
+    const mounted = mountNode({ type: panel.CogTimeline, props: { toast() {} } })
+    control(mounted(), '事件').props.onClick()
+    await refresh(mounted()).props.onClick()
+    assert.match(calls.at(-1).path, /types=event$/)
+  } finally { restore() }
 })

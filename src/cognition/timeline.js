@@ -1,4 +1,4 @@
-// 时间轴：把轮次、记忆、决策按时间合并成一条可读的「回忆日志」。
+// 时间轴：把轮次、记忆、决策、导入事件按时间合并成一条可读的「回忆日志」。
 //
 // 只读聚合，不改状态；scope 过滤遵循「global 对所有可见，私聊/群只与同 scope 匹配」。
 
@@ -46,6 +46,13 @@ export function createTimelineService({ store, scopedStore, clock, limit = 400 }
           detail: String(item.summary || item.content || '').slice(0, 240),
           status: String(item.status || ''),
         })
+      } else if (kind === 'event') {
+        out.push({
+          id: `event:${item.id}`, type: 'event', at, ...scope,
+          title: String(item.title || '回忆事件'),
+          detail: String(item.text || item.summary || ''),
+          status: String(item.status || ''),
+        })
       } else if (kind === 'decision') {
         out.push({
           id: `decision:${item.id}`,
@@ -62,7 +69,7 @@ export function createTimelineService({ store, scopedStore, clock, limit = 400 }
   }
 
   function timeline({ limit: pageSize = 100, before = 0, scopeType = '', scopeId = '', types = [] } = {}) {
-    const kinds = new Set((Array.isArray(types) && types.length ? types : ['turn', 'memory', 'decision']).filter((type) => ['turn', 'memory', 'decision'].includes(type)))
+    const kinds = new Set((Array.isArray(types) && types.length ? types : ['turn', 'memory', 'decision', 'event']).filter((type) => ['turn', 'memory', 'decision', 'event'].includes(type)))
     const listLimit = Math.max(20, Math.min(800, Number(limit) || 400))
     const rows = []
     try {
@@ -73,6 +80,9 @@ export function createTimelineService({ store, scopedStore, clock, limit = 400 }
     } catch (error) {}
     try {
       if (kinds.has('decision') && scopedStore?.list) rows.push(...rowsOf('decision', scopedStore.list('decision', { limit: listLimit })))
+    } catch (error) {}
+    try {
+      if (kinds.has('event') && scopedStore?.list) rows.push(...rowsOf('event', scopedStore.list('timeline_event', { limit: listLimit })))
     } catch (error) {}
     const cutoff = Number(before) || 0
     const max = Math.max(1, Math.min(200, Number(pageSize) || 100))

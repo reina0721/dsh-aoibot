@@ -301,11 +301,15 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 | `cognition.import.maxBytes` | `5242880` | 1–5242880 字节，按档案字符串 UTF-8 大小计算；面板固定最多 5 MiB |
 | `cognition.import.maxItems` | `5000` | 1–5000 项；包括无效项与重复项；JSONL 按非空行计数 |
 
-`POST /onebot-qq/api/cognition/import` 接收 `{format?:"auto"或"json"或"jsonl", content:字符串, scopeType?:"global"或"private"或"group", scopeId?:字符串}`；HTTP 请求体上限 6 MiB。默认全局作用域，但始终属于**当前人格**；各项可覆盖作用域，私聊/群 ID 必须是非空 ASCII 数字字符串。接口沿用现有本机 API 信任边界，不新增鉴权或 QQ 命令。
+`POST /onebot-qq/api/cognition/import` 接收 `{kind?:"memory"或"timeline", format?:"auto"或"json"或"jsonl", content:字符串, scopeType?:"global"或"private"或"group", scopeId?:字符串}`；HTTP 请求体上限 6 MiB。默认全局作用域，但始终属于**当前人格**；各项可覆盖作用域，私聊/群 ID 必须是非空 ASCII 数字字符串。接口沿用现有本机 API 信任边界，不新增鉴权或 QQ 命令。
 
-正文依次读取 `text/content/summary/memory` 中第一个字符串，去除首尾空白后限 1–4000 Unicode 字符；`personId` 可选字符串，最多 64 字符。类型限 `episodic/semantic/emotional/social/procedural/self`，未知类型用 episodic；数值 importance 限制到 0–1，默认 0.5。createdAt/updatedAt 支持毫秒时间戳或 ISO 日期，非正数/无效/未来时间回退，updatedAt 不早于 createdAt。固定 source=import、status=active、stability/salience=0.5、confidence=1，不保留其他字段。旧档案格式与操作示例见 [用户手册](USER-MANUAL.md#36-目的与记忆整理)。
+默认 `kind=memory`，原记忆导入规则不变：JSON 数组、`memories/items/data/records` 包装或单个记忆对象，JSONL 每个非空行一个对象。正文依次读取 `text/content/summary/memory` 中第一个字符串，去除首尾空白后限 1–4000 Unicode 字符；`personId` 可选字符串，最多 64 字符。类型限 `episodic/semantic/emotional/social/procedural/self`，未知类型用 episodic；数值 importance 限制到 0–1，默认 0.5。createdAt/updatedAt 支持毫秒时间戳或 ISO 日期，非正数/无效/未来时间回退，updatedAt 不早于 createdAt。固定 source=import、status=active、stability/salience=0.5、confidence=1，不保留其他字段。旧档案格式与操作示例见 [用户手册](USER-MANUAL.md#36-目的与记忆整理)。
 
-导入服务不联网、不调用模型、不自动发送 QQ；错误不回显内容，日志仅计数。只支持通用 JSON/JSONL，无 Aurabot 专用迁移、向量或时间轴事件导入；尚无真实旧档案样本验证。
+M7-h 新增 `kind=timeline`：JSON 数组、`events/timeline/items/data/records` 数组包装或单个事件对象，及 JSONL；带 `kind:"timeline"` 的单项仅在时间轴模式接收。正文取 `text/detail/summary/content/title` 中第一个字符串，trim 后限 1–2000 Unicode 字符；可选 title 为 1–200 字符，personId 为最多 64 字符的字符串。时间按 `at/timestamp/time/createdAt` 取首个非 null 值，必须提供；支持毫秒数或 ISO 日期，无效/非正/未来时间回退为本次导入时间。type/kind 统一规范为 event，记录存储为 timeline_event；固定 source=import、status=active、createdAt/updatedAt=at，只保留规范字段。事件以作用域/personId/at/正文生成独立 `tle_` ID，重复导入跳过而不覆盖；无效时间回退后再参与 ID 计算，跨时刻重导此类数据可能产生新事件，建议修正原时间。
+
+成功响应为 `{ok,kind,format,bytes,total,imported,skipped,invalid,scope}`。两种导入共用上述配置及限额；无有效项则报错，无效项计入 invalid。时间轴支持 `types=turn,memory,decision,event`，默认全部，事件随当前人格隔离并纳入「时间轴事件」数据组。
+
+导入服务不联网、不调用模型、不自动发送 QQ；错误不回显内容，日志仅计数。只支持通用 JSON/JSONL，无 Aurabot 专用迁移或向量导入；尚无真实旧档案样本验证，#30 仍 partial。
 
 按聊天选模型：`cognition.modelRouting.privateDefault` / `groupDefault` 为 `provider/model`；`routes` 是
 `QQ号或群号=provider/model` 的字符串数组，优先于默认项。只影响认知分析与回复生成（oneshot / agent compose），

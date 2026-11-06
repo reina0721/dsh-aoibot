@@ -23,7 +23,7 @@ function timestamp(value, fallback, now) {
 }
 
 function normalizeItem(item, scope, now) {
-  if (!isObject(item)) return null
+  if (!isObject(item) || item.kind === 'timeline') return null
   const text = [item.text, item.content, item.summary, item.memory].find((value) => typeof value === 'string')?.trim()
   if (!text || [...text].length > 4000) return null
   if (item.personId !== undefined && (typeof item.personId !== 'string' || [...item.personId].length > 64)) return null
@@ -42,7 +42,31 @@ function normalizeItem(item, scope, now) {
   }
 }
 
-function parse(content, format) {
+function normalizeTimelineItem(item, scope, now) {
+  if (!isObject(item)) return null
+  const text = [item.text, item.detail, item.summary, item.content, item.title].find((value) => typeof value === 'string')?.trim()
+  if (!text || [...text].length > 2000) return null
+  const time = [item.at, item.timestamp, item.time, item.createdAt].find((value) => value !== undefined && value !== null)
+  if (time === undefined) return null
+  const at = timestamp(time, now, now)
+  if (item.personId !== undefined && (typeof item.personId !== 'string' || [...item.personId].length > 64)) return null
+  let title
+  if (item.title !== undefined) {
+    if (typeof item.title !== 'string') return null
+    title = item.title.trim()
+    if (!title || [...title].length > 200) return null
+  }
+  let itemScope
+  try { itemScope = normalizeScope(item, scope) } catch { return null }
+  const personId = item.personId || ''
+  const id = 'tle_' + createHash('sha256').update(JSON.stringify([itemScope.scopeType, itemScope.scopeId, personId, at, text])).digest('hex')
+  return {
+    id, ...itemScope, personId, text, summary: text, ...(title ? { title } : {}), at,
+    type: 'event', source: 'import', status: 'active', createdAt: at, updatedAt: at,
+  }
+}
+
+function parse(content, format, kind) {
   const trimmed = content.trim().replace(/^\uFEFF/, '')
   let parsed
   if (format !== 'jsonl') {
@@ -61,38 +85,42 @@ function parse(content, format) {
   }
   if (Array.isArray(parsed)) return { format: 'json', items: parsed }
   if (isObject(parsed)) {
-    const items = ['memories', 'items', 'data', 'records'].map((key) => parsed[key]).find(Array.isArray)
+    const keys = kind === 'timeline' ? ['events', 'timeline', 'items', 'data', 'records'] : ['memories', 'items', 'data', 'records']
+    const items = keys.map((key) => parsed[key]).find(Array.isArray)
     return { format: 'json', items: items || [parsed] }
   }
   throw new Error('旧档案 JSON 必须是数组或对象')
 }
 
 export function createArchiveImportService({ store, getConfig, clock = { now: Date.now }, logger } = {}) {
-  function importArchive({ format = 'auto', content, scope = { scopeType: 'global', scopeId: '' } } = {}) {
+  function importArchive({ format = 'auto', kind = 'memory', content, scope = { scopeType: 'global', scopeId: '' } } = {}) {
     const config = getConfig?.()?.cognition?.import || {}
     if (config.enabled === false) throw new Error('导入旧档案已禁用')
     if (typeof content !== 'string' || !content.trim()) throw new Error('旧档案 content 必须是非空字符串')
     if (!['auto', 'json', 'jsonl'].includes(format)) throw new Error('导入格式只支持 auto、json、jsonl')
+    if (!['memory', 'timeline'].includes(kind)) throw new Error('导入 kind 只支持 memory、timeline')
     const bytes = Buffer.byteLength(content, 'utf8')
     const maxBytes = Number.isFinite(config.maxBytes) ? Math.max(1, Math.min(MAX_BYTES, config.maxBytes)) : MAX_BYTES
     const maxItems = Number.isFinite(config.maxItems) ? Math.max(1, Math.min(MAX_ITEMS, config.maxItems)) : MAX_ITEMS
     if (bytes > maxBytes) throw new Error(`旧档案超过导入大小上限（${maxBytes} 字节）`)
     const requestScope = normalizeScope(scope)
-    const parsed = parse(content, format)
+    const parsed = parse(content, format, kind)
     if (parsed.items.length > maxItems) throw new Error(`旧档案超过导入条数上限（${maxItems} 条）`)
     const now = clock.now()
-    const normalized = parsed.items.map((item) => normalizeItem(item, requestScope, now))
+    const recordKind = kind === 'timeline' ? 'timeline_event' : 'memory'
+    const normalize = kind === 'timeline' ? normalizeTimelineItem : normalizeItem
+    const normalized = parsed.items.map((item) => normalize(item, requestScope, now))
     const invalid = normalized.filter((item) => !item).length
-    if (!normalized.some(Boolean)) throw new Error('旧档案没有有效记忆项；请检查 JSON/JSONL、正文及作用域')
+    if (!normalized.some(Boolean)) throw new Error(kind === 'timeline' ? '旧档案没有有效时间轴项；请检查 JSON/JSONL、正文、时间及作用域' : '旧档案没有有效记忆项；请检查 JSON/JSONL、正文及作用域')
     let imported = 0
     let skipped = 0
     const seen = new Set()
     const write = () => {
       for (const item of normalized) {
         if (!item) continue
-        if (seen.has(item.id) || store.get('memory', item.id)) { skipped += 1; continue }
+        if (seen.has(item.id) || store.get(recordKind, item.id)) { skipped += 1; continue }
         seen.add(item.id)
-        store.put('memory', item.id, item, { createdAt: item.createdAt, updatedAt: item.updatedAt })
+        store.put(recordKind, item.id, item, { createdAt: item.createdAt, updatedAt: item.updatedAt })
         imported += 1
       }
     }
@@ -102,7 +130,7 @@ export function createArchiveImportService({ store, getConfig, clock = { now: Da
     } catch {
       throw new Error('旧档案写入失败；请检查认知存储状态后重试')
     }
-    const result = { ok: true, format: parsed.format, bytes, total: parsed.items.length, imported, skipped, invalid, scope: requestScope }
+    const result = { ok: true, kind, format: parsed.format, bytes, total: parsed.items.length, imported, skipped, invalid, scope: requestScope }
     logger?.info?.({ bytes, total: result.total, imported, skipped, invalid })
     return result
   }

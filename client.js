@@ -5760,6 +5760,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [importing, setImporting] = useState(false)
       const [importResult, setImportResult] = useState(null)
       const [importError, setImportError] = useState('')
+      const [importKind, setImportKind] = useState('memory')
       const search = useCallback(async (q = query, t = type) => {
         setLoading(true)
         const parsed = parseApiResponse(await get('/cognition/memories?query=' + encodeURIComponent(q || '') + '&type=' + encodeURIComponent(t || '') + '&limit=80'))
@@ -5783,7 +5784,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         setImporting(true)
         try {
           const content = await archiveFile.text()
-          const parsed = parseApiResponse(await post('/cognition/import', { format: 'auto', content, scopeType: importScope, scopeId: importScope === 'global' ? '' : importScopeId }))
+          const parsed = parseApiResponse(await post('/cognition/import', { format: 'auto', kind: importKind, content, scopeType: importScope, scopeId: importScope === 'global' ? '' : importScopeId }))
           if (!parsed.ok) { setImportError(parsed.message); return }
           setImportResult(parsed.data)
           await search()
@@ -5819,8 +5820,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             ),
           )) : h(CogEmpty, { title: '没有匹配记忆', description: '记忆在完整轮次结束后写入；试试清空搜索或改变类型。', icon: 'memory' }),
         ),
-        h(Panel, { title: '导入旧档案', description: '内容存入当前人格；导入幂等，相同作用域/人物/正文会跳过。仅支持 JSON/JSONL，不上传到外部服务。' },
+        h(Panel, { title: '导入旧档案', description: '内容存入当前人格；导入幂等，相同作用域/人物/正文（时间轴还含时间）会跳过。仅支持 JSON/JSONL，不上传到外部服务。' },
           h('div', { className: 'ob-stack', style: { gap: '10px' } },
+            h('select', { className: 'ob-select', value: importKind, disabled: importing, 'aria-label': '导入种类', onChange: (event) => { setImportKind(event.target.value); setImportResult(null); setImportError('') } },
+              h('option', { value: 'memory' }, '记忆'),
+              h('option', { value: 'timeline' }, '时间轴'),
+            ),
             h('input', { type: 'file', accept: '.json,.jsonl,.txt', disabled: importing, 'aria-label': '旧档案文件', onChange: (event) => {
               const file = event.target.files?.[0] || null
               setImportResult(null)
@@ -5837,7 +5842,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               h(Btn, { disabled: importing || !archiveFile, onClick: importArchive }, importing ? '导入中…' : '导入'),
             ),
             importError ? h(Banner, { tone: 'err', message: importError }) : null,
-            importResult ? h('p', { role: 'status', className: 'ob-small' }, '导入 ' + importResult.imported + ' · 跳过 ' + importResult.skipped + ' · 无效 ' + importResult.invalid + ' · 字节 ' + importResult.bytes) : null,
+            importResult ? h('p', { role: 'status', className: 'ob-small' }, (importResult.kind === 'timeline' ? '时间轴' : '记忆') + '导入 ' + importResult.imported + ' · 跳过 ' + importResult.skipped + ' · 无效 ' + importResult.invalid + ' · 字节 ' + importResult.bytes) : null,
             h('p', { className: 'ob-field-help' }, '最多 5 MiB、5000 项（配置可调低）；档案内各项可指定作用域，未指定时使用上方选择。不会自动发送到 QQ。'),
           ),
         ),
@@ -5880,7 +5885,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const path = '/cognition/timeline?limit=120' + (type ? '&types=' + encodeURIComponent(type) : '')
       const api = useCogApi(props, path)
       const items = safeArray(api.data && api.data.items)
-      const toneOf = (value) => value === 'turn' ? 'brand' : value === 'memory' ? 'ok' : 'muted'
+      const toneOf = (value) => value === 'turn' ? 'brand' : value === 'memory' ? 'ok' : value === 'event' ? 'warn' : 'muted'
       const timeOf = (at) => {
         const value = Number(at) || 0
         return value ? new Date(value).toLocaleString() : '—'
@@ -5890,13 +5895,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         { className: 'ob-stack', style: { gap: '14px' } },
         h(Panel, {
           title: '时间轴',
-          description: '轮次、记忆、决策按时间合并；只读回忆日志，不改变任何状态。',
+          description: '轮次、记忆、决策、导入事件按时间合并；只读回忆日志，不改变任何状态。',
           actions: h('div', { className: 'ob-row' },
             h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: api.reload }, '刷新'),
           ),
         },
           h(CogToolbar, null,
-            [['', '全部'], ['turn', '轮次'], ['memory', '记忆'], ['decision', '决策']].map(([value, label]) =>
+            [['', '全部'], ['turn', '轮次'], ['memory', '记忆'], ['decision', '决策'], ['event', '事件']].map(([value, label]) =>
               h(Btn, { key: value || 'all', small: true, kind: type === value ? 'primary' : 'ghost', onClick: () => setType(value) }, label),
             ),
           ),
@@ -5915,7 +5920,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                   h('span', { className: 'ob-muted ob-small' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')),
                 ),
               )))
-            : h(CogEmpty, { title: '暂无记录', description: '收到消息、形成记忆或产生决策后会出现在这里。', icon: 'clock' }),
+            : h(CogEmpty, { title: '暂无记录', description: '收到消息、形成记忆、产生决策或导入时间轴事件后会出现在这里。', icon: 'clock' }),
         ),
       )
     }
@@ -6152,6 +6157,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     ]
     const PERSONA_DATA_GROUPS = [
       { id: 'memory', label: '记忆' },
+      { id: 'timeline', label: '时间轴事件' },
       { id: 'people', label: '人物画像' },
       { id: 'relationships', label: '关系' },
       { id: 'emotion', label: '情绪' },
@@ -7796,6 +7802,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.CogPersons = CogPersons
     exports.CogRelationships = CogRelationships
     exports.CogMemories = CogMemories
+    exports.CogTimeline = CogTimeline
     exports.PersonaTab = PersonaTab
     exports.COG_SECTIONS = COG_SECTIONS
     exports.Logs = Logs

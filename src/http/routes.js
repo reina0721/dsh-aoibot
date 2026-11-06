@@ -357,6 +357,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('导入请求体必须是对象')
       return cognition.importArchive({
         format: body.format,
+        kind: body.kind,
         content: body.content,
         scope: { scopeType: body.scopeType === undefined ? 'global' : body.scopeType, scopeId: body.scopeId === undefined ? '' : body.scopeId },
       })

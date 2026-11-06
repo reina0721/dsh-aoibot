@@ -29,7 +29,7 @@
 - 可选语义检索（M7-f）：默认关闭的 OpenAI 兼容 embeddings 重排词法候选，出错回退词法；仅 fake provider 离线测试，真实 provider 未验证。无本地模型、独立 reranker 或向量数据库，见[配置](docs/CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
 - 人物/群印象与关系编辑（M7-g）：当前人格 facet 内容/置信度/状态、原作用域内的关系维度手动调整，显式保存并记录人工来源；见[认知面板用法与边界](docs/USER-MANUAL.md#认知)。
-- 旧档案导入：认知记忆页/API 将通用 JSON/JSONL 导入当前人格，默认最多 5 MiB/5000 项，按作用域/人物/正文幂等去重，本地处理。
+- 旧档案导入：认知记忆页/API 将通用 JSON/JSONL 导入当前人格，支持记忆（默认）或时间轴事件，默认最多 5 MiB/5000 项，按作用域/人物/正文（事件还含时间）幂等去重，本地处理。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。
 - 连接、消息、人格、模型、认知、日志及系统设置面板。
 
@@ -70,7 +70,7 @@ M7-c 生图/改图与普通图片发送已接入服务、主人命令和媒体�
 
 M7-b 新增默认关闭的主人 QQ 管理命令：资料、当前群管理、精华/撤回与媒体根内文件上传。需启用 `cognition.qqAdmin.enabled`，踢人始终 `confirm`、撤回默认确认；群管需机器人具备权限，无任意 action 透传或新增 Agent 工具，真实 QQ 管理/资料/文件动作尚未验证。用法见 [用户手册](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人)，配置见 [CONFIG](docs/CONFIG.md)。2026-11-06 用户批准的发布门槛豁免见 [GAP §8.1](docs/research/GAP-AURABOT.md#81-用户批准豁免)，其他差距继续跟踪。
 
-M7-d 提供通用 JSON/JSONL 旧档案导入：记忆页选文件，或调用 `POST /cognition/import`，内容写入当前人格并幂等去重，不联网、不自动发送 QQ。无 Aurabot 专用迁移、向量或时间轴事件导入，尚无真实旧档案样本验证，#30 仍 partial。格式与用法见 [用户手册](docs/USER-MANUAL.md#36-目的与记忆整理)，开关和限额见 [CONFIG](docs/CONFIG.md#导入旧档案cognitionimportm7-d)。
+M7-h 扩展通用 JSON/JSONL 旧档案导入：记忆页选择「记忆」（默认）或「时间轴」，或调用 `POST /cognition/import` 并指定 `kind: "memory"或"timeline"`，内容写入当前人格并幂等去重。时间轴事件要求提供时间，在时间轴的「事件」筛选中查看；本地处理、不自动发送 QQ。无 Aurabot 专用迁移或向量导入，尚无真实旧档案样本验证，#30 仍 partial。格式与用法见 [用户手册](docs/USER-MANUAL.md#36-目的与记忆整理)，开关和限额见 [CONFIG](docs/CONFIG.md#导入旧档案cognitionimportm7-d)。
 
 M7 发布候选的强制检查、回滚与声明边界见 [发布检查表](docs/RELEASE.md)；当前未达全量 parity，不得宣称与 Aurabot 完全一致。
 

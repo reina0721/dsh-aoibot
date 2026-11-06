@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createArchiveImportService } from '../src/cognition/archive-import.js'
+import { createStore } from '../src/cognition/store.js'
 import { createCognition } from '../src/cognition/index.js'
 import { createFakeScheduler } from '../src/cognition/util.js'
 import { normalizeConfig, CONFIG_GROUPS } from '../src/core/config.js'
@@ -24,7 +25,7 @@ test('archive import: JSON array, all wrapper keys and single object, auto detec
     const { service, puts } = harness()
     const content = JSON.stringify(wrap([{ text: '档案一' }, { content: '档案二' }, { summary: '档案三' }, { memory: '档案四' }]))
     const result = service.importArchive({ content })
-    assert.deepEqual(result, { ok: true, format: 'json', bytes: Buffer.byteLength(content), total: 4, imported: 4, skipped: 0, invalid: 0, scope: { scopeType: 'global', scopeId: '' } })
+    assert.deepEqual(result, { ok: true, kind: 'memory', format: 'json', bytes: Buffer.byteLength(content), total: 4, imported: 4, skipped: 0, invalid: 0, scope: { scopeType: 'global', scopeId: '' } })
     assert.deepEqual(puts.map(({ item }) => item.content), ['档案一', '档案二', '档案三', '档案四'])
   }
   assert.equal(harness().service.importArchive({ content: '\uFEFF\n{\n "text": "single"\n}', format: 'json' }).imported, 1)
@@ -188,4 +189,133 @@ test('archive import: cognition uses current persona, persists timestamps/search
     cog.dispose()
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('timeline import: JSON array, wrappers, single timeline object and text aliases', () => {
+  for (const wrap of [(items) => items, ...['events', 'timeline', 'items', 'data', 'records'].map((key) => (items) => ({ [key]: items }))]) {
+    const { service, puts } = harness()
+    const content = JSON.stringify(wrap(['text', 'detail', 'summary', 'content', 'title'].map((key) => ({ [key]: key, at: 1000 }))))
+    assert.deepEqual(service.importArchive({ kind: 'timeline', content }), { ok: true, kind: 'timeline', format: 'json', bytes: Buffer.byteLength(content), total: 5, imported: 5, skipped: 0, invalid: 0, scope: { scopeType: 'global', scopeId: '' } })
+    assert.deepEqual(puts.map(({ item }) => item.text), ['text', 'detail', 'summary', 'content', 'title'])
+    assert.ok(puts.every(({ kind }) => kind === 'timeline_event'))
+  }
+  const content = '{"kind":"timeline","text":"single","at":1000}'
+  assert.equal(harness().service.importArchive({ kind: 'timeline', content }).imported, 1)
+  assert.throws(() => harness().service.importArchive({ content }), /没有有效记忆/)
+})
+
+test('timeline import: JSONL auto/explicit, malformed lines, time required and kind validation', () => {
+  for (const format of ['auto', 'jsonl']) {
+    const result = harness().service.importArchive({ kind: 'timeline', format, content: '{"detail":"first","timestamp":1000}\ninvalid\n{"text":"missing"}\n{"title":"second","time":2000}\nnull' })
+    assert.equal(result.format, 'jsonl')
+    assert.equal(result.total, 5)
+    assert.equal(result.imported, 2)
+    assert.equal(result.invalid, 3)
+  }
+  const { service, puts } = harness()
+  for (const kind of ['', null, 'event', 'timeline_event', {}, 1]) assert.throws(() => service.importArchive({ kind, content: '{"text":"x","at":1000}' }), /kind/)
+  for (const item of [{ text: 'missing' }, { text: 'null', at: null }]) assert.throws(() => service.importArchive({ kind: 'timeline', content: JSON.stringify(item) }), /没有有效时间轴/)
+  assert.equal(puts.length, 0)
+})
+
+test('timeline import: scope/person/time/text identity, dedupe and existing status preserved', () => {
+  const { service, puts, store } = harness()
+  const scope = { scopeType: 'private', scopeId: '123' }
+  const content = JSON.stringify([
+    { text: ' same ', at: 1000 }, { text: 'same', at: 1000, title: 'ignored in identity', type: 'turn' },
+    { text: 'same', at: 2000 }, { text: 'same', at: 1000, personId: 'p1' },
+    { text: 'same', at: 1000, scopeType: 'group', scopeId: '123' }, { text: 'same', at: 1000, scopeType: 'global' },
+    { text: 'same', at: 1000, scopeId: '456' },
+  ])
+  const result = service.importArchive({ kind: 'timeline', content, scope })
+  assert.deepEqual(result.scope, scope)
+  assert.equal(result.imported, 6); assert.equal(result.skipped, 1)
+  assert.equal(new Set(puts.map(({ id }) => id)).size, 6)
+  const first = puts[0].item
+  assert.match(first.id, /^tle_[a-f0-9]{64}$/)
+  store.put('timeline_event', first.id, { ...first, status: 'inactive' })
+  const count = puts.length
+  assert.equal(service.importArchive({ kind: 'timeline', content, scope }).skipped, 7)
+  assert.equal(puts.length, count)
+  assert.equal(store.get('timeline_event', first.id).status, 'inactive')
+  const second = harness(); second.service.importArchive({ kind: 'timeline', content, scope })
+  assert.equal(second.puts[0].id, first.id)
+  service.importArchive({ content: '{"text":"same"}', scope })
+  assert.match(puts.at(-1).id, /^imp_/)
+})
+
+test('timeline import: time aliases, invalid/future fallback, sanitized fields and count-only logs', () => {
+  const { service, puts, logs } = harness()
+  const past = Date.parse('2020-01-01T00:00:00Z')
+  service.importArchive({ kind: 'timeline', content: JSON.stringify([
+    { text: ' secret ', title: ' title ', at: '2020-01-01T00:00:00Z', timestamp: 2000, type: 'turn', kind: 'decision', source: 'evil', status: 'inactive', personaId: 'other', arbitrary: true, createdAt: 3000, updatedAt: 4000 },
+    { detail: 'timestamp', timestamp: past }, { summary: 'time', time: past }, { content: 'createdAt', createdAt: past },
+    ...['invalid', -1, 0, NOW + 1, '9999-01-01T00:00:00Z', {}].map((at, index) => ({ text: 'fallback ' + index, at })),
+  ]) })
+  assert.deepEqual(puts[0].item, { id: puts[0].id, scopeType: 'global', scopeId: '', personId: '', text: 'secret', summary: 'secret', title: 'title', at: past, type: 'event', source: 'import', status: 'active', createdAt: past, updatedAt: past })
+  assert.deepEqual(puts[0].options, { createdAt: past, updatedAt: past })
+  assert.ok(puts.slice(0, 4).every(({ item }) => item.at === past))
+  assert.ok(puts.slice(4).every(({ item }) => item.at === NOW && item.createdAt === NOW && item.updatedAt === NOW))
+  assert.ok(Object.values(logs[0][0]).every((value) => typeof value === 'number'))
+  assert.doesNotMatch(JSON.stringify(logs), /secret|title|persona/)
+})
+
+test('timeline import: Unicode bounds, optional title/person and invalid scopes', () => {
+  const { service, puts } = harness()
+  const invalid = [null, [], 1, {}, { text: '' }, { text: '😀'.repeat(2001) }, { text: 'x', title: '' }, { text: 'x', title: '😀'.repeat(201) }, { text: 'x', title: 42 }, { text: 'x', personId: '😀'.repeat(65) }, { text: 'x', personId: 1 }, { text: 'x', scopeType: 'group' }, { text: 'x', scopeType: 'private', scopeId: 'bad' }, { text: 'x', scopeType: 'other' }]
+  const content = JSON.stringify([...invalid.map((item) => item && !Array.isArray(item) && typeof item === 'object' ? { at: 1000, ...item } : item), { text: '😀'.repeat(2000), title: '😀'.repeat(200), personId: '😀'.repeat(64), at: 1000 }])
+  assert.equal(service.importArchive({ kind: 'timeline', content }).invalid, invalid.length)
+  assert.equal(puts.length, 1)
+  for (const scope of [null, { scopeType: 'group', scopeId: 'x' }]) assert.throws(() => service.importArchive({ kind: 'timeline', content, scope }), /作用域/)
+})
+
+test('timeline import: shared byte/item hard limits, disabled gate and safe storage errors', () => {
+  const content = '{"text":"中文","at":1000}'
+  assert.equal(harness({ maxBytes: Buffer.byteLength(content) }).service.importArchive({ kind: 'timeline', content }).bytes, Buffer.byteLength(content))
+  for (const [config, input, message] of [
+    [{ maxBytes: Buffer.byteLength(content) - 1 }, content, /大小上限/],
+    [{ maxItems: 1 }, content + '\ninvalid', /条数上限/],
+    [{}, 'x'.repeat(5242881), /大小上限/],
+    [{}, JSON.stringify(Array.from({ length: 5001 }, () => ({ text: 'x', at: 1000 }))), /条数上限/],
+    [{ enabled: false }, content, /禁用/],
+  ]) {
+    const { service, puts } = harness(config)
+    assert.throws(() => service.importArchive({ kind: 'timeline', content: input }), message)
+    assert.equal(puts.length, 0)
+  }
+  const { service, store, logs } = harness()
+  store.put = () => { throw new Error('secret-marker') }
+  assert.throws(() => service.importArchive({ kind: 'timeline', content }), (error) => /写入失败/.test(error.message) && !error.message.includes('secret-marker'))
+  assert.equal(logs.length, 0)
+})
+
+test('timeline import: persona isolation, persistence and deletion lifecycle', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-timeline-archive-'))
+  const config = normalizeConfig({}).config
+  const options = { dataRoot: dir, getConfig: () => config, scheduler: createFakeScheduler(), clock: { now: () => NOW } }
+  let cog = createCognition(options)
+  try {
+    const input = { kind: 'timeline', content: '{"text":"past event","at":1000}', scope: { scopeType: 'group', scopeId: '123' } }
+    const original = cog.activePersonaId()
+    assert.equal(cog.importArchive(input).imported, 1)
+    assert.equal(cog.memories({}).length, 0)
+    assert.equal(cog.timeline({ types: ['event'] })[0].detail, 'past event')
+    const other = cog.createPersona({ name: 'Other' }).persona.id
+    assert.equal(cog.timeline({ types: ['event'] }).length, 0)
+    assert.equal(cog.importArchive(input).imported, 1)
+    assert.equal(cog.importArchive(input).skipped, 1)
+    cog.switchPersona(original)
+    assert.equal(cog.importArchive(input).skipped, 1)
+    cog.dispose()
+    cog = createCognition(options)
+    assert.equal(cog.timeline({ types: ['event'] })[0].at, 1000)
+    assert.equal(cog.personaDataSummary(original).groups.find((group) => group.id === 'timeline').count, 1)
+    assert.equal(cog.copyPersonaData(original, other, ['timeline']).copied.timeline, 1)
+    cog.switchPersona(other)
+    assert.equal(cog.importArchive(input).skipped, 1)
+    cog.switchPersona(original)
+    assert.equal(cog.deletePersona(other).ok, true)
+    const base = createStore({ file: join(dir, 'cognition.sqlite') })
+    try { assert.equal(base.count(`persona_${other}:timeline_event`), 0) } finally { base.close() }
+  } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
 })

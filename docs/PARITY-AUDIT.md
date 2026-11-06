@@ -1,10 +1,12 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
 
 M7-f 更新 #31：默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法保留，错误回退，不重复强化。只有 fake provider/假 embedder 离线测试，无本地模型/独立 reranker/向量数据库/全库向量召回，真实 provider 未验证；#31 仍 partial，其余状态与豁免不变。
 
 M7-g 更新 #29：当前人格 facet（含 group-scope 群印象）可编辑内容/置信度/可选状态；关系卡可在原作用域内手动调整 API 返回的 10 维，显式保存变化项，既有后端记录 source=ui 历史。仅 UI 与 mock 面板测试，无新增端点/Agent 工具/自动审批；无独立人物说话方式编辑器或 Aurabot 专用人物/群档案导入，无本轮浏览器 V，#29 仍 partial。
+
+M7-h 更新 #30：通用 JSON/JSONL 新增时间轴事件导入（默认仍为记忆），事件时间必填、独立存储/幂等 ID、当前人格及 scope 隔离；面板种类选择与 event 筛选。仅合成数据/离线服务、API 与面板测试；无 Aurabot 专用迁移或真实旧档案样本，#30 保持 partial，#31/#42/#49/#50 状态不变。
 
 ## 临时 profile smoke 证据
 
@@ -36,8 +38,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 35，none: 5，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：63 个 JS 文件 / 16074 行。
-测试静态计数：43 个文件 / 8439 行 / 350 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：63 个 JS 文件 / 16114 行。
+测试静态计数：43 个文件 / 8657 行 / 360 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -134,7 +136,7 @@ npm run check:docs
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
 | 2 | SnowLuma 检测/读取 | partial | M7：许可边界复核（维持只读） |
-| 30 | 时间轴/回忆日志/导入旧档案 | partial | M7：无 Aurabot 专用档案迁移、向量或时间轴事件导入；无真实旧档案样本验证 |
+| 30 | 时间轴/回忆日志/导入旧档案 | partial | M7：无 Aurabot 专用档案迁移或向量导入；无真实旧档案样本验证 |
 | 31 | 语义检索/embedding | partial | M7：仅兼容 embeddings；无本地模型/独立 reranker/向量数据库/全库向量召回；真实 provider 未验证 |
 | 44 | 图片收发/视觉/生图/改图 | partial | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
 | 46 | 本地接口（TTS/生图/识别脚本） | partial | M7：无本地识别脚本桥/任意本地路径/新图片上传下载接口；不抓 provider 返回 URL，只支持兼容 edits；真实 provider/QQ 未验证，面板/API 不自动发送 |
@@ -165,7 +167,7 @@ npm run check:docs
 |---|---|---|
 | 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
-| M3 认知 / M7-d 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移/时间轴事件导入、真实旧档案样本 |
+| M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
 | M7-g 人物/群印象与关系编辑 | [client.js](../client.js)、[panel.test.js](../test/panel.test.js) 新增 6 项；mock API、原作用域/差量保存、Unicode/数值校验、取消/禁用/失败/刷新 | 本轮真实浏览器验证、独立人物说话方式编辑器、Aurabot 专用人物/群档案导入；既有后端 UTF-16 截断未改；#29 仍 partial |
 | M7-f 可选 embedding 重排 | [embeddings.test.js](../test/embeddings.test.js)、[memory.test.js](../test/memory.test.js)、[集成测试](../test/cognition-integration.test.js)；默认零调用、校验/超时/缓存/隐私、词法回退与并发写保护 | 真实 provider、本地模型、独立 reranker、向量数据库、全库向量召回；#31 仍 partial |
 | M4 媒体 | [media](../src/media)、[media.test.js](../test/media.test.js)、[stickers.test.js](../test/stickers.test.js) | 真实网关/媒体 provider、RVC、生图、自动语境选图 |
@@ -203,3 +205,6 @@ M7-f 本次最终 `npm test` 实跑退出 **0**：380 项，376 通过、0 失�
 
 
 M7-g 本次最终 `npm test` 实跑退出 **0**：386 项，382 通过、0 失败、4 跳过（既有 live 模型测试）；新增 6 项面板测试，面板单独运行 37 项全部通过。覆盖人物/群印象编辑的 Unicode/置信度/状态校验、保留原人物/作用域与删除、关系全部 10 维和差量提交、显式保存/取消、保存期间禁用与重复提交保护、失败 toast/草稿保留及刷新；所有新增 API 请求均 mock，不访问真实网关或外部服务。`npm run check:docs` 与 `npm run check:parity` 均退出 **0**；快照为源码 63 个 JS 文件 / 16074 行，测试 43 个文件 / 8439 行 / 350 个顶层声明，矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining。#29 仍 partial（无独立人物说话方式编辑器/Aurabot 专用人物或群档案导入）；其余状态和豁免不变。仅改 UI、测试与文档，未改后端或 `cordis.patch.yml`、未新增依赖/Agent 工具/自动审批、不自动发送 QQ；既有 UTF-16 截断保留，未新增真实浏览器或 QQ 验证，架构视觉无须重生成。
+
+
+M7-h 本次最终 `npm test` 实跑退出 **0**：396 项，392 通过、0 失败、4 跳过（既有 live 模型测试）。新增 10 个顶层测试声明，并扩展既有记忆导入面板用例；覆盖时间轴 JSON 数组/包装/单项/JSONL、必填时间与无效/未来时间回退、Unicode/标题/字段白名单、限额、作用域/人物/时间身份与幂等不覆盖、当前人格隔离/持久化/统计/复制/删除、事件默认聚合/分页/筛选、面板种类选择/结果标签及本地 API。面板单独 38 项全通过；最终导入/面板/人格作用域专项 61 项全通过。`npm run check:docs` 与 `npm run check:parity` 均退出 **0**；生成快照为源码 63 个 JS 文件 / 16114 行，测试 43 个文件 / 8657 行 / 360 个顶层声明。矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining；#30 保持 partial，#31/#42/#49/#50 的矩阵行逐字未改。无新依赖、外部调用或真实 QQ 发送，未改 `cordis.patch.yml`；只有通用合成事件，无 Aurabot 专用迁移、向量导入、真实旧档案样本或本轮浏览器验证。

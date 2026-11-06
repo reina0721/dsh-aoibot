@@ -19,6 +19,7 @@ export const PERSONA_GLOBAL_KINDS = new Set([
 
 export const PERSONA_DATA_GROUPS = [
   { id: 'memory', label: '记忆', kinds: ['memory', 'memory_link'] },
+  { id: 'timeline', label: '时间轴事件', kinds: ['timeline_event'] },
   { id: 'people', label: '人物画像', kinds: ['person', 'identity', 'person_facet'] },
   { id: 'relationships', label: '关系', kinds: ['relationship', 'relationship_event'] },
   { id: 'emotion', label: '情绪', kinds: ['emotion', 'emotion_event'] },

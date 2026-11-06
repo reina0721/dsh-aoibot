@@ -101,7 +101,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 27 | 记忆类型 | 本地索引 + 原话/梗概/事实分层 + 人物/群档案 | 工作/情景/语义/情绪/社会/程序 + FTS5 | 部分 | M3 |
 | 28 | 每日整理/空闲提炼 | 有；预算/批次/重试/保留 | 每日 04:00 巩固 + 按作用域 LLM 反思；手动触发；私聊隔离 | 部分（M3-b） | M3 剩余：批次/重试/保留 |
 | 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | M7-g 当前人格人物页可编辑 facet 内容/置信度/active 或 disputed（含 group-scope 群印象）；关系页按原作用域手动调整 API 返回的 10 维，仅保存变化项，source=ui 历史 | 部分（M7-g） | M3 剩余：无独立人物说话方式编辑器、无 Aurabot 专用人物/群档案导入；未做本轮真实浏览器验证 |
-| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 轮次/记忆/决策只读时间轴；M7-d 通用 JSON/JSONL 经面板/API 导入当前人格记忆，默认 5 MiB/5000 项、作用域校验、幂等去重、本地处理 | 部分（M3-c/M7-d） | M7：无 Aurabot 专用档案迁移、向量或时间轴事件导入；无真实旧档案样本验证 |
+| 30 | 时间轴/回忆日志/导入旧档案 | 有 | 轮次/记忆/决策/事件只读时间轴；M7-h 通用 JSON/JSONL 经面板/API 导入当前人格记忆或时间轴事件，默认 5 MiB/5000 项、作用域校验、必填事件时间、幂等去重、本地处理 | 部分（M3-c/M7-d/M7-h） | M7：无 Aurabot 专用档案迁移或向量导入；无真实旧档案样本验证 |
 | 31 | 语义检索/embedding | 可选，默认关 | M7-f 默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法不变，异常回退；32 条/4000 字符/8–4096 维/2000 项内存 LRU，fake 离线测试 | 部分（M7-f） | M7：仅兼容 embeddings；无本地模型/独立 reranker/向量数据库/全库向量召回；真实 provider 未验证 |
 | 32 | 跨平台身份 | 有 | 无 | 无 | M3 |
 
@@ -363,4 +363,11 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 `CogRelationships` 保留只读维度条，逐卡展开 API 返回的维度滑杆（当前 10 维，-1–1）。显式保存仅提交有变化的维度及原 `scopeType/scopeId`，使用既有 `/cognition/relationship/adjust`；后端记录 `source=ui` 人工调整历史。两处均支持取消、保存期间禁用控件、防重复提交、失败 toast 与草稿保留；不批量修改、不自动应用、不发送 QQ，不新增 API、Agent 工具或自动审批。
 
-证据：[panel.test.js](../../test/panel.test.js) 新增 6 项离线测试，显式渲染人物/关系页及内联编辑组件，mock 所有请求，覆盖群/私聊/全局目标、Unicode 校验、置信度/状态、差量保存、取消/禁用/错误和刷新；不证明真实浏览器或既有后端的 Unicode 持久化。#29 仍 partial：无独立的按人物/聊天「说话方式」编辑器，无 Aurabot 专用人物/群档案导入；通用旧档案导入仍仅为 M7-d 的记忆导入。顶层人格工作台的 bot 说话风格编辑不算补齐此缺口。
+证据：[panel.test.js](../../test/panel.test.js) 新增 6 项离线测试，显式渲染人物/关系页及内联编辑组件，mock 所有请求，覆盖群/私聊/全局目标、Unicode 校验、置信度/状态、差量保存、取消/禁用/错误和刷新；不证明真实浏览器或既有后端的 Unicode 持久化。#29 仍 partial：无独立的按人物/聊天「说话方式」编辑器，无 Aurabot 专用人物/群档案导入；M7-h 通用旧档案导入支持记忆与时间轴事件。顶层人格工作台的 bot 说话风格编辑不算补齐此缺口。
+
+
+### M7-h：通用时间轴事件导入证据与限制
+
+`archive-import.js` 新增 kind=timeline，默认 memory 的既有格式、规范字段与 ID 保留。通用 JSON/JSONL 事件以独立 timeline_event 存入当前人格；正文/标题/时间/作用域校验，独立确定性 ID 幂等，共用 5 MiB/5000 项及 cognition.import 配置。缺时间拒绝，无效/未来时间回退为本次导入时间；因此回退时间的项跨时刻重导可能产生新 ID。面板选择记忆/时间轴并显示结果种类，时间轴默认包含 event，支持独立筛选及既有 scope 规则；事件纳入人格数据生命周期。
+
+证据：[archive-import.test.js](../../test/archive-import.test.js)、[timeline.test.js](../../test/timeline.test.js)、[panel.test.js](../../test/panel.test.js)、[e2e.test.js](../../test/e2e.test.js)，均为合成数据/本地 fake 宿主与 mock 请求。无 Aurabot 专用档案迁移、向量导入、真实旧档案样本或本轮真实浏览器/QQ 验证，#30 仍 partial。#31 保持 partial，#42/#49/#50 保持 exempt；47 项 remaining 口径不变。
