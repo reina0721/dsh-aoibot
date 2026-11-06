@@ -6,6 +6,7 @@
 import { join } from 'node:path'
 import { appendJsonl, dataDir as pluginDataDir } from '../core/store.js'
 import { createStore } from './store.js'
+import { createApprovalService } from '../core/approvals.js'
 import { createTurnAggregator } from './turn.js'
 import { createPersonService } from './person.js'
 import { createRelationshipService } from './relationships.js'
@@ -143,6 +144,7 @@ export function createCognition({
         logger: log,
         dataRoot: pluginDataDir('runtime'),
       })
+      state.services.approvals = createApprovalService({ store: state.store, clock, logger: log })
       state.services.qqActions = createQqActions({ gateway, getConfig, logger: log })
       state.services.notices = createNoticeService({ store: state.scopedStore, getConfig, clock, logger: log, gateway })
       state.services.reminders = createReminderService({
@@ -159,6 +161,8 @@ export function createCognition({
         runtime: state.services.runtime,
         qqActions: state.services.qqActions,
         requests: state.services.notices,
+        approvals: state.services.approvals,
+        clock,
         reminders: state.services.reminders,
         purpose: state.services.purpose,
         media,

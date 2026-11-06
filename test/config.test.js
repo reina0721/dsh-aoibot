@@ -230,8 +230,8 @@ test('cognition 配置：默认值、字段分组、非法枚举/数值回退与
 })
 
 test('qqAdmin config: opt-in defaults, bounded maxText and confirmation normalization', () => {
-  assert.deepEqual(normalizeConfig({}).config.cognition.qqAdmin, { enabled: false, requireConfirm: true, maxText: 100 })
-  assert.deepEqual(normalizeConfig({ cognition: { qqAdmin: { enabled: true, requireConfirm: false, maxText: 500 } } }).config.cognition.qqAdmin, { enabled: true, requireConfirm: false, maxText: 100 })
+  assert.deepEqual(normalizeConfig({}).config.cognition.qqAdmin, { enabled: false, requireApproval: false, requireConfirm: true, maxText: 100 })
+  assert.deepEqual(normalizeConfig({ cognition: { qqAdmin: { enabled: true, requireConfirm: false, maxText: 500 } } }).config.cognition.qqAdmin, { enabled: true, requireApproval: false, requireConfirm: false, maxText: 100 })
   assert.equal(normalizeConfig({ cognition: { qqAdmin: { maxText: -10 } } }).config.cognition.qqAdmin.maxText, 1)
 })
 
@@ -258,4 +258,16 @@ test('operator config: empty upgrade default, normalized QQ list and access stri
   assert.equal(field.type, 'string-list')
   assert.deepEqual(field.default, [])
   assert.match(field.help, /500/)
+})
+
+
+test('qqAdmin approval config: strict opt-in and switch/help in QQ admin group', () => {
+  const normalize = (requireApproval) => normalizeConfig({ cognition: { qqAdmin: { requireApproval } } }).config.cognition.qqAdmin.requireApproval
+  assert.equal(DEFAULTS.cognition.qqAdmin.requireApproval, false)
+  assert.equal(normalize(true), true)
+  for (const value of [false, 'true', 1, null]) assert.equal(normalize(value), false)
+  const field = CONFIG_GROUPS.flatMap((group) => group.fields).find((item) => item.path === 'cognition.qqAdmin.requireApproval')
+  assert.equal(field.type, 'switch')
+  assert.equal(field.default, false)
+  assert.match(field.help, /approvals.*approve.*reject/)
 })

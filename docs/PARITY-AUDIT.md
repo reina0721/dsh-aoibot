@@ -1,6 +1,8 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q/M7-r/M7-s 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-s 更新 #15：新增默认关闭的 `cognition.qqAdmin.requireApproval=false`；固定十种 QQ 管理/文件命令校验后写全局持久化审批队列，随机 apr_32hex、10 分钟/50 pending、已知密钥拒绝与字段白名单。主人 `/approvals` 最多10条脱敏单行摘要，approve/reject 字面量 confirm；批准先持久化后通过 handleAdmin 重校验原聊天/当前主人/开关/禁用列表/参数并单次重放，结果发往原聊天并记录 executed/failed。拒绝不执行，未知/过期/重复安全失败；外部 bypass 无效，req_ 请求/原动作 confirm 不变。跨重启/人格切换保留，失败/批准后中断不自动重试。仅离线本地存储/fake QQ，无审批 HTTP/面板、全服务/工具统一审批、PII/媒体扫描；#15 与 #14 操作员档位/deny-list 仍 partial。6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变；v0.11.1 live 未改，M7-s 未发布/部署，真实 QQ 未验证。
 
 M7-r 更新 #13/#14：`access.operators=[]` 默认保持行为，按私聊列表规范化/去重/最多500，access 配置组 string-list；主人优先且不属于操作员。allowlist 操作员私聊入站/出站原因 `operator`，群仍需白名单；固定 help/status/model（无参数）/bili/groupinfo/memberinfo，其他内置、模型设置/清除与未知命令静默，不调用服务或写配置。群/成员只读服务支持操作员但不扩大群访问；模块 ownerOnly 默认 true 与显式公开规则保持，deniedCommands 对操作员命中静默，帮助按档位显示。仅离线 fake 网关/配置/访问/命令测试，无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。#13 none → partial，#14 仍 partial；当前 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变。v0.11.1 已发布/live，M7-r 未发布、未部署，真实 QQ 未验证。
 
@@ -66,8 +68,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 39，none: 1，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：66 个 JS 文件 / 16975 行。
-测试静态计数：46 个文件 / 10752 行 / 466 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：67 个 JS 文件 / 17083 行。
+测试静态计数：47 个文件 / 11075 行 / 482 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -100,7 +102,7 @@ npm run check:docs
 | # | 能力 | 状态 | 目标 |
 |---|---|---|---|
 | 3 | QQ 事件面 | partial | M2：真实 QQ 兼容性、未知/扩展通知与 meta 认知未验证或未覆盖 |
-| 15 | 审批/危险确认/leak guard | partial | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
+| 15 | 审批/危险确认/leak guard | partial | M2：无全服务/工具统一审批或审批面板/HTTP，无完整逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 22 | 合并转发展开/拍一拍/表情回应/通知 | partial | M2 剩余 |
 
 ## M2 / M5

@@ -233,13 +233,22 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 | `/recall 消息ID [confirm]` | 当前群/主人私聊撤回，默认必须 confirm；需查明所属会话 |
 | `/file 相对路径` | 上传媒体根内文件到当前会话，例如 `/file inbound/report.pdf` |
 | `/requests` | 查看当前人格最多 10 条待处理好友/群请求，包含 ID、类型、QQ/群号和单行备注摘要 |
-| `/approve ID confirm` | 主人批准指定 pending 请求；必须完整复制列表 ID，并输入小写 confirm |
-| `/reject ID confirm` | 主人拒绝指定 pending 请求；同样必须输入小写 confirm |
+| `/approvals` | 查看最新最多 10 条待审批 QQ 管理动作，含 ID、动作、脱敏参数、原聊天和等待时长 |
+| `/approve ID confirm` | 主人批准 req_ 请求或执行 apr_ 管理审批；必须完整复制列表 ID，并输入小写 confirm |
+| `/reject ID confirm` | 主人拒绝 req_ 请求或 apr_ 管理审批；同样必须输入小写 confirm |
 | `/help` | 命令帮助 |
 
 **管理/文件命令安全边界（M7-b）**：上述 `/profile` 至 `/file` 默认关闭，先在「配置 → QQ 管理命令」开启 `cognition.qqAdmin.enabled`。仅主人可用，动作和回复先检查当前会话的 `access.canSend`；群管只作用于当前群，机器人必须具备管理员/群主权限。昵称、名片、群名默认最多 100 字符（可调低，网关限制可能更严）。踢人始终要求小写字面量 `confirm`；撤回默认也要求，可通过 `requireConfirm=false` 取消撤回确认。精华/撤回无法用网关 `get_msg` 核实当前会话时拒绝，不能指定其他群。参数错误返回用法。
 
 `/file` 还需开启媒体总开关和 `media.files.enabled`；路径相对于 `media.dir`（留空用默认媒体目录），仅白名单扩展名/大小内普通文件；拒绝绝对路径、`..`、Windows 路径和符号链接逃逸。文件在网关进程可读路径下才可上传。未开放任意 action 透传或新增 Agent 工具。真实 QQ 管理、资料、文件动作未验证；修改昵称遭网关拒绝会明确显示 `UNSUPPORTED_SET_QQ_PROFILE`。先用测试群/账号受控验证。
+
+### QQ 管理审批（M7-s）
+
+`cognition.qqAdmin.requireApproval` 默认 `false`，管理动作继续按原方式执行。需要逐次审批时，在「配置 → QQ 管理命令」打开「QQ 管理动作需要主人审批」。随后发送 `/kick 10002 confirm` 等管理命令只产生 `apr_` 待办，不执行动作；原踢人/撤回确认要求保留，点赞/查询等非管理命令不变。
+
+主人发送 `/approvals` 查看待办，再完整复制 ID：`/approve apr_列表中的完整ID confirm` 批准并在原聊天执行，或 `/reject apr_列表中的完整ID confirm` 拒绝。列表按最新排序最多 10 条，参数脱敏为单行；每项 10 分钟有效，最多同时 50 条。队列跨重启和人格切换保留。审批命令仅主人可用，其他人静默；`req_` 好友/群请求仍按原规则处理。
+
+批准会重新核对原聊天访问、当前主人/开关/禁用列表及参数，结果发回原聊天。每个 ID 只处理一次；过期、未知或已处理不能重用。失败/超时或批准后进程中断不会自动重试，先核实 QQ 实际状态，再决定是否重新发起。已知密钥模式和控制字符不能进入审批参数，超过 300 字符也拒绝；不保存额外原事件字段。没有审批面板/HTTP、全服务/工具统一审批或 PII/媒体内容扫描；#15/#14 仍 partial，仅 fake QQ 离线验证。详见[配置](CONFIG.md#qq-管理审批m7-s)。
 
 命令在轮次聚合的快速路径上处理，不进入分析/策略；主人 `/quiet`、`/active`、带设置/清除参数的 `/model` 会写回配置并立即生效；操作员 `/model` 只读。
 

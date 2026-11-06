@@ -194,7 +194,7 @@ export const DEFAULTS = {
     requests: { enabled: true },
     permissions: { deniedCommands: [] },
     reminders: { enabled: false, maxActive: 50, minIntervalSeconds: 60, maxIntervalSeconds: 2592000, tickMs: 30000 },
-    qqAdmin: { enabled: false, requireConfirm: true, maxText: 100 },
+    qqAdmin: { enabled: false, requireApproval: false, requireConfirm: true, maxText: 100 },
     notice: {
       patReply: true,
       patCooldownMs: 60000,
@@ -773,6 +773,7 @@ export const CONFIG_GROUPS = [
     description: '默认关闭，仅主人、当前会话；群管需要机器人具备相应权限。',
     fields: [
       { path: 'cognition.qqAdmin.enabled', label: '启用 QQ 管理命令', type: 'switch', default: false },
+      { path: 'cognition.qqAdmin.requireApproval', label: 'QQ 管理动作需要主人审批', type: 'switch', default: false, help: '校验后存入 10 分钟待办（最多 50 条）；/approvals 查看，/approve apr_ID confirm 批准并执行，/reject apr_ID confirm 拒绝。' },
       { path: 'cognition.qqAdmin.requireConfirm', label: '撤回需要 confirm', type: 'switch', default: true, help: '踢人始终需要字面量 confirm；不受此开关影响。' },
       { path: 'cognition.qqAdmin.maxText', label: '资料/群名片/群名长度上限', type: 'number', default: 100, min: 1, max: 100, step: 1 },
     ],
@@ -1305,6 +1306,7 @@ function normalizeCognition(raw, rawCognition = {}, issues = []) {
     },
     qqAdmin: {
       enabled: pickBool(src.qqAdmin?.enabled, d.qqAdmin.enabled),
+      requireApproval: pickBool(src.qqAdmin?.requireApproval, d.qqAdmin.requireApproval),
       requireConfirm: pickBool(src.qqAdmin?.requireConfirm, d.qqAdmin.requireConfirm),
       maxText: pickNumber(src.qqAdmin?.maxText, d.qqAdmin.maxText, { min: 1, max: 100, integer: true }),
     },

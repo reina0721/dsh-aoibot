@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { createAccess } from '../src/core/access.js'
 import { normalizeConfig } from '../src/core/config.js'
 import { createCognition } from '../src/cognition/index.js'
 import { createFakeScheduler, createClock, createRng } from '../src/cognition/util.js'
@@ -767,5 +768,43 @@ test('集成：accepted notice/request 分流、去重、暂停与拒收门控�
     await flush()
     assert.deepEqual(calls, [])
     assert.equal(cog.store.count('turn'), 0)
+  } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
+})
+
+
+test('M7-s integration: persisted owner approvals survive restart/persona change and use fixed QQ action/original chat', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-admin-approval-it-'))
+  const sent = [], actions = []
+  const config = normalizeConfig({
+    access: { ownerQQ: '10001', mode: 'allowlist', groups: ['20001'] },
+    cognition: { enabled: true, dryRun: false, qqAdmin: { enabled: true, requireApproval: true } },
+  }).config
+  const clock = { now: () => 1000000 }
+  const gateway = { actions: {
+    async sendMessage(payload) { sent.push(payload); return { message_id: 71 } },
+    async setGroupKick(...args) { actions.push(args); return {} },
+  } }
+  const start = () => createCognition({ getConfig: () => config, gateway, clock,
+    scheduler: createFakeScheduler(), dataRoot: dir, access: createAccess({ getConfig: () => config }) })
+  let cog = start()
+  try {
+    assert.equal(await cog.ready, true)
+    const origin = { chatType: 'group', chatId: '20001', senderId: '10001', text: '/kick 10002 confirm' }
+    assert.equal((await cog.services.pipeline.handleTurn(origin)).command, true)
+    const row = cog.services.approvals.list()[0]
+    assert.equal(cog.store.get('qq_admin_approval', row.id).status, 'pending')
+    assert.equal(actions.length, 0)
+    cog.dispose()
+    cog = start()
+    assert.equal(await cog.ready, true)
+    assert.equal(cog.services.approvals.get(row.id).status, 'pending')
+    cog.services.persona.create({ name: '另一人格' })
+    const approval = { chatType: 'private', chatId: '10001', senderId: '10001', text: `/approve ${row.id} confirm` }
+    assert.match((await cog.services.pipeline.handleTurn(approval)).reply, /已批准并执行/)
+    assert.deepEqual(actions, [['20001', '10002']])
+    assert.equal(cog.services.approvals.get(row.id).status, 'executed')
+    assert.ok(sent.some((item) => item.chatId === '20001' && item.message.some((segment) => segment.data?.text === 'QQ 动作已完成。')))
+    assert.match((await cog.services.commands.handle(approval)).reply, /处理失败/)
+    assert.equal(actions.length, 1)
   } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
 })

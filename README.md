@@ -14,6 +14,8 @@
 
 ## 能力与要求
 
+- QQ 管理审批（M7-s，未发布）：`cognition.qqAdmin.requireApproval=false` 默认保留直接执行；开启后管理/文件动作写入持久化主人待办（10 分钟、最多 50 条），`/approvals` 查看，`/approve apr_ID confirm` 批准后在原聊天执行，`/reject apr_ID confirm` 拒绝。既有 `req_` 请求处理和原动作 confirm 保留。无审批 HTTP/面板、全服务/工具统一审批或 PII/媒体扫描；#15 与 #14 操作员/deny-list 仍 partial，6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt、remaining 47。仅 fake QQ 离线测试，见[配置](docs/CONFIG.md#qq-管理审批m7-s)。
+
 - QQ 连接、账号核验、事件接收、群聊与私聊消息发送。
 - 访问控制：`open`/`allowlist`、主人 QQ、默认空的只读操作员列表、私聊/群白名单、统一出站闸门与审计。
 - 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session；仅主人私聊在运行时挂载 3 个当前会话 QQ 工具，失败自动回退 oneshot。

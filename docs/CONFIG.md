@@ -602,11 +602,24 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 | 路径 | 类型 | 默认 | 范围/作用 |
 |---|---|---|---|
 | `cognition.qqAdmin.enabled` | boolean | `false` | 主人资料、群管、精华、撤回、文件命令总开关；不影响原点赞/戳/查询命令 |
+| `cognition.qqAdmin.requireApproval` | boolean | `false` | 校验后将十种 QQ 管理/文件命令写入主人审批队列；关闭时直接执行，既有 confirm 要求保留 |
 | `cognition.qqAdmin.requireConfirm` | boolean | `true` | `/recall 消息ID confirm` 的确认要求；关闭后撤回可省 confirm；踢人始终要求字面量 confirm |
 | `cognition.qqAdmin.maxText` | integer | `100` | 1–100 Unicode 字符；昵称/名片/群名不能为空，不接受控制字符；网关可有更严限制 |
 
 仅主人命令，不挂新增 Agent 工具，不接受任意 action。群管仅当前群，机器人须有相应管理员/群主权限；`/profile` 仅主人私聊，网关拒绝 `set_qq_profile` 时返回 `UNSUPPORTED_SET_QQ_PROFILE`。精华/撤回先查询消息所属会话，缺少归属字段则拒绝。禁言为整数分钟 0–43200（0 解除）。`/file` 还要求 `media.enabled` 和 `media.files.enabled`，仅媒体根内相对路径，拒绝绝对路径、`..` 和符号链接逃逸；沿用扩展名/大小限制。真实 QQ 管理、资料和文件动作尚未验证。
 
+
+## QQ 管理审批（M7-s）
+
+在「配置 → QQ 管理命令」开启 `cognition.qqAdmin.requireApproval=true`（严格布尔值，默认 `false`）。开启后，`profile/card/groupname/admin/mute/wholemute/kick/essence/recall/file` 在当前命令参数校验通过后只写入待办，不执行 QQ 动作；踢人和默认撤回仍须先提供原命令的 `confirm`。关闭此开关保留原直接执行行为，点赞/戳/查询及其他非管理命令不受影响。
+
+主人 `/approvals` 查看最新最多 10 条 pending（完整 ID、动作、脱敏单行参数摘要、原聊天及已等待秒数）。用 `/approve apr_完整ID confirm` 批准并向原聊天重放固定管理命令，或 `/reject apr_完整ID confirm` 拒绝；字面量小写 `confirm` 始终必需。`apr_` 后为 32 位随机十六进制；`req_` 仍走既有好友/群请求处理，与 `cognition.requests.enabled` 独立。非主人（含只读操作员）静默。
+
+审批保存于认知数据库全局 `qq_admin_approval`，跨重启/人格切换保留，不随人格复制；只保存固定动作、0–300 Unicode 字符参数、聊天/发起者数字 ID、状态与时间元数据，不复制原事件/凭据等额外字段。控制字符和既有 leak guard 识别的疑似密钥会拒绝，避免持久化密钥或改写待执行参数。最多 50 条 pending，满额拒绝新建；创建后 10 分钟失效，读取/列出/处理及创建时将过期 pending 持久化为 expired。列表、拒绝和已批准记录不触发自动执行。
+
+批准先持久化 approved，再通过 `handleAdmin` 向原聊天重放；重新检查当前主人、原聊天访问、总开关、命令禁用列表、参数与既有 QQ/媒体限制。结果发往原聊天，审批状态回给批准者；完成记为 executed/failed，拒绝记为 rejected，附处理人/处理时间。未知、过期、重复处理均安全报错；同 ID 并发也只执行一次。失败或批准后进程中断不会自动重试，超时/中断须人工核实实际 QQ 状态，必要时重新发起命令。外部 turn 的 approvalBypass 字段会移除，仅内部批准重放能旁路再次排队。
+
+仅离线 fake QQ 测试，没有审批 HTTP 路由、审批面板或新增 Agent 工具；不是所有服务/工具的统一审批，无 PII/媒体/文件内容扫描。#15 为持久化管理审批 + 原请求确认 + 文本 leak guard，仍 partial；#14 操作员档位/命令 deny-list 仍 partial。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，真实 QQ 未验证。
 
 ## QQ 通知与请求（M7-j）
 

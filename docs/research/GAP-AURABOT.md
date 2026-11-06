@@ -70,8 +70,8 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人/只读操作员 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | M7-r 默认空 access.operators：主人全量、操作员固定 help/status/model（无参数）/bili/groupinfo/memberinfo；allowlist 放行操作员私聊，群仍需白名单，禁用命令静默 | 部分（M7-r） | M1 剩余：无完整 per-tool/per-action RBAC，无 admin/approval 档位 |
-| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b 管理/文件默认关、主人/当前会话/确认/access/realpath；M7-n 默认空 deniedCommands，身份检查后拦截内置/模块命令，小写匹配、最多100、非法项 issue，无处理服务调用或配置写入；M7-r 固定只读操作员档位（见 #13），仍受 deny-list 约束 | 部分（M7-n/M7-r） | M2 剩余/M5：仅命令 deny-list + 固定只读操作员集，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
-| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；M7-j 主人请求列表与 approve/reject 字面量 confirm，固定 action、无 flag/原始错误日志 | 部分（M7-j） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
+| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b 管理/文件默认关、主人/当前会话/确认/access/realpath；M7-n 默认空 deniedCommands，身份检查后拦截内置/模块命令，小写匹配、最多100、非法项 issue，无处理服务调用或配置写入；M7-r 固定只读操作员档位（见 #13），仍受 deny-list 约束；M7-s 受限管理审批见 #15 | 部分（M7-n/M7-r） | M2 剩余/M5：仅命令 deny-list + 固定只读操作员集，无所有服务/工具逐项 action allow/deny 矩阵或统一审批；新动作不挂 Agent |
+| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 统一认知出站 text 密钥规则（默认 redact/可选 block、100k、dry-run）；M7-j req_ 请求显式 confirm；M7-s 默认关闭的持久化管理审批 apr_（固定十动作、10 分钟/50 pending），主人列表/批准/拒绝，原聊天单次重放及结果状态，参数已知密钥拒绝 | 部分（M7-s） | M2：无全服务/工具统一审批或审批面板/HTTP，无完整逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 豁免（用户批准） | 2026-11-06 用户批准：仅远端 API 鉴权；保留本机-only/CSRF 行为（见 §8.1） |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
 | 18 | 统一出站闸门 | 执行层兜底 | `cognition/outbound.js`：访问 → 限频 → leak guard → dryRun → 发送；pipeline/proactivity 统一 | **有**（M1-a） | — |
@@ -440,3 +440,12 @@ pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action �
 操作员只能使用 `/help`、`/status`、无参数 `/model`、`/bili`、`/groupinfo`、`/memberinfo`。`/model clear`、模型设置及其他内置/未知命令均静默，不调用服务或写配置。查询仍受当前会话访问限制；模块命令保留 ownerOnly 默认 true 与显式公开规则；deniedCommands 仍先于派发，操作员命中静默。帮助只显示该档可用命令，不列出主人模块命令。
 
 离线访问/配置/命令/QQ 查询服务测试；无新增依赖、网络调用或真实 QQ 验证。#13 从 none 改为 partial，#14 交叉引用此档位但仍 partial；没有完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。
+
+
+### M7-s 持久化主人 QQ 管理审批（#15 仍 partial）
+
+`cognition.qqAdmin.requireApproval=false` 默认无行为变化；开启后固定 profile/card/groupname/admin/mute/wholemute/kick/essence/recall/file 在命令参数验证后只存全局认知数据库审批待办。0–300 Unicode 字符、无控制字符、既有密钥规则命中拒绝；只存白名单字段，不复制原事件/凭据。随机 apr_32hex，10 分钟、最多 50 pending，读取/创建时持久化过期。主人 `/approvals` 最新最多10条脱敏单行摘要，`/approve apr_ID confirm`、`/reject apr_ID confirm` 始终小写字面量确认，非主人静默。
+
+批准先消耗 pending，再由 handleAdmin 重放固定动作到原聊天，重新检查身份/原聊天访问/开关/禁用列表/参数及原 QQ/媒体限制；外部 approvalBypass 无效。拒绝无动作，批准后 executed/failed；未知/过期/已处理不可重复，失败/批准后中断无自动重试。原 req_ 请求处理与踢人/撤回 confirm 保留，不影响非管理命令。审批跨重启/人格切换保留，不随人格复制。
+
+证据：[approvals.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/approvals.test.js)、[commands.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/commands.test.js)、[config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，全部本地存储/fake QQ，无新依赖或外部调用。#15 为持久化管理审批 + 既有请求审批/leak guard，仍无所有服务/工具统一审批、审批面板/HTTP、PII/媒体扫描；#14 操作员档位/命令 deny-list 仍 partial。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 不变；真实 QQ 未验证。

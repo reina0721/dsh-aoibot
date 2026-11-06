@@ -8,6 +8,8 @@
 
 ## 未发布
 
+- M7-s：新增默认关闭的 `cognition.qqAdmin.requireApproval=false` 与 QQ 管理配置开关；十种管理/文件命令校验后可进入持久化全局审批队列（`apr_` + 32 随机 hex，10 分钟、最多 50 pending），拒绝控制字符/已知密钥，固定字段无额外凭据。主人 `/approvals` 最多列 10 条脱敏单行摘要；`/approve apr_ID confirm` 先持久化批准再经 `handleAdmin` 向原聊天重放，复核身份/访问/禁用/配置/参数并记录 executed/failed；`/reject` 拒绝不执行，未知/过期/重复 ID 安全失败，外部 bypass 无效。同 ID 一次处理，失败/中断无自动重试；原 `req_`、踢人/撤回 confirm 与默认直接执行行为保留。无审批 HTTP/面板、全服务/工具统一审批或 PII/媒体扫描；#15 仍 partial，#14 操作员档位/deny-list 仍 partial。离线 fake QQ/持久化测试，无新增依赖或外部调用、未部署；矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
+
 - M7-r：新增默认空的 `access.operators`（string-list、同私聊列表规范化、去重最多 500 项）。主人优先；操作员可在 allowlist 私聊入站/出站（原因 `operator`），群仍需白名单。固定只读命令为 help/status/model（无参数）/bili/groupinfo/memberinfo，其他内置、模型设置/清除和未知命令静默；查询服务仅开放允许群的只读操作。模块默认 ownerOnly 保留，显式公开命令不变；deniedCommands 仍优先拦截且操作员静默。新增离线访问/配置/命令/查询服务测试，无新依赖。#13 从 none 改为 partial，#14 交叉引用并保持 partial；无完整 per-tool/per-action RBAC、admin/approval 档位或统一审批。矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变，真实 QQ 未验证。
 
 

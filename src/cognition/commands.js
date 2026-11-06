@@ -4,12 +4,13 @@
 // 命令回复也走 outbound，因此受访问控制与频率上限约束。
 
 import { isOwner, isOperator } from '../core/access.js'
+import { ADMIN_APPROVAL_ACTIONS } from '../core/approvals.js'
 import { redactText } from '../core/leak-guard.js'
 
-const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
+const ADMIN_COMMANDS = ADMIN_APPROVAL_ACTIONS
 const REQUEST_COMMANDS = ['requests', 'approve', 'reject']
 const REMINDER_COMMANDS = ['remind', 'reminders', 'forgetreminder']
-const COMMANDS = [...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
+const COMMANDS = ['approvals', ...REQUEST_COMMANDS, ...REMINDER_COMMANDS, 'help', 'status', 'steer', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'draw', 'redraw', 'image', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const OPERATOR_COMMANDS = ['help', 'status', 'model', 'bili', 'groupinfo', 'memberinfo']
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
@@ -64,7 +65,8 @@ const HELP_TEXT = [
   '/file 相对路径 — 上传媒体目录内文件',
   '上述 QQ 管理/文件命令默认关闭，仅主人；踢人始终 confirm，撤回默认 confirm。',
   '/requests — 查看待处理好友/群请求（最多 10 条）',
-  '/approve ID confirm | /reject ID confirm — 主人确认处理请求',
+  '/approvals — 查看待审批 QQ 管理动作（最多 10 条，10 分钟有效）',
+  '/approve ID confirm | /reject ID confirm — 主人确认处理 req_ 请求或 apr_ 管理动作',
   '/help — 本帮助',
 ].join('\n')
 
@@ -80,7 +82,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, reminders = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -167,6 +169,9 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
   async function handleAdmin(turn, parsed) {
     // Gate both replies and side effects before inspecting arguments or services.
     if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+    if (!ADMIN_COMMANDS.includes(parsed.name)) return send(turn, '审批动作无效。')
+    if (!ownerCheck(turn)) return { handled: true, reply: '' }
+    if (currentConfig().cognition?.permissions?.deniedCommands?.includes(parsed.name)) return send(turn, '该命令已被操作员禁用。')
     const cfg = currentConfig().cognition?.qqAdmin || {}
     if (cfg.enabled !== true) return send(turn, 'QQ 管理命令未启用（cognition.qqAdmin.enabled）。')
     if (!['group', 'private'].includes(turn.chatType)) return send(turn, '仅支持群聊或主人私聊。')
@@ -183,10 +188,24 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (name === 'file') {
       if (!args || /[\x00-\x1f\x7f\\]/.test(args) || /^(?:\/|[a-z]:)/i.test(args) || args.split('/').includes('..')) return usage()
       if (!media?.sendMedia) return send(turn, '媒体服务不可用。')
+      method = 'file'
+    }
+    const queueApproval = async () => {
+      if (!approvals?.create) return send(turn, '审批服务不可用。')
       try {
-        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'file', relativePath: args })
-        return { handled: true, reply: '' }
-      } catch { return send(turn, '文件发送失败：请检查媒体/文件开关、媒体根内相对路径、文件大小/扩展名及网关权限。') }
+        const row = approvals.create({ action: name, args, chatType: turn.chatType, chatId: turn.chatId, senderId: turn.senderId })
+        return send(turn, `待主人审批 ${row.id}（10 分钟有效）：/approve ${row.id} confirm；拒绝：/reject ${row.id} confirm`)
+      } catch (error) {
+        return send(turn, error?.message === 'APPROVAL_FULL' ? '待审批队列已满（最多 50 条）。' : '无法创建审批：参数无效或包含疑似密钥。')
+      }
+    }
+    if (method === 'file') {
+      if (cfg.requireApproval === true && !turn.approvalBypass) return queueApproval()
+      try {
+        const result = await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'file', relativePath: args })
+        if (turn.approvalBypass && (result?.ok === false || result?.status === 'failed' || (result?.retcode != null && Number(result.retcode) !== 0))) throw new Error('FILE_SEND_FAILED')
+        return { handled: true, reply: '', ...(turn.approvalBypass ? { actionOk: true } : {}) }
+      } catch { return { ...await send(turn, '文件发送失败：请检查媒体/文件开关、媒体根内相对路径、文件大小/扩展名及网关权限。'), ...(turn.approvalBypass ? { actionOk: false } : {}) } }
     }
     const id = (value, message = false) => {
       const n = Number(value)
@@ -218,9 +237,10 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       method = name === 'essence' ? 'setEssence' : 'deleteMsg'; payload.messageId = parts[0]; payload.confirmed = parts[1]
     }
     if (!qqActions?.[method]) return send(turn, 'QQ 动作服务不可用。')
+    if (cfg.requireApproval === true && !turn.approvalBypass) return queueApproval()
     try {
       const result = await qqActions[method](payload)
-      return send(turn, result?.ok ? 'QQ 动作已完成。' : `QQ 动作失败：${oneLine(result?.error || 'UNKNOWN', 100)}`)
+      return { ...await send(turn, result?.ok ? 'QQ 动作已完成。' : `QQ 动作失败：${oneLine(result?.error || 'UNKNOWN', 100)}`), ...(turn.approvalBypass ? { actionOk: result?.ok === true } : {}) }
     } catch { return send(turn, 'QQ 动作失败：网关拒绝或不支持此操作。') }
   }
 
@@ -289,6 +309,9 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
 
   async function handle(turn) {
     if (!turn || typeof turn.text !== 'string') return { handled: false }
+    // Only the internal approved replay may set this capability.
+    turn = { ...turn }
+    delete turn.approvalBypass
     const parsed = parseCommand(turn.text)
     if (!parsed) return { handled: false }
     const external = externalCommands.get(parsed.name)
@@ -322,6 +345,31 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         log.warn?.(`外部命令 /${parsed.name} 失败：`, error?.message || error)
         return send(turn, `命令 /${parsed.name} 执行失败。`)
       }
+    }
+
+    const approvalParts = parsed.args.split(/\s+/)
+    if (parsed.name === 'approvals' || (['approve', 'reject'].includes(parsed.name) && /^apr_[a-f0-9]{32}$/.test(approvalParts[0]))) {
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      const usage = () => send(turn, parsed.name === 'approvals' ? '用法：/approvals' : `用法：/${parsed.name} apr_ID confirm（需要字面量 confirm 确认）`)
+      if (parsed.name === 'approvals' ? parsed.args : approvalParts.length !== 2 || approvalParts[1] !== 'confirm') return usage()
+      if (!approvals) return send(turn, '审批服务不可用。')
+      try {
+        if (parsed.name === 'approvals') {
+          const rows = approvals.list({ status: 'pending', limit: 10 }).slice(0, 10)
+          return send(turn, rows.length ? ['待审批 QQ 管理动作：', ...rows.map((row) => `${row.id} · ${oneLine(row.action, 20)} · ${oneLine(redactText(row.args), 100)} · ${row.chatType}:${row.chatId} · ${Math.max(0, Math.floor((clock.now() - row.createdAt) / 1000))} 秒前`)].join('\n') : '暂无待审批管理动作。')
+        }
+        // Synchronous persisted transition consumes the ID before any asynchronous side effect.
+        const row = approvals.resolve(approvalParts[0], { approve: parsed.name === 'approve', operatorId: turn.senderId })
+        if (parsed.name === 'reject') return send(turn, `审批 ${row.id} 已拒绝。`)
+        let ok = false
+        try {
+          if (row.status === 'approved' && ADMIN_COMMANDS.includes(row.action)) {
+            const result = await handleAdmin({ chatType: row.chatType, chatId: row.chatId, senderId: row.senderId, approvalBypass: true }, { name: row.action, args: row.args })
+            ok = result?.actionOk === true
+          }
+        } finally { approvals.complete(row.id, { ok }) }
+        return send(turn, `审批 ${row.id} ${ok ? '已批准并执行' : '执行失败'}。`)
+      } catch { return send(turn, '审批处理失败：请检查 ID、有效期及待审批状态；已处理的 ID 不能重用。') }
     }
 
     if (REQUEST_COMMANDS.includes(parsed.name)) {

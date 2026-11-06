@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import { createCommandService, parseCommand } from '../src/cognition/commands.js'
 import { createQqActions } from '../src/cognition/qq-actions.js'
+import { createApprovalService } from '../src/core/approvals.js'
+import { createStore } from '../src/cognition/store.js'
 import { createAccess, normalizeAccess } from '../src/core/access.js'
 
 function harness(overrides = {}, services = {}) {
@@ -77,6 +79,8 @@ function harness(overrides = {}, services = {}) {
     qqActions: services.qqActions || qqActions,
     purpose,
     requests: services.requests,
+    approvals: services.approvals,
+    clock: services.clock,
     reminders: services.reminders,
     media: services.media,
     stickers: services.stickers,
@@ -784,10 +788,11 @@ test('operators: fixed safe commands work for owner/operator, strangers remain s
 test('operators: unsafe/unknown commands and all model arguments are silent without side effects', async () => {
   const calls = []
   const tracked = new Proxy({}, { get: (_target, key) => (...args) => { calls.push([key, ...args]); return { ok: true } } })
-  const h = operatorHarness({ runtime: tracked, requests: tracked, reminders: tracked, media: tracked, stickers: tracked, qqActions: tracked })
+  const h = operatorHarness({ runtime: tracked, requests: tracked, approvals: tracked, reminders: tracked, media: tracked, stickers: tracked, qqActions: tracked })
   const original = structuredClone(h.getConfig())
   const commands = ['profile name', 'card 10003 name', 'groupname name', 'admin 10003 on', 'mute 10003 1',
     'wholemute on', 'kick 10003 confirm', 'essence 1', 'recall 1 confirm', 'file files/a.txt',
+    'approvals', 'approve apr_' + 'a'.repeat(32) + ' confirm', 'reject apr_' + 'a'.repeat(32) + ' confirm',
     'requests', 'approve req_fake confirm', 'reject req_fake confirm', 'remind 60 text', 'reminders', 'forgetreminder rem_fake',
     'steer text', 'quiet', 'active', 'remember text', 'forget text', 'like', 'poke', 'purpose', 'purpose add text',
     'tts text', 'say text', 'draw cat', 'redraw a.png cat', 'image a.png', 'sticker', 'unknown',
@@ -860,4 +865,147 @@ test('operators: safe commands cannot query or reply in groups outside allowlist
   }
   assert.deepEqual(h.queries, [])
   assert.deepEqual(h.sent, [])
+})
+
+
+function approvalCommands(t, services = {}) {
+  let now = 1000000
+  const clock = { now: () => now }
+  const store = createStore({ clock })
+  t.after(() => store.close())
+  const approvals = createApprovalService({ store, clock })
+  return { ...adminCommands({ cognition: { qqAdmin: { enabled: true, requireApproval: true, requireConfirm: true } } }, { approvals, clock, ...services }), approvals, store, advance: (ms) => { now += ms } }
+}
+const approvalGroup = { chatType: 'group', chatId: '20001' }
+
+test('admin approvals: disabled retains direct execution; enabled queues all ten fixed actions after validation', async (t) => {
+  const disabled = adminCommands({}, { approvals: { create() { throw new Error('must not queue') } } })
+  await disabled.service.handle(turn('/kick 10002 confirm', approvalGroup))
+  assert.equal(disabled.calls.length, 1)
+  const mediaCalls = []
+  const h = approvalCommands(t, { media: { async sendMedia(payload) { mediaCalls.push(payload) } } })
+  for (const command of ['/profile 昵称', '/card 10002 卡', '/groupname 群', '/admin 10002 on', '/mute 10002 1', '/wholemute on', '/kick 10002 confirm', '/essence 12', '/recall 12 confirm', '/file files/a.txt']) {
+    const reply = await h.service.handle(turn(command, command.startsWith('/profile') || command.startsWith('/file') ? {} : approvalGroup))
+    assert.match(reply.reply, /apr_[a-f0-9]{32}.*\/approve apr_[a-f0-9]{32} confirm/)
+  }
+  assert.equal(h.approvals.list().length, 10)
+  assert.deepEqual(h.calls, [])
+  assert.deepEqual(mediaCalls, [])
+  for (const command of ['/kick 10002', '/recall 12', '/admin 10002 yes', '/file ../x']) assert.match((await h.service.handle(turn(command, approvalGroup))).reply, /用法|确认/)
+  assert.equal(h.approvals.list().length, 10)
+  await h.service.handle(turn('/like'))
+  assert.equal(h.approvals.list().length, 10)
+})
+
+test('admin approvals: approve replays once into original chat, result delivered, even with concurrent approvals', async (t) => {
+  const h = approvalCommands(t)
+  await h.service.handle(turn('/kick 10002 confirm', approvalGroup))
+  const row = h.approvals.list()[0]
+  const results = await Promise.all([h.service.handle(turn(`/approve ${row.id} confirm`)), h.service.handle(turn(`/approve ${row.id} confirm`))])
+  assert.equal(h.calls.length, 1)
+  assert.deepEqual(h.calls[0], ['setGroupKick', { operatorId: '10001', chatType: 'group', chatId: '20001', userId: '10002', confirmed: 'confirm' }])
+  assert.equal(h.approvals.get(row.id).status, 'executed')
+  assert.ok(results.some((result) => /已批准并执行/.test(result.reply)))
+  assert.ok(results.some((result) => /处理失败/.test(result.reply)))
+  assert.ok(h.sent.some((payload) => payload.chatId === '20001' && payload.segments[0].data.text === 'QQ 动作已完成。'))
+  assert.match((await h.service.handle(turn(`/approve ${row.id} confirm`))).reply, /处理失败/)
+  assert.equal(h.calls.length, 1)
+})
+
+test('admin approvals: reject, unknown/expired IDs, exact confirm and non-owner are safe without actions', async (t) => {
+  const h = approvalCommands(t)
+  await h.service.handle(turn('/mute 10002 1', approvalGroup))
+  const row = h.approvals.list()[0]
+  for (const command of ['/approvals', `/approve ${row.id} confirm`, `/reject ${row.id} confirm`]) {
+    assert.deepEqual(await h.service.handle(turn(command, { senderId: '10002' })), { handled: true, reply: '' })
+  }
+  for (const verb of ['approve', 'reject']) {
+    for (const args of [row.id, row.id + ' CONFIRM', row.id + ' confirm extra']) assert.match((await h.service.handle(turn(`/${verb} ${args}`))).reply, /用法/)
+  }
+  assert.equal(h.approvals.get(row.id).status, 'pending')
+  assert.match((await h.service.handle(turn(`/reject ${row.id} confirm`))).reply, /已拒绝/)
+  assert.match((await h.service.handle(turn(`/approve ${row.id} confirm`))).reply, /处理失败/)
+  assert.match((await h.service.handle(turn('/approve apr_' + '0'.repeat(32) + ' confirm'))).reply, /处理失败/)
+  await h.service.handle(turn('/mute 10002 0', approvalGroup))
+  const expired = h.approvals.list()[0]
+  h.advance(600000)
+  assert.match((await h.service.handle(turn(`/approve ${expired.id} confirm`))).reply, /处理失败/)
+  assert.equal(h.approvals.get(expired.id).status, 'expired')
+  assert.equal(h.calls.length, 0)
+})
+
+test('admin approvals: full queue, secrets and caller-supplied bypass cannot dispatch; non-admin unaffected', async (t) => {
+  const h = approvalCommands(t)
+  for (let i = 0; i < 50; i++) await h.service.handle({ ...turn('/wholemute on', approvalGroup), approvalBypass: true })
+  assert.equal(h.approvals.list({ limit: 50 }).length, 50)
+  assert.match((await h.service.handle(turn('/wholemute off', approvalGroup))).reply, /队列已满/)
+  assert.deepEqual(h.calls, [])
+  h.advance(600000)
+  assert.match((await h.service.handle(turn('/profile sk-' + 's'.repeat(30)))).reply, /疑似密钥/)
+  assert.equal(h.approvals.list().length, 0)
+  assert.match((await h.service.handle(turn('/groupinfo', approvalGroup))).reply, /QQ 动作服务不可用/)
+})
+
+test('admin approvals: pending list is bounded, redacted one-line, age shown; requests switch is independent', async (t) => {
+  const h = approvalCommands(t)
+  h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition, requests: { enabled: false } } })
+  for (let i = 0; i < 12; i++) { h.approvals.create({ action: 'groupname', args: `name-${i}`, ...approvalGroup, senderId: '10001' }); h.advance(1000) }
+  const row = h.approvals.list()[0]
+  // The presentation boundary also redacts legacy records independently of creation validation.
+  h.store.put('qq_admin_approval', row.id, { ...row, args: 'line\n' + 'sk-' + 's'.repeat(30) })
+  const reply = (await h.service.handle(turn('/approvals'))).reply
+  assert.equal(reply.split('\n').length, 11)
+  assert.match(reply, /groupname.*line \[REDACTED\].*group:20001.*秒前/)
+  assert.doesNotMatch(reply, /sk-ssss|name-0 ·|name-1 ·/)
+  assert.match((await h.service.handle(turn('/approvals extra'))).reply, /用法/)
+  assert.match(h.service.help, /\/approvals/)
+  assert.throws(() => h.service.registerCommand('approvals', () => ''), /已注册/)
+  // Reject remains usable while QQ request intake is disabled.
+  assert.match((await h.service.handle(turn(`/reject ${row.id} confirm`))).reply, /已拒绝/)
+})
+
+test('admin approvals: replay failures are terminal; access, deny-list, enable and changed validation are rechecked', async (t) => {
+  for (const mode of ['failure', 'throw', 'disabled', 'denied', 'access', 'validation', 'arbitrary']) {
+    let originAllowed = true
+    const h = approvalCommands(t, mode === 'access' ? { access: { isOwner: (cfg, id) => id === '10001', canSend: (chat) => ({ allowed: chat.chatType === 'private' || originAllowed }) } } : mode === 'failure' || mode === 'throw' ? { qqActions: { async setGroupName() { if (mode === 'throw') throw new Error('raw-secret'); return { ok: false, error: 'DENIED' } } } } : {})
+    await h.service.handle(turn('/groupname original', approvalGroup))
+    const row = h.approvals.list()[0]
+    if (mode === 'disabled') h.setConfig({ ...h.getConfig(), cognition: { qqAdmin: { enabled: false } } })
+    if (mode === 'denied') h.setConfig({ ...h.getConfig(), cognition: { ...h.getConfig().cognition, permissions: { deniedCommands: ['groupname'] } } })
+    if (mode === 'validation') h.setConfig({ ...h.getConfig(), cognition: { qqAdmin: { enabled: true, maxText: 1 } } })
+    if (mode === 'arbitrary') h.store.put('qq_admin_approval', row.id, { ...row, action: 'say' })
+    if (mode === 'access') originAllowed = false
+    const result = await h.service.handle(turn(`/approve ${row.id} confirm`))
+    assert.match(result.reply, /执行失败/)
+    assert.doesNotMatch(result.reply, /raw-secret/)
+    assert.equal(h.approvals.get(row.id).status, 'failed', mode)
+    assert.equal(h.calls.length, 0, mode)
+    await h.service.handle(turn(`/approve ${row.id} confirm`))
+    assert.equal(h.calls.length, 0)
+  }
+})
+
+test('admin approvals: file is replayed through media once; send exceptions mark failed', async (t) => {
+  for (const fail of [false, 'throw', 'retcode', 'status']) {
+    const calls = []
+    const h = approvalCommands(t, { media: { async sendMedia(payload) { calls.push(payload); if (fail === 'throw') throw new Error('raw-file-secret'); return fail === 'retcode' ? { retcode: 100 } : fail === 'status' ? { status: 'failed' } : {} } } })
+    await h.service.handle(turn('/file files/a.txt'))
+    const row = h.approvals.list()[0]
+    assert.equal(calls.length, 0)
+    const result = await h.service.handle(turn(`/approve ${row.id} confirm`))
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].relativePath, 'files/a.txt')
+    assert.equal(h.approvals.get(row.id).status, fail ? 'failed' : 'executed')
+    assert.doesNotMatch(result.reply, /raw-file-secret/)
+  }
+})
+
+test('admin approvals: request/origin access checks and missing approval service fail closed', async (t) => {
+  const blocked = approvalCommands(t, { allowSend: false })
+  for (const command of ['/approvals', '/approve apr_' + 'a'.repeat(32) + ' confirm', '/kick 10002 confirm']) assert.equal((await blocked.service.handle(turn(command, approvalGroup))).error, 'ACCESS_DENIED')
+  assert.equal(blocked.approvals.list().length, 0)
+  assert.deepEqual(blocked.calls, [])
+  const missing = adminCommands({ cognition: { qqAdmin: { enabled: true, requireApproval: true } } })
+  assert.match((await missing.service.handle(turn('/groupname 群', approvalGroup))).reply, /审批服务不可用/)
+  assert.equal(missing.calls.length, 0)
 })
