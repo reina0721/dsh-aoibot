@@ -1,4 +1,4 @@
-# 实现状态（v0.11.5 发布后，M7-v 工作区）
+# 实现状态（v0.11.6 发布后，M7-v 工作区）
 
 Bot 名称面板（未发布，I/T）：侧栏入口、概览页头与导航 aria 使用当前人格 `profile.displayName`，空值回退到 QQ 登录昵称 / `dsh-bot`；名称去控制字符/首尾空白，最多 40 个 Unicode 字符。index 安全注入初始名称，`/status.brand` 驱动页头更新，侧栏改名需刷新网页；保留 `onebot-qq` ID 与「关于 dsh-bot」。离线覆盖解析、注入转义/清理、缺少 tapIndex 的宿主和 React shim；未做 live / 真实浏览器验证，parity 矩阵与计数不变。
 
