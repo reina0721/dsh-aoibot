@@ -5,7 +5,7 @@
 
 import { isOwner } from '../core/access.js'
 
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker']
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker', 'bili']
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -42,6 +42,7 @@ const HELP_TEXT = [
   '/tts 文本 — 合成语音并发送到当前聊天',
   '/say 文本 — 向当前聊天发送文本',
   '/sticker [标签] — 随机发送一个表情包',
+  '/bili hot|关键词|BV号 — B站热门、搜索或视频信息',
   '/help — 本帮助',
 ].join('\n')
 
@@ -57,7 +58,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, media = null, stickers = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -238,6 +239,24 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       return send(turn, HELP_TEXT + (names.length ? `\n模块命令：${names.join(' ')}` : ''))
     }
     if (parsed.name === 'status') return send(turn, await statusText(turn))
+
+    if (parsed.name === 'bili') {
+      if (currentConfig().content?.bilibili?.enabled !== true) return send(turn, 'B站内容未启用')
+      if (!bilibili) return send(turn, 'B站内容服务不可用')
+      try {
+        let result
+        if (parsed.args.toLowerCase() === 'hot') result = await bilibili.hot()
+        else if (/^BV[0-9A-Za-z]{3,}$/i.test(parsed.args)) result = await bilibili.video(parsed.args)
+        else if (parsed.args) result = await bilibili.search(parsed.args)
+        else return send(turn, '用法：/bili hot | /bili 关键词 | /bili BV号')
+        const items = Array.isArray(result?.items) ? result.items : []
+        if (!items.length) return send(turn, '没有找到 B站视频。')
+        const lines = items.map((item, index) => `${index + 1}. ${oneLine(item.title, 100)}\n${oneLine(item.author, 40)} · 播放 ${Number(item.play) || 0} · ${item.duration || '00:00'}\n${item.url}`)
+        return send(turn, lines.join('\n'))
+      } catch (error) {
+        return send(turn, `B站请求失败：${oneLine(error?.message || error, 100)}`)
+      }
+    }
 
     if (parsed.name === 'say') {
       if (!parsed.args) return send(turn, '用法：/say 要发送的文本')

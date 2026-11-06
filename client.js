@@ -3053,6 +3053,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
       { id: 'media', label: '媒体', icon: 'sparkles' },
+      { id: 'content', label: '内容', icon: 'play' },
       { id: 'modules', label: '模块', icon: 'layout' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'persona', label: '人格', icon: 'sparkles' },
@@ -6709,6 +6710,61 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function ContentPage(props) {
+      const [query, setQuery] = useState('')
+      const [items, setItems] = useState([])
+      const [loading, setLoading] = useState(false)
+      const [error, setError] = useState('')
+
+      const load = async (kind) => {
+        const keyword = query.trim()
+        if (kind === 'search' && !keyword) return props.toast?.('请输入搜索关键词', 'warn')
+        setLoading(true)
+        setError('')
+        const path = kind === 'hot' ? '/content/bilibili/hot' : '/content/bilibili?q=' + encodeURIComponent(keyword)
+        try {
+          const result = safeObject(await get(path))
+          if (result.ok === false) {
+            setItems([])
+            setError(String(result.message || 'B站内容加载失败'))
+          } else setItems(safeArray(result.items))
+        } catch (requestError) {
+          setItems([])
+          setError(String(requestError?.message || 'B站内容加载失败'))
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      return h(
+        'div',
+        { className: 'ob-page' },
+        h(Banner, { tone: 'warn', message: 'QQ空间未实现：该能力需要 QQ 登录授权，并涉及平台授权与服务条款边界。' }),
+        h(Panel, { title: 'B站公共内容', description: '只读取公开搜索、热门和视频基本信息；不使用 Cookie/WBI，不提供评论或分享。' },
+          h('div', { className: 'ob-row' },
+            h('input', {
+              className: 'ob-input', value: query, placeholder: '搜索 B站视频', style: { flex: '1 1 280px' },
+              onChange: (event) => setQuery(event.target.value),
+              onKeyDown: (event) => { if (event.key === 'Enter') load('search') },
+            }),
+            h(Btn, { kind: 'primary', icon: 'search', busy: loading, onClick: () => load('search') }, '搜索'),
+            h(Btn, { kind: 'secondary', icon: 'play', disabled: loading, onClick: () => load('hot') }, '热门'),
+          ),
+        ),
+        error ? h(Banner, { tone: 'err', message: error }) : null,
+        loading ? h('div', { className: 'ob-grid two' }, h(PanelSkeleton, { rows: 3 }), h(PanelSkeleton, { rows: 3 })) : null,
+        !loading && items.length ? h('div', { className: 'ob-grid two' }, items.map((item) => h(Panel, {
+          key: item.bvid || item.url,
+          title: String(item.title || '未命名视频'),
+          description: String(item.author || '未知作者'),
+          actions: h('a', { className: 'ob-btn small secondary', href: String(item.url || '#'), target: '_blank', rel: 'noreferrer' }, h(Icon, { name: 'link', size: 14 }), '打开'),
+        }, h('div', { className: 'ob-row' },
+          h(Badge, { tone: 'brand' }, String(item.bvid || 'BV')), h(Badge, { tone: 'muted' }, '播放 ' + String(Number(item.play) || 0)), h(Badge, { tone: 'muted' }, String(item.duration || '00:00')),
+        )))) : null,
+        !loading && !error && !items.length ? h(Panel, null, h(EmptyState, { icon: 'play', title: '还没有内容', description: '输入关键词搜索，或查看当前热门视频。B站内容能力默认关闭。' })) : null,
+      )
+    }
+
     function ModulesPage(props) {
       const [items, setItems] = useState([])
       const [loading, setLoading] = useState(true)
@@ -6816,6 +6872,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             eyebrow: 'MEDIA LIBRARY',
             title: '媒体',
             description: '查看图片理解、语音转写与合成状态，测试 TTS，并管理可按标签随机发送的本地表情包库。',
+          }
+        case 'content':
+          return {
+            eyebrow: 'PUBLIC CONTENT',
+            title: '内容',
+            description: '查询 B站公开搜索、热门和视频基本信息；QQ空间因需要登录授权暂未实现。',
           }
         case 'modules':
           return {
@@ -7250,6 +7312,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
       else if (tab === 'media') body = h(MediaPage, tabProps)
+      else if (tab === 'content') body = h(ContentPage, tabProps)
       else if (tab === 'modules') body = h(ModulesPage, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'persona') body = h(PersonaTab, tabProps)
@@ -7388,6 +7451,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.Connect = Connect
     exports.Messages = Messages
     exports.MediaPage = MediaPage
+    exports.ContentPage = ContentPage
     exports.ModulesPage = ModulesPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，

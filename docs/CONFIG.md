@@ -194,6 +194,18 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 
 允许扩展名：图片 `jpg/jpeg/png/gif/webp/bmp`；语音 `mp3/wav/ogg/m4a/aac/amr/silk`；文件 `txt/md/json/csv/pdf/doc/docx/xls/xlsx/ppt/pptx/zip/7z/rar`。网络超时沿用 `timeouts.callMs`。
 
+### 3.9.1 公共内容（`content.bilibili`）
+
+B站公共内容默认关闭，因此默认配置不会发起网络请求。只读取公开搜索、热门和视频基本信息，不使用 Cookie/WBI，也不提供评论、分享或登录态能力。
+
+| 路径 | 默认值 | 取值 / 范围 | 作用 |
+|---|---|---|---|
+| `content.bilibili.enabled` | `false` | `true`/`false` | 启用 `/bili`、内容页和 B站 REST 查询 |
+| `content.bilibili.timeoutMs` | `15000` | 1000–60000 ms | 单次公开接口超时 |
+| `content.bilibili.maxResults` | `5` | 1–20 | 搜索/热门最多返回条数 |
+
+QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务条款，本版本明确未实现。
+
 ### 3.10 访问控制（`access`）
 
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
@@ -382,6 +394,9 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
     "images": { "enabled": false, "visionEnabled": false, "visionBaseUrl": "", "visionModel": "", "visionApiKeyEnv": "" },
     "audio": { "asrEnabled": false, "asrBaseUrl": "", "asrModel": "whisper-1", "asrApiKeyEnv": "", "ttsEnabled": false, "ttsBaseUrl": "", "ttsModel": "tts-1", "ttsVoice": "alloy", "ttsApiKeyEnv": "" },
     "files": { "enabled": false }
+  },
+  "content": {
+    "bilibili": { "enabled": false, "timeoutMs": 15000, "maxResults": 5 }
   }
 }
 ```
@@ -398,7 +413,7 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 | `enabled`、`gateway`、`botQQ`、`accountCheck`、`verification.enabled` | 需要重建连接（正在运行时自动重连） |
 | `onebot.*`（wsUrl/httpUrl/wsToken/httpToken/httpAuth） | 需要重建连接 |
 | `snowluma.*`（autoDetect/dir/uin） | 需要重建连接 |
-| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`media.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
+| `reconnect.*`、`timeouts.*`、`events.*`、`logging.*`、`ui.*`、`security.*`、`media.*`、`content.*`、`verification.bufferSize`、`cognition.*` | **不重连**，各模块每次使用时现取配置，立即生效；`ui.*` 由「系统设置」页即时保存并立即重渲染面板；`cognition.*` 由「认知 → 设置」即时保存 |
 | `enabled: false` → `true`（保存时） | 自动建立连接（与「启用并自动连接」字段语义一致） |
 | `enabled: false` | 断开连接并停止自动重连 |
 

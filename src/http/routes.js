@@ -69,7 +69,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, access = null, modules = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, bilibili = null, access = null, modules = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -141,6 +141,15 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
 
   // ---- 状态与配置 ----
   route('GET', '/status', async () => statusPayload())
+
+  if (bilibili) {
+    route('GET', '/content/bilibili', async (req) => {
+      const keyword = String(queryOf(req).q || '').trim()
+      if (!keyword) throw new Error('缺少 q')
+      return bilibili.search(keyword)
+    })
+    route('GET', '/content/bilibili/hot', async () => bilibili.hot())
+  }
 
   if (modules) {
     route('GET', '/modules', async () => ({ ok: true, items: modules.list() }))

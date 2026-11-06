@@ -24,6 +24,7 @@ import { createCognition } from './cognition/index.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
+import { createBilibiliService } from './content/bilibili.js'
 import { createModuleKernel } from './modules/kernel.js'
 import { personaProfileText } from './cognition/persona.js'
 
@@ -73,26 +74,19 @@ export function apply(ctx, rowConfig) {
   }
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
+  const bilibili = createBilibiliService({ getConfig, logger })
   const cognition = createCognition({
     ctx,
     getConfig,
     models,
-    gateway: {
-      get actions() {
-        return {
-          sendMessage: (...args) => {
-            if (!gatewayRef?.actions?.sendMessage) throw new Error('QQ 网关尚未就绪')
-            return gatewayRef.actions.sendMessage(...args)
-          },
-        }
-      },
-    },
+    gateway: { get actions() { return gatewayRef?.actions || null } },
     logger,
     dataRoot: dataDir('cognition'),
     access,
     setConfig,
     media,
     stickers,
+    bilibili,
   })
   const modules = createModuleKernel({
     dataDir: dataDir('modules'),
@@ -254,6 +248,7 @@ export function apply(ctx, rowConfig) {
     models,
     media,
     stickers,
+    bilibili,
     access,
     modules,
     version: VERSION,
@@ -314,6 +309,7 @@ export function apply(ctx, rowConfig) {
     models,
     media,
     stickers,
+    bilibili,
     modules,
     modulesReady,
     access,

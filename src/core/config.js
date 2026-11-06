@@ -122,6 +122,10 @@ export const DEFAULTS = {
     },
     files: { enabled: false },
   },
+  // 公共内容源；默认关闭，默认配置不会访问 Bilibili。
+  content: {
+    bilibili: { enabled: false, timeoutMs: 15000, maxResults: 5 },
+  },
   // 访问控制：open 保持现状；allowlist 只允许主人 + 白名单触发回复/主动行为。
   access: {
     mode: 'open',
@@ -360,6 +364,16 @@ export const CONFIG_GROUPS = [
       { path: 'media.audio.ttsVoice', label: 'TTS 音色', type: 'text', default: 'alloy' },
       { path: 'media.audio.ttsApiKeyEnv', label: 'TTS API Key 环境变量名', type: 'text', default: '', placeholder: 'OPENAI_API_KEY' },
       { path: 'media.files.enabled', label: '接收/上传文件', type: 'switch', default: false },
+    ],
+  },
+  {
+    id: 'content',
+    title: '内容',
+    description: '公共内容源；默认关闭，不使用 Cookie 或登录态。',
+    fields: [
+      { path: 'content.bilibili.enabled', label: '启用 B站公共内容', type: 'switch', default: false, help: '仅搜索、热门和视频基本信息；不使用 Cookie/WBI。' },
+      { path: 'content.bilibili.timeoutMs', label: 'B站请求超时', type: 'number', default: 15000, min: 1000, max: 60000, step: 1000, unit: 'ms' },
+      { path: 'content.bilibili.maxResults', label: 'B站结果数量', type: 'number', default: 5, min: 1, max: 20, step: 1 },
     ],
   },
   {
@@ -1054,6 +1068,13 @@ export function normalizeConfig(raw) {
         ttsApiKeyEnv: pickString(merged.media?.audio?.ttsApiKeyEnv, DEFAULTS.media.audio.ttsApiKeyEnv, { max: 128 }).replace(/[^A-Za-z0-9_]/g, ''),
       },
       files: { enabled: pickBool(merged.media?.files?.enabled, DEFAULTS.media.files.enabled) },
+    },
+    content: {
+      bilibili: {
+        enabled: pickBool(merged.content?.bilibili?.enabled, DEFAULTS.content.bilibili.enabled),
+        timeoutMs: pickNumber(merged.content?.bilibili?.timeoutMs, DEFAULTS.content.bilibili.timeoutMs, { min: 1000, max: 60000, integer: true }),
+        maxResults: pickNumber(merged.content?.bilibili?.maxResults, DEFAULTS.content.bilibili.maxResults, { min: 1, max: 20, integer: true }),
+      },
     },
     access: normalizeAccess(merged.access, issues),
     runtime: {

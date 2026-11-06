@@ -271,7 +271,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
 
 ```js
-createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
+createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot }) -> {
   available(), active(), engine(),
   levelFor(turn), presetFor(level),
   compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
@@ -283,10 +283,11 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - `runtime.engine` 默认 `oneshot`；只有 `agent` 且服务齐全时 `active=true`，否则 `compose` 返回 `RUNTIME_INACTIVE`，调用方回退一次性 LLM。
 - 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；preset/level 变化或恢复失败时新建。
 - preset：主人私聊 `dsh-bot-private`（fs/fs-search/web 工具），群聊/他人私聊 `dsh-bot-social`（无本机工具）。
+- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本仍走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
 - 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
 - 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
 - 人格/规则：插件在 `host.apply` 注册 `dshbot_persona` / `dshbot_rules_private` / `dshbot_rules_social` 提示词变量，preset 只引用变量。
-- 边界：M1 只替换 compose；analysis/policy/记忆仍由认知内核负责；QQ 动作工具、命令、按聊天模型在后续里程碑。
+- 边界：analysis/policy/记忆仍由认知内核负责；没有通用 action bus，也不提供资料编辑、群管理、精华、撤回或文件 Agent 工具；真实 QQ 工具调用仍待真机验证。
 
 ### 3.13 QQ 命令与按聊天模型
 
@@ -318,7 +319,7 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - `pipeline.handlePoke()`：只回应 `target_id == botQQ` 的 `notify/poke`，按用户冷却，走 outbound（source=`poke`）。
 - `pipeline.handleReaction()`：按 `message_id` 找回 pending，记录正向 outcome 并更新技能；重复/非本人忽略。
 - `src/cognition/qq-actions.js`：点赞、拍回去、群信息、成员信息；校验主人与当前会话，返回可展示字段；
-  `/like` `/poke` `/groupinfo` `/memberinfo` 命令复用。agent 工具化留到工具注册/模块阶段。
+  `/like` `/poke` `/groupinfo` `/memberinfo` 命令复用。`src/runtime/qq-tools.js` 提供独立的 DSH ToolDefinition，仍固定当前会话。
 
 ### 3.16 目的与每日整理
 
@@ -358,6 +359,13 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
 - 主人命令 `/tts <文本>`、`/say <文本>`、`/sticker [标签]` 只作用于当前聊天。`/tts` 默认最多 300 字符；`/sticker` 在匹配标签中随机选择。媒体发送前显式检查 `access.canSend`，之后仍由媒体/出站服务执行能力开关和路径边界。
 - 精确边界：表情包只支持面板手动上传、SHA-256 去重、人工标签和随机按标签发送；不会自动收集聊天图片、按语境/情绪选择、缩放转码或连接商城。无 `/sing`、自动语音策略、RVC、图片生成/编辑、任意本地脚本/路径接口或 Agent 媒体工具；真实 QQ/provider 兼容性仍待 M7。
+
+### 3.20 B站公共内容（M5-b）
+
+- `src/content/bilibili.js` 只调用 `api.bilibili.com` 的公开搜索、热门与视频详情端点，统一规范化标题、作者、播放量、时长、BV 号与链接；标题会移除搜索高亮 HTML。
+- `content.bilibili.enabled=false`，所以默认配置零网络；超时默认 15000ms，最多返回 5 条。请求只带 User-Agent/Referer，不携带 Cookie、不做 WBI 签名。HTTP、非零 code、登录要求或风控都返回明确错误，绝不伪造结果。
+- 主人命令 `/bili hot|关键词|BV号`；REST 为 `GET /content/bilibili?q=` 与 `GET /content/bilibili/hot`；顶层「内容」页提供搜索、热门和结果卡。
+- 精确边界：不提供 B站评论、分享、字幕或登录态能力。QQ空间需要 QQ 登录授权且涉及平台授权/ToS，本里程碑明确未实现。没有通用动作总线；真实 B站与 QQ 行为仍待受控真机验证。
 
 ## 4. 数据目录
 

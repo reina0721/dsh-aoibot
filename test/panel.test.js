@@ -109,6 +109,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   }
   assert.equal(typeof panel.SettingsTab, 'function', '系统设置组件应导出')
   assert.equal(typeof panel.SettingsShell, 'function', '持久设置壳组件应导出')
+  assert.equal(typeof panel.ContentPage, 'function', '内容页组件应导出')
   assert.equal(typeof panel.TOKEN_CSS, 'string')
   assert.equal(typeof panel.MOTION_CSS, 'string')
   assert.equal(typeof panel.ACCENT_TOKENS, 'object')
@@ -116,7 +117,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'media', 'modules', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'media', 'content', 'modules', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
   )
 })
 

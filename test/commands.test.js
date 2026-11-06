@@ -75,6 +75,7 @@ function harness(overrides = {}, services = {}) {
     purpose,
     media: services.media,
     stickers: services.stickers,
+    bilibili: services.bilibili,
     logger: null,
   })
   return { service, sent, memory, getConfig: () => config, setConfig }
@@ -214,6 +215,25 @@ test('commands：未知命令给提示，非命令交给认知管线', async () 
   assert.equal(sent.length, 1)
   const normal = await service.handle(turn('你好'))
   assert.deepEqual(normal, { handled: false })
+})
+
+test('commands：/bili 支持关闭、热门、搜索、BV 与短错误', async () => {
+  const disabled = harness({ content: { bilibili: { enabled: false } } }, { bilibili: { hot: async () => { throw new Error('不应调用') } } })
+  assert.equal((await disabled.service.handle(turn('/bili hot'))).reply, 'B站内容未启用')
+
+  const calls = []
+  const bilibili = {
+    async hot() { calls.push(['hot']); return { ok: true, items: [{ title: '热门', author: 'UP', play: 12, duration: '01:02', url: 'https://www.bilibili.com/video/BVhot' }] } },
+    async search(value) { calls.push(['search', value]); return { ok: true, items: [] } },
+    async video(value) { calls.push(['video', value]); return { ok: true, items: [{ title: '视频', author: 'UP', play: 1, duration: '00:03', url: 'https://www.bilibili.com/video/' + value }] } },
+  }
+  const enabled = harness({ content: { bilibili: { enabled: true } } }, { bilibili })
+  assert.match((await enabled.service.handle(turn('/bili hot'))).reply, /热门/)
+  assert.match((await enabled.service.handle(turn('/bili 猫猫'))).reply, /没有找到/)
+  assert.match((await enabled.service.handle(turn('/bili BV1abcdef'))).reply, /视频/)
+  assert.deepEqual(calls, [['hot'], ['search', '猫猫'], ['video', 'BV1abcdef']])
+  bilibili.hot = async () => { throw new Error('upstream detail') }
+  assert.match((await enabled.service.handle(turn('/bili hot'))).reply, /B站请求失败：upstream detail/)
 })
 
 test('commands：/tts 合成并向当前聊天发送语音，失败时短回复', async () => {

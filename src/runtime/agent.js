@@ -18,6 +18,7 @@ import { join } from 'node:path'
 
 import { readJson, writeJson } from '../core/store.js'
 import { isOwner } from '../core/access.js'
+import { createQqTools } from './qq-tools.js'
 
 export const PRIVATE_PRESET = 'dsh-bot-private'
 export const SOCIAL_PRESET = 'dsh-bot-social'
@@ -61,7 +62,7 @@ function clampText(text, max = MAX_CONTEXT_CHARS) {
  * @param {object} [o.logger]
  * @param {string} [o.dataRoot] 运行时数据目录（sessions.json/workspace）
  */
-export function createAgentRuntime({ ctx, getConfig, access = null, logger = null, dataRoot } = {}) {
+export function createAgentRuntime({ ctx, getConfig, access = null, gateway = null, outbound = null, logger = null, dataRoot } = {}) {
   const log = logger?.child?.('runtime') || logger || { info() {}, warn() {}, debug() {} }
   const baseDir = dataRoot || join(process.cwd(), '.dsh-bot-runtime')
   const sessionFile = join(baseDir, SESSION_FILE)
@@ -81,6 +82,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, logger = nul
     locks: new Map(), // sessionId → Promise chain
     contexts: new Map(), // sessionId → system context text
     contextDisposers: new Map(), // sessionId → () => void
+    toolDisposers: new Map(), // sessionId → (() => void)[]
     listenerOff: null,
     stats: {
       composes: 0,
@@ -214,19 +216,38 @@ export function createAgentRuntime({ ctx, getConfig, access = null, logger = nul
     throw new Error('SESSION_RESOLVE_FAILED')
   }
 
-  function mount(agent, sessionId) {
-    if (!agent || state.contextDisposers.has(sessionId)) return
+  function mount(agent, sessionId, info = {}) {
+    if (!agent) return
     const systemPrompt = agent?.ctx?.systemPrompt || services().systemPrompt
-    if (!systemPrompt || typeof systemPrompt.context !== 'function') return
-    try {
-      const off = systemPrompt.context({
-        name: `dsh-bot:cognition:${sessionId}`,
-        order: 100,
-        text: () => clampText(state.contexts.get(sessionId) || ''),
-      })
-      if (typeof off === 'function') state.contextDisposers.set(sessionId, off)
-    } catch (error) {
-      log.debug?.('挂载认知上下文失败：', error.message)
+    if (!state.contextDisposers.has(sessionId) && systemPrompt && typeof systemPrompt.context === 'function') {
+      try {
+        const off = systemPrompt.context({
+          name: `dsh-bot:cognition:${sessionId}`,
+          order: 100,
+          text: () => clampText(state.contexts.get(sessionId) || ''),
+        })
+        if (typeof off === 'function') state.contextDisposers.set(sessionId, off)
+      } catch (error) {
+        log.debug?.('挂载认知上下文失败：', error.message)
+      }
+    }
+    if (info.level === 'full' && !state.toolDisposers.has(sessionId)) {
+      const disposers = []
+      state.toolDisposers.set(sessionId, disposers)
+      try {
+        const registry = agent?.ctx?.tools
+        if (typeof registry?.register !== 'function') throw new Error('TOOLS_REGISTER_UNAVAILABLE')
+        for (const tool of createQqTools({ chat: info, gateway, outbound, getConfig, logger: log })) {
+          try {
+            const off = registry.register(tool)
+            if (typeof off === 'function') disposers.push(off)
+          } catch (error) {
+            log.warn?.(`注册 QQ Agent 工具 ${tool.name} 失败：${error.message}`)
+          }
+        }
+      } catch (error) {
+        log.warn?.('注册 QQ Agent 工具失败：', error.message)
+      }
     }
   }
 
@@ -257,7 +278,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, logger = nul
       state.chats[key].updatedAt = Date.now()
       saveMap()
     }
-    mount(agent, sessionId)
+    mount(agent, sessionId, { level, chatType: turn.chatType, chatId: turn.chatId, senderId: turn.senderId })
     return { agent, sessionId, preset, level, key }
   }
 
@@ -426,6 +447,12 @@ export function createAgentRuntime({ ctx, getConfig, access = null, logger = nul
       try { if (typeof off === 'function') off() } catch (error) {}
     }
     state.contextDisposers.clear()
+    for (const disposers of state.toolDisposers.values()) {
+      for (const off of disposers) {
+        try { if (typeof off === 'function') off() } catch (error) {}
+      }
+    }
+    state.toolDisposers.clear()
     state.contexts.clear()
     state.locks.clear()
   }

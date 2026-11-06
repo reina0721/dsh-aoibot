@@ -16,12 +16,13 @@
 
 - QQ 连接、账号核验、事件接收、群聊与私聊消息发送。
 - 访问控制：`open`/`allowlist`、主人 QQ、私聊/群白名单、统一出站闸门与审计。
-- 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session（preset 带工具），失败自动回退 oneshot。
-- QQ 命令（主人）：`/status` `/quiet` `/active` `/model` `/remember` `/forget` `/tts` `/say` `/sticker` `/help`；支持按聊天覆盖模型。
+- 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session；仅主人私聊在运行时挂载 3 个当前会话 QQ 工具，失败自动回退 oneshot。
+- QQ 命令（主人）：`/status` `/quiet` `/active` `/model` `/remember` `/forget` `/tts` `/say` `/sticker` `/bili` `/help`；支持按聊天覆盖模型。
 - 回复分条、可配引用/@、连续未点名接话上限，避免长文刷屏与自说自话。
 - 合并转发展开、拍一拍回应、表情表态归因；主人命令 `/like` `/poke` `/groupinfo` `/memberinfo`。
 - 可选媒体：图片下载/视觉描述、语音 ASR/TTS、图片/语音发送、群/私聊文件上传，以及本地表情包库与媒体面板；外部 provider 默认关闭。
 - 本地模块内核：从数据目录加载操作员安装的 JS 模块，提供显式权限 API、命令/事件/存储、错误隔离、热重载和模块面板；不含远程安装或 marketplace。
+- 可选 B站公共内容：搜索、热门、BV 视频基本信息、REST API 与「内容」页；默认关闭，不使用 Cookie/WBI，不含评论/分享。QQ空间因登录授权与服务条款边界未实现。
 - 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；每日记忆整理与按作用域反思；时间轴只读回忆日志。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。

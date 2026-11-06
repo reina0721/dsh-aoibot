@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- M5-b：主人私聊 DSH Session 运行时挂载 5 个当前会话 QQ 工具（额外文本、点赞、戳一戳、群/成员信息定义；群工具不会在 social/group session 注册），注册失败隔离且卸载时清理；不含通用 action bus、资料编辑、群管、精华或文件工具。
+- M5-b：新增默认关闭的 B站公共内容服务、主人 `/bili` 命令、搜索/热门 REST API 与「内容」页；仅使用无需 Cookie/WBI 的公开接口，不含评论/分享。QQ空间因需要 QQ 登录授权及服务条款审查明确不实现；真实 B站/QQ 验证待办。
 - M5-a：新增仅限本地的模块内核：manifest 与权限门控、动态加载/热重载/启停、错误隔离、模块命令/规范化事件/1 MiB JSON 存储、只读认知接缝、统一 outbound 文本发送、REST API 与「模块」面板；模块需由操作员复制到数据目录，不含上传、远程下载、依赖安装、沙箱或 marketplace。
 - M4-a：新增默认关闭的媒体基础层：受大小/扩展名限制的图片、语音、文件入站下载，OpenAI 兼容 Vision/ASR/TTS，base64 图片/语音发送、OneBot 群/私聊文件上传，以及 `/media/status|test|tts` API；不含媒体面板、表情包市场、RVC 或生图。
 - M4-b：新增本地表情包库（PNG/JPG/JPEG/GIF/WebP、5 MiB/张、200 张、SHA-256 去重、人工标签）、安全的上传/列表/按 ID 取图 API、媒体面板，以及主人命令 `/tts` `/say` `/sticker`；仍不含自动收集/语境选图、商城、RVC、生图或 Agent 媒体工具。
