@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-11-06T05:55:20.792Z",
+  "startedAt": "2026-11-06T12:05:52.961Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
-    "sha256": "2c9ec58d21f6709de21a91fec21812313707d3524b916a93ad734d45d3e95feb",
-    "bytes": 5139
+    "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
+    "bytes": 7011
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-    "sha256": "85d022585fb00b5ed9d4aacb7621cae088b5cd6a4284c9c2e8dc5e7fa1393621",
-    "bytes": 764165
+    "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
+    "bytes": 776775
   },
   "stages": {
     "validate": {
@@ -38,8 +38,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "2c9ec58d21f6709de21a91fec21812313707d3524b916a93ad734d45d3e95feb",
-          "bytes": 5139
+          "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
+          "bytes": 7011
         },
         "validation": {
           "checksPassed": 9,
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 422,
+      "durationMs": 443,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,19 +68,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "754aae51-beb3-44b0-900f-2c3406f01449",
+        "receiptId": "aa4fb708-4857-4823-8965-93f45f595251",
         "ok": true,
         "command": "deliver",
         "type": "architecture",
         "input": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
         "output": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "specification": {
-          "sha256": "2c9ec58d21f6709de21a91fec21812313707d3524b916a93ad734d45d3e95feb",
-          "bytes": 5139
+          "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
+          "bytes": 7011
         },
         "artifact": {
-          "sha256": "85d022585fb00b5ed9d4aacb7621cae088b5cd6a4284c9c2e8dc5e7fa1393621",
-          "bytes": 764165
+          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
+          "bytes": 776775
         },
         "validation": {
           "checksPassed": 9,
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 153,
+      "durationMs": 163,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -118,8 +118,8 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "artifact": {
-          "sha256": "85d022585fb00b5ed9d4aacb7621cae088b5cd6a4284c9c2e8dc5e7fa1393621",
-          "bytes": 764165
+          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
+          "bytes": 776775
         },
         "checks": [
           {
@@ -186,16 +186,16 @@
             "containerBorderRuns": 0,
             "labelRouteClearanceIssues": 0,
             "labelCanvasOverflowIssues": 0,
-            "minLabelRouteClearance": 27.5,
+            "minLabelRouteClearance": 13,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
-            "minProjectedNodeTextPx": 7.5,
+            "minProjectedNodeTextPx": 6.7723270440251575,
             "maxBends": 2,
             "routesOverSuggestedBends": 0,
             "maxStretch": 1,
             "routesOverSuggestedStretch": 0,
             "minSegmentPx": 24,
-            "minInteriorSegmentPx": 67,
+            "minInteriorSegmentPx": 38,
             "shortSegmentCount": 0,
             "shortEndpointSegmentCount": 0,
             "shortInteriorSegmentCount": 0,
@@ -213,25 +213,25 @@
           },
           "leadingSpace": {
             "measured": true,
-            "emptyTopPx": 90,
-            "emptyTopRatio": 0.135,
-            "occupiedTop": 90,
+            "emptyTopPx": 70,
+            "emptyTopRatio": 0.083,
+            "occupiedTop": 70,
             "viewBoxTop": 0,
-            "canvasHeight": 668,
+            "canvasHeight": 848,
             "typicalNodeHeight": 64,
             "reviewSuggested": false
           },
           "desktopReadability": {
             "budgetBasis": "recognized-declared-wide",
             "readerContract": "declared-wide-v1",
-            "availableDiagramWidth": 1218.75,
-            "actualBudgetPx": 1218.75,
-            "actualReaderWidth": 1248.75,
-            "desiredReaderWidth": 1248.75,
+            "availableDiagramWidth": 1346,
+            "actualBudgetPx": 1346,
+            "actualReaderWidth": 1376,
+            "desiredReaderWidth": 1520.625,
             "viewportCap": 1376,
-            "limit": "source-size",
+            "limit": "viewport-cap",
             "requestedTargetPx": 7.5,
-            "requestedTargetMet": true,
+            "requestedTargetMet": false,
             "hardFloorPx": 6,
             "hardFloorMet": true,
             "minimumOwner": {
@@ -241,19 +241,19 @@
               "to": "gateway"
             },
             "minimumSourceTextPx": 8,
-            "minimumProjectedTextPx": 7.5,
-            "semanticTextCount": 31
+            "minimumProjectedTextPx": 6.7723270440251575,
+            "semanticTextCount": 46
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "754aae51-beb3-44b0-900f-2c3406f01449"
+        "deliveryReceiptId": "aa4fb708-4857-4823-8965-93f45f595251"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2432,
+      "durationMs": 2660,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -273,11 +273,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "754aae51-beb3-44b0-900f-2c3406f01449",
+        "deliveryReceiptId": "aa4fb708-4857-4823-8965-93f45f595251",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-          "sha256": "85d022585fb00b5ed9d4aacb7621cae088b5cd6a4284c9c2e8dc5e7fa1393621",
-          "bytes": 764165
+          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
+          "bytes": 776775
         },
         "state": {
           "detail": "read",
@@ -314,14 +314,14 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 692,
+                "svgPx": 718,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 6.7723270440251575,
+              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -351,29 +351,29 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1000,
+              "scrollHeight": 1004,
               "overflowX": false,
-              "overflowY": false,
-              "verticalScrollAccepted": false,
-              "overflowDisposition": "contained",
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
               "readerLayout": "adaptive",
-              "readerOverflow": null,
+              "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1536,
-              "diagramWidth": 1506,
+              "readerWidth": 1521,
+              "diagramWidth": 1491,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 774,
+                "svgPx": 795,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 7.50188679245283,
+              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -412,17 +412,17 @@
               "readerOverflow": null,
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1704,
-              "diagramWidth": 1674,
+              "readerWidth": 1643,
+              "diagramWidth": 1613,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
                 "svgPx": 860,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -470,11 +470,11 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 961,
+                "svgPx": 997,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -575,14 +575,14 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 692,
+                "svgPx": 718,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 6.7723270440251575,
+              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -612,29 +612,29 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1000,
+              "scrollHeight": 1004,
               "overflowX": false,
-              "overflowY": false,
-              "verticalScrollAccepted": false,
-              "overflowDisposition": "contained",
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
               "readerLayout": "adaptive",
-              "readerOverflow": null,
+              "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1536,
-              "diagramWidth": 1506,
+              "readerWidth": 1521,
+              "diagramWidth": 1491,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 774,
+                "svgPx": 795,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 7.50188679245283,
+              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -673,17 +673,17 @@
               "readerOverflow": null,
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1704,
-              "diagramWidth": 1674,
+              "readerWidth": 1643,
+              "diagramWidth": 1613,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
                 "svgPx": 860,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -731,11 +731,11 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 961,
+                "svgPx": 997,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -788,14 +788,14 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 692,
+                "svgPx": 718,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 6.7723270440251575,
+              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -825,29 +825,29 @@
               "innerWidth": 1600,
               "innerHeight": 1000,
               "scrollWidth": 1600,
-              "scrollHeight": 1000,
+              "scrollHeight": 1004,
               "overflowX": false,
-              "overflowY": false,
-              "verticalScrollAccepted": false,
-              "overflowDisposition": "contained",
+              "overflowY": true,
+              "verticalScrollAccepted": true,
+              "overflowDisposition": "readable-vertical-scroll",
               "readerLayout": "adaptive",
-              "readerOverflow": null,
+              "readerOverflow": "authored",
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1536,
-              "diagramWidth": 1506,
+              "readerWidth": 1521,
+              "diagramWidth": 1491,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 774,
+                "svgPx": 795,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
-              "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
-              "minimumProjectedEdgeTextPx": 8,
+              "viewBoxWidth": 1590,
+              "minimumProjectedNodeTextPx": 7.50188679245283,
+              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
               "minimumProjectedNodeTextOwner": {
@@ -886,17 +886,17 @@
               "readerOverflow": null,
               "readerFit": "intrinsic-height",
               "ok": true,
-              "readerWidth": 1704,
-              "diagramWidth": 1674,
+              "readerWidth": 1643,
+              "diagramWidth": 1613,
               "pageComposition": {
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
                 "svgPx": 860,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -944,11 +944,11 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 961,
+                "svgPx": 997,
                 "cardsPx": 0,
-                "viewBoxHeight": 668
+                "viewBoxHeight": 848
               },
-              "viewBoxWidth": 1300,
+              "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
               "minimumProjectedNonEdgeTextPx": 9,
               "minimumProjectedEdgeTextPx": 8,
@@ -996,8 +996,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T05:55:25.000Z",
-  "durationMs": 4208,
+  "finishedAt": "2026-11-06T12:05:57.693Z",
+  "durationMs": 4731,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

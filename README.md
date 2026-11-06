@@ -70,6 +70,8 @@ M7-b 新增默认关闭的主人 QQ 管理命令：资料、当前群管理、�
 
 M7-d 提供通用 JSON/JSONL 旧档案导入：记忆页选文件，或调用 `POST /cognition/import`，内容写入当前人格并幂等去重，不联网、不自动发送 QQ。无 Aurabot 专用迁移、向量或时间轴事件导入，尚无真实旧档案样本验证，#30 仍 partial。格式与用法见 [用户手册](docs/USER-MANUAL.md#36-目的与记忆整理)，开关和限额见 [CONFIG](docs/CONFIG.md#导入旧档案cognitionimportm7-d)。
 
+M7 发布候选的强制检查、回滚与声明边界见 [发布检查表](docs/RELEASE.md)；当前未达全量 parity，不得宣称与 Aurabot 完全一致。
+
 ## 首次连接
 
 1. 在 QQ 网关启用正向 WebSocket 与 HTTP 服务，设置 access token。

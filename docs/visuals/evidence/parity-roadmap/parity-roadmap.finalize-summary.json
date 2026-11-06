@@ -7,13 +7,13 @@
   "quality": "showcase",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-    "sha256": "c3735877be93d7f63b4c3b21a60c40068ca93e10bba66e883ace7766f1636129",
-    "bytes": 3990
+    "sha256": "39c7dd3d02fc2c24af22575e65608056306200f3da3cb8f3d5a9c8631a0fdacf",
+    "bytes": 5219
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "ae083d8b0c6c5ca2a1bb1f996150d2bee09119187fbddff3713938f43c68e2ca",
-    "bytes": 762913
+    "sha256": "a419db42bbb7fea8d5005601e64db66878acce7f9bca092ad71134ebadd2cc97",
+    "bytes": 763336
   },
   "gates": {
     "validate": "pass",
@@ -45,5 +45,34 @@
     "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
   },
   "visualReview": "not-requested",
-  "durationMs": 3708
+  "durationMs": 4567,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "routesOverSuggestedStretch": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [],
+      "detours": [
+        {
+          "relationship": {
+            "id": "m0-g0",
+            "from": "m0",
+            "to": "g0",
+            "label": "验收",
+            "collectionIndex": 0,
+            "artifactIndex": 1
+          },
+          "bends": 2,
+          "stretch": 1.434
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "m0 → g0 needs 2 bends: move node m0 or g0 so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
 }

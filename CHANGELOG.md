@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- M7-e：更新 current-architecture / parity-roadmap 视觉（Archify 3.0.1，四门通过；不声称人工感知评审），新增发布检查表、回滚与声明边界。仍不宣称全量 parity。
+
 - M7-d：新增 `archive-import.js`、`POST /cognition/import` 与认知记忆页「导入旧档案」。通用 JSON/JSONL 导入当前人格，默认 5 MiB/5000 项（可调低）；正文/作用域/人物/时间戳/类型白名单校验、确定性 ID 幂等去重、仅计数日志；新增 `cognition.import` 配置及离线服务/API/面板测试。不联网、不自动发送 QQ，无新依赖；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证，#30 仍为部分实现。
 - M7-c：默认关闭的 OpenAI 兼容生图/改图服务、`/draw` `/redraw` `/image` 主人命令、`/media/image/generate|edit` 和媒体页「生图/改图」。prompt 1–1000 字符、五档尺寸、限媒体大小的 PNG b64_json 落盘；不抓返回 URL，改图源限媒体根内相对路径/realpath/扩展名/大小；只支持兼容 edits。面板/API 不发送 QQ；命令先过 access，无新依赖，fake provider 自动化，真实 provider/QQ 未验证，#44/#46 仍为部分实现。
 - M7-b：记录 2026-11-06 明确用户豁免（远端 API 鉴权、QQ空间、模块市场/远程安装、25 页级面板、迁移/离峰），审计新增 exempt 计数与目标校验；其他差距不变。豁免是用户决定，不是实现证据。

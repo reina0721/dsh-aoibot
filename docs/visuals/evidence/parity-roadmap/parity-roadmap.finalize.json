@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "workflow",
   "quality": "showcase",
-  "startedAt": "2026-11-06T05:55:30.066Z",
+  "startedAt": "2026-11-06T12:06:17.786Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
-    "sha256": "c3735877be93d7f63b4c3b21a60c40068ca93e10bba66e883ace7766f1636129",
-    "bytes": 3990
+    "sha256": "39c7dd3d02fc2c24af22575e65608056306200f3da3cb8f3d5a9c8631a0fdacf",
+    "bytes": 5219
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-    "sha256": "ae083d8b0c6c5ca2a1bb1f996150d2bee09119187fbddff3713938f43c68e2ca",
-    "bytes": 762913
+    "sha256": "a419db42bbb7fea8d5005601e64db66878acce7f9bca092ad71134ebadd2cc97",
+    "bytes": 763336
   },
   "stages": {
     "validate": {
@@ -38,8 +38,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "c3735877be93d7f63b4c3b21a60c40068ca93e10bba66e883ace7766f1636129",
-          "bytes": 3990
+          "sha256": "39c7dd3d02fc2c24af22575e65608056306200f3da3cb8f3d5a9c8631a0fdacf",
+          "bytes": 5219
         },
         "validation": {
           "checksPassed": 9,
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 505,
+      "durationMs": 495,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,19 +68,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "9ce88a9a-0c7b-466d-ad99-83d58a8ba235",
+        "receiptId": "e60fddc6-3811-458e-885a-657aedb8cec6",
         "ok": true,
         "command": "deliver",
         "type": "workflow",
         "input": "/workspace/dsh-bot/docs/visuals/src/parity-roadmap.json",
         "output": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "specification": {
-          "sha256": "c3735877be93d7f63b4c3b21a60c40068ca93e10bba66e883ace7766f1636129",
-          "bytes": 3990
+          "sha256": "39c7dd3d02fc2c24af22575e65608056306200f3da3cb8f3d5a9c8631a0fdacf",
+          "bytes": 5219
         },
         "artifact": {
-          "sha256": "ae083d8b0c6c5ca2a1bb1f996150d2bee09119187fbddff3713938f43c68e2ca",
-          "bytes": 762913
+          "sha256": "a419db42bbb7fea8d5005601e64db66878acce7f9bca092ad71134ebadd2cc97",
+          "bytes": 763336
         },
         "validation": {
           "checksPassed": 9,
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 148,
+      "durationMs": 153,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -118,8 +118,8 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
         "artifact": {
-          "sha256": "ae083d8b0c6c5ca2a1bb1f996150d2bee09119187fbddff3713938f43c68e2ca",
-          "bytes": 762913
+          "sha256": "a419db42bbb7fea8d5005601e64db66878acce7f9bca092ad71134ebadd2cc97",
+          "bytes": 763336
         },
         "checks": [
           {
@@ -186,16 +186,16 @@
             "containerBorderRuns": 0,
             "labelRouteClearanceIssues": 0,
             "labelCanvasOverflowIssues": 0,
-            "minLabelRouteClearance": 75.7,
+            "minLabelRouteClearance": 72.1,
             "desktopReadabilityIssues": 0,
             "viewportHeightIssues": 0,
-            "minProjectedNodeTextPx": 6.572438162544169,
-            "maxBends": 0,
+            "minProjectedNodeTextPx": 6.940298507462686,
+            "maxBends": 2,
             "routesOverSuggestedBends": 0,
-            "maxStretch": 1,
-            "routesOverSuggestedStretch": 0,
+            "maxStretch": 1.434,
+            "routesOverSuggestedStretch": 1,
             "minSegmentPx": 28,
-            "minInteriorSegmentPx": null,
+            "minInteriorSegmentPx": 124,
             "shortSegmentCount": 0,
             "shortEndpointSegmentCount": 0,
             "shortInteriorSegmentCount": 0,
@@ -209,7 +209,20 @@
           },
           "routeReview": {
             "crossings": [],
-            "detours": []
+            "detours": [
+              {
+                "relationship": {
+                  "id": "m0-g0",
+                  "from": "m0",
+                  "to": "g0",
+                  "label": "验收",
+                  "collectionIndex": 0,
+                  "artifactIndex": 1
+                },
+                "bends": 2,
+                "stretch": 1.434
+              }
+            ]
           },
           "leadingSpace": {
             "measured": false,
@@ -230,19 +243,19 @@
               "id": "m0"
             },
             "minimumSourceTextPx": 8,
-            "minimumProjectedTextPx": 6.572438162544169,
+            "minimumProjectedTextPx": 6.940298507462686,
             "semanticTextCount": 30
           },
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "9ce88a9a-0c7b-466d-ad99-83d58a8ba235"
+        "deliveryReceiptId": "e60fddc6-3811-458e-885a-657aedb8cec6"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 1804,
+      "durationMs": 2411,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -262,11 +275,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "9ce88a9a-0c7b-466d-ad99-83d58a8ba235",
+        "deliveryReceiptId": "e60fddc6-3811-458e-885a-657aedb8cec6",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/parity-roadmap.html",
-          "sha256": "ae083d8b0c6c5ca2a1bb1f996150d2bee09119187fbddff3713938f43c68e2ca",
-          "bytes": 762913
+          "sha256": "a419db42bbb7fea8d5005601e64db66878acce7f9bca092ad71134ebadd2cc97",
+          "bytes": 763336
         },
         "state": {
           "detail": "read",
@@ -303,15 +316,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 480,
+                "svgPx": 507,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -321,13 +334,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -337,9 +350,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -387,15 +400,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 537,
+                "svgPx": 568,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -405,13 +418,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -421,8 +434,8 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 }
               ],
@@ -471,15 +484,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 652,
+                "svgPx": 688,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -489,13 +502,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -505,9 +518,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -555,15 +568,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 667,
+                "svgPx": 705,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -573,13 +586,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -589,9 +602,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -692,15 +705,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 480,
+                "svgPx": 507,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -710,13 +723,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -726,9 +739,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -776,15 +789,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 537,
+                "svgPx": 568,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -794,13 +807,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -810,8 +823,8 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 }
               ],
@@ -860,15 +873,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 652,
+                "svgPx": 688,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -878,13 +891,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -894,9 +907,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -944,15 +957,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 667,
+                "svgPx": 705,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -962,13 +975,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -978,9 +991,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -1033,15 +1046,15 @@
                 "bodyPaddingPx": 12,
                 "headerPx": 52,
                 "diagramChromePx": 78,
-                "svgPx": 480,
+                "svgPx": 507,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -1051,13 +1064,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 124,
+                  "heightPx": 131,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -1067,9 +1080,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 62,
-                  "spaceAboveNodesPx": 49,
-                  "spaceBelowNodesPx": 13
+                  "nodeSpanPx": 65,
+                  "spaceAboveNodesPx": 51,
+                  "spaceBelowNodesPx": 14
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -1117,15 +1130,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 537,
+                "svgPx": 568,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -1135,13 +1148,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 138,
+                  "heightPx": 146,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -1151,8 +1164,8 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 69,
-                  "spaceAboveNodesPx": 55,
+                  "nodeSpanPx": 73,
+                  "spaceAboveNodesPx": 58,
                   "spaceBelowNodesPx": 15
                 }
               ],
@@ -1201,15 +1214,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 60,
                 "diagramChromePx": 84,
-                "svgPx": 652,
+                "svgPx": 688,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -1219,13 +1232,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 168,
+                  "heightPx": 177,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -1235,9 +1248,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 84,
-                  "spaceAboveNodesPx": 66,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 89,
+                  "spaceAboveNodesPx": 70,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -1285,15 +1298,15 @@
                 "bodyPaddingPx": 64,
                 "headerPx": 68,
                 "diagramChromePx": 94,
-                "svgPx": 667,
+                "svgPx": 705,
                 "cardsPx": 0,
                 "viewBoxHeight": 404
               },
-              "viewBoxWidth": 1132,
+              "viewBoxWidth": 1072,
               "workflowLanes": [
                 {
                   "frameId": "lane-0",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "m0",
@@ -1303,13 +1316,13 @@
                     "m4",
                     "m5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 },
                 {
                   "frameId": "lane-1",
-                  "heightPx": 172,
+                  "heightPx": 181,
                   "nodeCount": 6,
                   "nodeIds": [
                     "g0",
@@ -1319,9 +1332,9 @@
                     "g4",
                     "g5"
                   ],
-                  "nodeSpanPx": 86,
-                  "spaceAboveNodesPx": 68,
-                  "spaceBelowNodesPx": 18
+                  "nodeSpanPx": 91,
+                  "spaceAboveNodesPx": 72,
+                  "spaceBelowNodesPx": 19
                 }
               ],
               "minimumProjectedNodeTextPx": 8,
@@ -1369,8 +1382,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/parity-roadmap/parity-roadmap.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T05:55:33.774Z",
-  "durationMs": 3708,
+  "finishedAt": "2026-11-06T12:06:22.353Z",
+  "durationMs": 4567,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

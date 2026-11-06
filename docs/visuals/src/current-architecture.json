@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "dsh-bot 当前架构（v0.10.0）",
+    "title": "dsh-bot 当前架构（M7 审计基线）",
     "locale": "zh-CN",
     "output": "docs/visuals/current-architecture.html",
     "quality_profile": "showcase"
@@ -14,7 +14,7 @@
       "label": "QQ 用户",
       "sublabel": "私聊 / 群聊",
       "pos": [
-        40,
+        30,
         320
       ],
       "size": [
@@ -28,7 +28,7 @@
       "label": "OneBot v11 网关",
       "sublabel": "NapCat / SnowLuma 等",
       "pos": [
-        240,
+        230,
         320
       ],
       "size": [
@@ -40,37 +40,65 @@
       "id": "events",
       "type": "backend",
       "label": "事件层",
-      "sublabel": "normalize + 事件缓冲",
+      "sublabel": "normalize + 缓冲",
       "pos": [
-        450,
+        460,
         320
       ],
       "size": [
-        130,
+        140,
         64
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "访问控制",
+      "sublabel": "主人 / 白名单 / 出站",
+      "pos": [
+        690,
+        320
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "DSH Session",
+      "sublabel": "私有/社交 preset",
+      "pos": [
+        920,
+        320
+      ],
+      "size": [
+        160,
+        70
       ]
     },
     {
       "id": "cognition",
       "type": "backend",
       "label": "认知内核",
-      "sublabel": "turn / policy / memory",
+      "sublabel": "turn / memory / purpose",
       "pos": [
-        680,
+        1170,
         320
       ],
       "size": [
         170,
-        72
+        70
       ]
     },
     {
       "id": "storage",
       "type": "database",
-      "label": "认知存储",
-      "sublabel": "SQLite + FTS5 / JSONL",
+      "label": "持久化",
+      "sublabel": "SQLite/FTS/JSONL + 备份",
       "pos": [
-        680,
+        1170,
         520
       ],
       "size": [
@@ -79,17 +107,59 @@
       ]
     },
     {
-      "id": "panel",
-      "type": "frontend",
-      "label": "DSH 面板",
-      "sublabel": "client.js · 10 个标签",
+      "id": "media",
+      "type": "backend",
+      "label": "媒体",
+      "sublabel": "Vision/ASR/TTS/生图",
       "pos": [
-        450,
-        120
+        690,
+        520
       ],
       "size": [
         150,
-        64
+        60
+      ]
+    },
+    {
+      "id": "modules",
+      "type": "backend",
+      "label": "本地模块",
+      "sublabel": "权限 API / 热重载",
+      "pos": [
+        920,
+        610
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "security",
+      "label": "运维/安全",
+      "sublabel": "备份 / 升级 / 审计",
+      "pos": [
+        1170,
+        700
+      ],
+      "size": [
+        150,
+        60
+      ]
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "DSH 面板",
+      "sublabel": "15 个顶层标签",
+      "pos": [
+        460,
+        100
+      ],
+      "size": [
+        160,
+        60
       ]
     },
     {
@@ -98,11 +168,11 @@
       "label": "REST API",
       "sublabel": "/onebot-qq/api",
       "pos": [
-        680,
-        120
+        690,
+        100
       ],
       "size": [
-        170,
+        180,
         64
       ]
     },
@@ -113,10 +183,10 @@
       "sublabel": "ctx.llm.stream",
       "pos": [
         920,
-        220
+        100
       ],
       "size": [
-        150,
+        160,
         60
       ]
     },
@@ -124,13 +194,13 @@
       "id": "model-gw",
       "type": "backend",
       "label": "模型网关",
-      "sublabel": "5 种协议 + 3 预设",
+      "sublabel": "多协议 / 路由",
       "pos": [
-        920,
-        400
+        1170,
+        200
       ],
       "size": [
-        150,
+        160,
         60
       ]
     },
@@ -140,8 +210,8 @@
       "label": "模型服务",
       "sublabel": "HTTPS · 可选直连",
       "pos": [
-        1130,
-        300
+        1420,
+        150
       ],
       "size": [
         130,
@@ -152,13 +222,18 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "DSH web profile · 0.2.2",
+      "label": "DSH web profile · dsh-bot 0.10.0（M7 未发布）",
       "wraps": [
         "panel",
         "api",
         "events",
+        "access",
+        "runtime",
         "cognition",
         "storage",
+        "media",
+        "modules",
+        "ops",
         "dsh-llm",
         "model-gw"
       ]
@@ -179,10 +254,22 @@
       "label": "WS 事件"
     },
     {
-      "id": "events-cognition",
+      "id": "events-access",
       "from": "events",
+      "to": "access",
+      "label": "入站判定"
+    },
+    {
+      "id": "access-runtime",
+      "from": "access",
+      "to": "runtime",
+      "label": "放行"
+    },
+    {
+      "id": "runtime-cognition",
+      "from": "runtime",
       "to": "cognition",
-      "label": "turns"
+      "label": "compose"
     },
     {
       "id": "panel-api",
@@ -191,77 +278,91 @@
       "label": "REST"
     },
     {
-      "id": "api-cognition",
+      "id": "api-runtime",
       "from": "api",
-      "to": "cognition",
-      "label": "config / status",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "to": "runtime",
+      "label": "状态"
     },
     {
       "id": "cognition-storage",
       "from": "cognition",
       "to": "storage",
-      "label": "SQLite / FTS5",
-      "fromSide": "bottom",
-      "toSide": "top"
+      "label": "SQLite / FTS"
     },
     {
-      "id": "cognition-dsh-llm",
-      "from": "cognition",
+      "id": "runtime-dsh-llm",
+      "from": "runtime",
       "to": "dsh-llm",
-      "label": "one-shot",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "agent"
     },
     {
       "id": "cognition-model-gw",
       "from": "cognition",
       "to": "model-gw",
-      "label": "direct",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "direct"
     },
     {
       "id": "dsh-llm-providers",
       "from": "dsh-llm",
       "to": "providers",
-      "label": "HTTPS",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "HTTPS"
     },
     {
       "id": "model-gw-providers",
       "from": "model-gw",
       "to": "providers",
-      "label": "HTTPS",
-      "fromSide": "right",
-      "toSide": "left"
+      "label": "HTTPS"
+    },
+    {
+      "id": "media-gateway",
+      "from": "media",
+      "to": "gateway",
+      "label": "发送媒体"
+    },
+    {
+      "id": "modules-runtime",
+      "from": "modules",
+      "to": "runtime",
+      "label": "命令"
+    },
+    {
+      "id": "ops-storage",
+      "from": "ops",
+      "to": "storage",
+      "label": "备份"
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "接入",
+      "title": "接入与安全",
       "items": [
-        "OneBot v11 正向 WS + HTTP；NapCat / SnowLuma / Lagrange / LLOneBot",
-        "账号核验、重连退避、事件缓冲、原始日志与脱敏"
+        "OneBot v11 正向 WS + HTTP；事件缓冲、去重、原始日志脱敏",
+        "主人/私聊/群白名单；统一出站限频；危险命令默认关闭并需 confirm"
       ]
     },
     {
       "dot": "emerald",
-      "title": "认知",
+      "title": "运行时与认知",
       "items": [
-        "轮次聚合 → 分析 → 策略 → 回复；LLM 只做语义投影",
-        "SQLite FTS5 记忆，人格 / 情绪 / 关系 / 信念 / 技能 / 元认知"
+        "每聊天 DSH Session，private/social preset，失败回退 oneshot",
+        "人格级 SQLite 记忆/FTS、情绪、目的、人物、关系、策略与时间轴"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "媒体、内容与模块",
+      "items": [
+        "Vision/ASR/TTS、表情包、生图/改图与普通图片；provider 默认关闭",
+        "B站公开内容、本地模块内核、目录备份、安全页与手动升级检查"
       ]
     },
     {
       "dot": "rose",
-      "title": "现状边界",
+      "title": "M7 审计边界",
       "items": [
-        "LLM 为一次性调用：没有 DSH Session、工具、MCP、后台任务、定时任务",
-        "没有访问控制、媒体能力、模块系统；面板 10 个标签"
+        "61 项矩阵：6 has / 35 partial / 8 none / 1 limited / 6 leading / 5 exempt",
+        "50 项待闭环或未豁免；真实 QQ/媒体/GitHub 与 RVC/桌宠/抖音未验证"
       ]
     }
   ]

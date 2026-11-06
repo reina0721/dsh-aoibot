@@ -4,13 +4,13 @@
 
 | 图 | 类型 | 回答的问题 | 源文件 | 证据 |
 |---|---|---|---|---|
-| [current-architecture.html](current-architecture.html) | architecture | 当前 v0.10.0 的模块、边界与数据流 | [src/current-architecture.json](src/current-architecture.json) | [evidence](evidence/current-architecture/) |
-| [target-architecture.html](target-architecture.html) | architecture | M1–M3 的 DSH Session、权限、工具与认知状态层 | [src/target-architecture.json](src/target-architecture.json) | [evidence](evidence/target-architecture/) |
+| [current-architecture.html](current-architecture.html) | architecture | M7 审计基线的模块、边界与数据流（15 标签、Session/媒体/模块/运维） | [src/current-architecture.json](src/current-architecture.json) | [evidence](evidence/current-architecture/) |
+| [target-architecture.html](target-architecture.html) | architecture | M1–M3 目标设计（历史设计稿；当前实现以 current-architecture 为准） | [src/target-architecture.json](src/target-architecture.json) | [evidence](evidence/target-architecture/) |
 | [message-lifecycle.html](message-lifecycle.html) | workflow | 一条 QQ 消息从入站到出站，经过访问/聚合/Session/出站闸门 | [src/message-lifecycle.json](src/message-lifecycle.json) | [evidence](evidence/message-lifecycle/) |
 | [turn-lifecycle.html](turn-lifecycle.html) | lifecycle | 对话轮次的状态机：聚合、等待、决策、生成、沉默、冷却 | [src/turn-lifecycle.json](src/turn-lifecycle.json) | [evidence](evidence/turn-lifecycle/) |
-| [parity-roadmap.html](parity-roadmap.html) | workflow | M0–M7 的里程碑与验收门 | [src/parity-roadmap.json](src/parity-roadmap.json) | [evidence](evidence/parity-roadmap/) |
+| [parity-roadmap.html](parity-roadmap.html) | workflow | M0–M7 的里程碑与验收门；含 2026-11-06 审计快照 | [src/parity-roadmap.json](src/parity-roadmap.json) | [evidence](evidence/parity-roadmap/) |
 
-全部通过 Archify 3.0.1 的 `validate` + `deliver` + `check` + `browser-check`（Chrome for Testing 157，1440×900 桌面视口）。证据是 `*.finalize.json` / `*.browser-check.json`；不声称做过人工感知评审的部分会明确标注。
+current-architecture 与 parity-roadmap 已于 2026-11-06 用 Archify 3.0.1 重新生成，通过 `validate` + `deliver` + `check` + `browser-check`（Chrome for Testing 157，1440×900 桌面视口）；其余三张仍为 M0 基线。证据是 `*.finalize.json` / `*.browser-check.json`；不声称做过人工感知评审的部分会明确标注。
 
 ## 怎么打开
 
@@ -43,6 +43,7 @@ node "$ARCHIFY_SKILL/bin/archify.mjs" finalize architecture \
 
 ## 维护约定
 
-- 每个里程碑结束更新 `current-architecture` 与 `parity-roadmap`；M3 增加记忆 ERD，M4 增加媒体 dataflow。
+- 每个里程碑结束更新 `current-architecture` 与 `parity-roadmap`；M7 已更新两者，但 target-architecture 仍是 M1–M3 历史设计稿。
+- 2026-11-06 的审计快照：61 项中 5 项用户豁免、50 项非 has/exempt；M7 发布门未关闭。
 - 图必须与 `docs/research/GAP-AURABOT.md` 的状态一致；不一致时以代码/测试为准，并修图。
 - 不把图当成实现证据；图只说明设计/结构。

@@ -1,0 +1,62 @@
+# 发布检查表（M7 发布候选）
+
+状态：**未达到全量 parity / 未发布**。本页是可复查的发布前检查表，不是发布公告。
+
+## 1. 当前结论
+
+- 版本：`package.json` 仍为 `0.10.0`；M7 改动尚未发布到线上 `web` profile。
+- 审计：61 项中 `has 6`、`partial 35`、`none 8`、`limited 1`、`leading 6`、`exempt 5`；**50 项非 has/exempt**。完整快照见 [PARITY-AUDIT.md](PARITY-AUDIT.md)。
+- 用户已批准 5 项发布门槛豁免（2026-11-06）：#16 远端 API 鉴权、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 工作区迁移/离峰省钱。豁免是用户决定，不是实现证据；见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)。
+- 未豁免且影响发布陈述：RVC/翻唱 #42、生图/改图 #44（受限实现）、抖音/小黑盒 #49、桌宠 #50，以及向量检索 #31、时间轴事件导入 #30 等。
+- 真实 QQ、媒体 provider、B站、GitHub、浏览器管理员操作均未做生产凭据验证。
+
+## 2. 发布前必须通过
+
+在仓库根目录：
+
+```sh
+npm test                  # 期望 0 失败；4 项 live 因无 key 跳过
+npm run check:docs
+npm run check:parity
+DSH_BIN=/opt/dsh/bin/dsh PATH=/opt/dsh/bin:$PATH npm run smoke:temp
+git diff --check
+```
+
+`smoke:temp` 必须使用临时 `DSH_HOME`，不连接真实 QQ，不请求外部 provider；通过后清理临时目录。其摘要格式见 [m7-smoke.json](assets/m7-smoke.json)。
+
+## 3. 数据与回滚
+
+1. 发布前在**停写**的维护窗口创建本地备份：「备份」页或 `POST /onebot-qq/api/backup/create`；确认 `item.id` 与 manifest。
+2. 恢复默认只暂存到 `restore-<id>/`；`apply` 需要 `ops.backup.allowRestore=true`，且必须先 stop DSH、恢复后重启。见 [USER-MANUAL 备份](USER-MANUAL.md#备份)。
+3. 回滚代码：按已提交里程碑 `git revert` 或检出上一提交；不要覆盖线上 profile 的 `cordis.patch.yml`。
+4. 配置变更可回滚 `config.json`；人格/认知数据优先用备份，不要手工改 SQLite。
+5. 线上 `web` profile 的 dsh-bot 包升级/重装必须单独执行，并在临时 profile 先 smoke；本仓库提交本身不会更新线上。
+
+## 4. 发布物与安装
+
+- 构建：`npm run pack:release`（生成 `dist/` 安装包）；`npm run check:package` 的 SHA 校验失败时不得宣称发布包已验收，需按构建日志修正。
+- 安装：`dsh plugin --profile web add <包或目录>`；具体命令与回滚见 [README](../README.md) 与 [安装说明](INSTALLATION.md)。
+- 面板：15 个顶层标签；新增「备份」「安全」及媒体/内容/模块页。
+- 默认安全姿态：QQ 自动连接取决于 `enabled`；外部媒体/B站/升级检查默认关闭；`cognition.qqAdmin.enabled` 默认关闭。
+
+## 5. 发布声明边界
+
+可以声明：
+
+- 已实现并可复查的 M0–M6 与 M7-a–d 代码/文档/测试；
+- 临时 profile API smoke 通过；
+- 5 项用户批准的发布门槛豁免。
+
+不可声明：
+
+- “全量 parity”或“与 Aurabot 功能完全一致”；
+- 真实 QQ/媒体/provider 已验证；
+- RVC/抖音/桌宠/生图改图完全闭环；
+- 工作区迁移、模块市场、QQ空间、25 页级面板或 API 鉴权已实现。
+
+## 6. 建议的下一步
+
+1. 对 RVC/翻唱、抖音/小黑盒、桌宠作出**继续实现或豁免**决策；
+2. 完成向量检索与时间轴事件导入，或明确列为下一版本；
+3. 用测试号/测试群做一次受控 QQ smoke，并记录证据；
+4. 通过 `pack:release` + 临时 profile 安装 smoke 后，再更新线上 `web`。
