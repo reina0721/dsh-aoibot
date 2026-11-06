@@ -63,7 +63,7 @@ git diff --check
 - 真实私聊入站消息与助手回复出现在 `/events`；通过 `/send` 实际发出消息，message_id `535556004`；
 - 通过 `/backup/create` 创建本地快照 `20261106T153925024Z-f43f618a`。
 
-**这不等于全量实机验收**：真实 GitHub `/upgrade/check` 返回当前/最新 `0.11.1`；B站公开搜索被 HTTP 412、热榜被 -352 风控，仅离线分享可用。主人命令往返仍未观察到（已发验收请求 message_id `319197671`）；typing 已开启但未收到私聊入站，故未观察到输入状态；媒体 provider、文件发送、请求审批、typing、提醒投递、B站/GitHub 等仍未覆盖。脱敏证据见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。验收文档只记录实际观察，不把 API 200 或一条消息当成全量能力证据。
+**这不等于全量实机验收**：真实 GitHub `/upgrade/check` 返回当前/最新 `0.11.1`；B站公开搜索被 HTTP 412、热榜被 -352 风控，仅离线分享可用。主人命令 `/status` 已由配置主人（QQ 2152719569）真实发送并收到状态回复（入站 message_id `770603012`，回复 `890788338`）；typing 已开启且已有私聊入站，但未取得输入状态的直接可视/网关成功证据；媒体 provider、文件发送、请求审批、typing、提醒投递、B站/GitHub 等仍未覆盖。脱敏证据见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。验收文档只记录实际观察，不把 API 200 或一条消息当成全量能力证据。
 
 ## 7. 版本与发布状态
 

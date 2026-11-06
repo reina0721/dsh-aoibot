@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-06T16:30:00Z",
+  "at": "2026-11-06T17:12:00Z",
   "scope": "dsh-bot 0.11.1 live web profile — partial real smoke, not full M7 acceptance",
   "live": {
     "ok": true,
@@ -37,8 +37,7 @@
     "files": 5
   },
   "notCovered": [
-    "owner command round-trip",
-    "typing observation",
+    "typing visual confirmation",
     "media provider",
     "file/media send",
     "request approval",
@@ -48,14 +47,19 @@
   "installedFrom": "local dist/dsh-bot.tgz (0.11.1); GitHub release v0.11.1 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
-    "requestMessageId": "319197671",
-    "observed": false,
-    "note": "ownerQQ set; /status request sent; no owner command reply observed."
+    "observed": true,
+    "ownerQQ": "2152719569",
+    "commandMessageId": "770603012",
+    "replyMessageId": "890788338",
+    "commandAt": "2026-11-06T17:10:12Z",
+    "replyAt": "2026-11-06T17:10:14Z",
+    "note": "Real private /status from the configured owner; dsh-bot replied with live status."
   },
   "typing": {
     "enabled": true,
-    "observed": false,
-    "note": "cognition.typing.enabled=true in live config; no private inbound message arrived after enabling, so input_status was not observed."
+    "inboundObserved": true,
+    "visualConfirmation": false,
+    "note": "cognition.typing.enabled=true; private inbound occurred, so set_input_status 1/2 was attempted, but no direct visual capture or gateway success log exists."
   },
   "upgradeCheck": {
     "enabled": true,
