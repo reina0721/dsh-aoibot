@@ -10,3 +10,17 @@
 - **模型不可用**：在模型面板执行连通测试，检查协议、URL、密钥与模型 ID，参考[模型网关](MODEL-GATEWAY.md)。
 
 报告问题请附版本、系统、DSH 版本、复现步骤及脱敏日志，不要附密钥、token 或完整私人聊天记录。
+
+## 左侧「QQ 连接」入口消失
+
+**症状**：Host 侧 `/onebot-qq/api/health` 正常、QQ 网关 connected，但网页左侧没有「QQ 连接」，`client Slots` 的 `sidebar.panellist` 只剩 core 插件、没有 `onebot-qq`。
+
+**原因**：升级/热重载 dsh-bot 时，Host 半边被替换，浏览器侧 `client.js` 的 Slot 注册被清掉；单纯刷新页面不一定会重新挂载。
+
+**恢复**：
+
+1. 先硬刷新页面（`Ctrl+Shift+R` / `Cmd+Shift+R`）。
+2. 若仍未出现，在 DSH 的插件管理里把 `dsh-bot` bundle **停用再启用**，或重启 DSH Host；确认 `sidebar.panellist` 重新出现 `onebot-qq`。
+3. 再刷新页面。
+
+2026-11-06 本次真实故障即通过 bundle 停用/启用恢复；不影响 dsh-bot 配置、QQ 网关或数据。
