@@ -21,7 +21,17 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: node -e 'if(process.env.GITHUB_REF_NAME !== "v" + require("./package.json").version)process.exit(1)'
-      - run: npm test
+      - name: Run npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.log
+      - name: Annotate test failure
+        if: failure()
+        shell: bash
+        run: |
+          grep -aE '✖|not ok|AssertionError|Error:' test-output.log | head -20 | while IFS= read -r line; do echo "::error::$line"; done
+          tail -80 test-output.log
       - run: npm run check:docs
       - run: npm run pack:release
       - run: npm run check:package
