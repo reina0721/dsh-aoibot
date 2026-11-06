@@ -491,3 +491,15 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 请求固定 GitHub API `/repos/<repo>/releases?per_page=10`，在返回的最近 10 条里按通道过滤，再按版本取最大值；没有分页扫描全部历史。只接受 `v?x.y.z(-pre)?`，比较数字主/次/补丁与预发布标识（预发布低于同版本稳定版）；不支持 build metadata。notes 最多 2000 字符，不执行内容。无 token 支持，未认证 GitHub API 通常每 IP 每小时 60 次请求，手动强制检查也计入。HTTP、超时、空列表、非法版本均返回真实错误，不产生伪造结果；失败后仍保留上次成功结果及其时间，不刷新缓存有效期。更换 repo/channel 后旧结果不显示，按当前缓存分钟数判断是否复用。
 
 状态形状为 `{enabled,channel,repo,current,cached,checkedAt}`；初始 cached/checkedAt 为 null，checkedAt 是最近成功检查的 ISO 时间。cached 为检查结果 `{ok:true,enabled:true,channel,current,latest,updateAvailable,publishedAt,url,notes?}`，latest 保留 release tag 的 v 前缀。安全页只展示媒体 provider 环境变量名；配置完整性不验证密钥是否存在或 provider 能否连通。面板/API 保持 DSH 本机信任边界，不新增 API 鉴权或远端访问防护，不提供自动更新、工作区迁移或离峰省钱策略。
+
+## QQ 管理命令（M7-b）
+
+配置页「QQ 管理命令」（`cog-admin`），保存后热应用：
+
+| 路径 | 类型 | 默认 | 范围/作用 |
+|---|---|---|---|
+| `cognition.qqAdmin.enabled` | boolean | `false` | 主人资料、群管、精华、撤回、文件命令总开关；不影响原点赞/戳/查询命令 |
+| `cognition.qqAdmin.requireConfirm` | boolean | `true` | `/recall 消息ID confirm` 的确认要求；关闭后撤回可省 confirm；踢人始终要求字面量 confirm |
+| `cognition.qqAdmin.maxText` | integer | `100` | 1–100 Unicode 字符；昵称/名片/群名不能为空，不接受控制字符；网关可有更严限制 |
+
+仅主人命令，不挂新增 Agent 工具，不接受任意 action。群管仅当前群，机器人须有相应管理员/群主权限；`/profile` 仅主人私聊，网关拒绝 `set_qq_profile` 时返回 `UNSUPPORTED_SET_QQ_PROFILE`。精华/撤回先查询消息所属会话，缺少归属字段则拒绝。禁言为整数分钟 0–43200（0 解除）。`/file` 还要求 `media.enabled` 和 `media.files.enabled`，仅媒体根内相对路径，拒绝绝对路径、`..` 和符号链接逃逸；沿用扩展名/大小限制。真实 QQ 管理、资料和文件动作尚未验证。

@@ -105,3 +105,34 @@ test('文件上传 actions 校验并映射 OneBot 参数', async () => {
   ])
   assert.throws(() => actions.uploadGroupFile('', '/tmp/a.txt', 'a.txt'), /群号 不能为空/)
 })
+
+test('admin actions: fixed OneBot names/params, boolean false and duration zero preserved', async () => {
+  const { calls, call } = createRecorder()
+  const api = createActions({ call })
+  await api.setProfile({ nickname: '昵称' })
+  await api.setGroupCard('20001', '10002', '名片')
+  await api.setGroupName('20001', '群名')
+  await api.setGroupAdmin('20001', '10002', false)
+  await api.setGroupBan('20001', '10002', 0)
+  await api.setGroupWholeBan('20001', true)
+  await api.setGroupKick('20001', '10002')
+  await api.setEssence('-123')
+  await api.deleteMsg('-123')
+  assert.deepEqual(calls.map(({ action, params }) => [action, params]), [
+    ['set_qq_profile', { nickname: '昵称' }],
+    ['set_group_card', { group_id: 20001, user_id: 10002, card: '名片' }],
+    ['set_group_name', { group_id: 20001, group_name: '群名' }],
+    ['set_group_admin', { group_id: 20001, user_id: 10002, enable: false }],
+    ['set_group_ban', { group_id: 20001, user_id: 10002, duration: 0 }],
+    ['set_group_whole_ban', { group_id: 20001, enable: true }],
+    ['set_group_kick', { group_id: 20001, user_id: 10002, reject_add_request: false }],
+    ['set_essence_msg', { message_id: -123 }], ['delete_msg', { message_id: -123 }],
+  ])
+  for (const invalid of ['abc', 0, -1, '9007199254740993']) assert.throws(() => api.setGroupName(invalid, '群名'), /ID/)
+  assert.throws(() => api.setProfile({ nickname: 'x'.repeat(101) }), /100/)
+  assert.throws(() => api.setGroupCard('1', '2', 'a\nb'), /控制字符/)
+  assert.throws(() => api.setGroupAdmin('1', '2', 'false'), /boolean/)
+  for (const duration of [-1, 1.5, 2592001, '0']) assert.throws(() => api.setGroupBan('1', '2', duration), /秒数/)
+  for (const id of ['x', 0, 2147483648, -2147483649]) assert.throws(() => api.setEssence(id), /ID/)
+  assert.equal(calls.length, 9)
+})

@@ -63,6 +63,8 @@ sh install.sh --profile desktop --version 0.10.0
 
 脚本验证发布包 SHA-256，支持自定义 DSH 路径；不会自动重启 DSH。源码安装在仓库根目录执行 `dsh plugin --profile desktop add .`。详见[安装、升级与回退](docs/INSTALLATION.md)。旧版用户先阅读[迁移说明](docs/MIGRATION.md)。
 
+M7-b 新增默认关闭的主人 QQ 管理命令：资料、当前群管理、精华/撤回与媒体根内文件上传。需启用 `cognition.qqAdmin.enabled`，踢人始终 `confirm`、撤回默认确认；群管需机器人具备权限，无任意 action 透传或新增 Agent 工具，真实 QQ 管理/资料/文件动作尚未验证。用法见 [用户手册](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人)，配置见 [CONFIG](docs/CONFIG.md)。2026-11-06 用户批准的发布门槛豁免见 [GAP §8.1](docs/research/GAP-AURABOT.md#81-用户批准豁免)，其他差距继续跟踪。
+
 ## 首次连接
 
 1. 在 QQ 网关启用正向 WebSocket 与 HTTP 服务，设置 access token。

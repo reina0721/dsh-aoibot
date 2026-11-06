@@ -69,3 +69,84 @@ test('qq-actions：网关不可用/动作失败返回结构化错误', async () 
   assert.equal(result.ok, false)
   assert.match(result.error, /风控/)
 })
+
+function adminHarness({ enabled = true, requireConfirm = true, maxText = 100, response = undefined, scope = { message_type: 'group', group_id: 20001 } } = {}) {
+  const calls = [], audit = []
+  const api = Object.fromEntries(['setProfile', 'setGroupCard', 'setGroupName', 'setGroupAdmin', 'setGroupBan', 'setGroupWholeBan', 'setGroupKick', 'setEssence', 'deleteMsg'].map((method) => [method, async (...args) => { calls.push([method, ...args]); if (response instanceof Error) throw response; return response }]))
+  api.getMsg = async (id) => { calls.push(['getMsg', id]); return { data: scope } }
+  const service = createQqActions({ gateway: { actions: api }, getConfig: () => ({ access: { ownerQQ: '10001' }, cognition: { qqAdmin: { enabled, requireConfirm, maxText } } }), logger: { info: (...args) => audit.push(args) } })
+  return { service, calls, audit, api }
+}
+const adminContext = { operatorId: '10001', chatType: 'group', chatId: '20001' }
+
+test('qq admin: fixed operations use current group, validate values, and retain unmute/off', async () => {
+  const { service, calls } = adminHarness()
+  const cases = [
+    ['setGroupCard', { userId: '10002', card: '名片' }, ['20001', '10002', '名片']],
+    ['setGroupName', { name: '新群名', groupId: '99999' }, ['20001', '新群名']],
+    ['setGroupAdmin', { userId: '10002', enable: false }, ['20001', '10002', false]],
+    ['setGroupBan', { userId: '10002', durationSeconds: 0 }, ['20001', '10002', 0]],
+    ['setGroupWholeBan', { enable: true }, ['20001', true]],
+    ['setGroupKick', { userId: '10002', confirmed: 'confirm' }, ['20001', '10002']],
+    ['setEssence', { messageId: '-12' }, ['-12']],
+    ['deleteMsg', { messageId: '-12', confirmed: 'confirm' }, ['-12']],
+    ['setProfile', { chatType: 'private', chatId: '10001', nickname: '新昵称' }, [{ nickname: '新昵称' }]],
+  ]
+  for (const [method, args, expected] of cases) {
+    assert.equal((await service[method]({ ...adminContext, ...args })).ok, true, method)
+    assert.deepEqual(calls.at(-1), [method, ...expected])
+  }
+})
+
+test('qq admin: owner/default-off/chat/validation/confirmation guards have no side effects', async () => {
+  const { service, calls } = adminHarness({ maxText: 3 })
+  const cases = [
+    ['setGroupName', { operatorId: '10002', name: '群' }, 'NOT_OWNER'],
+    ['setGroupName', { chatType: 'private', name: '群' }, 'GROUP_ONLY'],
+    ['setProfile', { nickname: '名' }, 'OWNER_PRIVATE_ONLY'],
+    ['setProfile', { chatType: 'private', chatId: '10002', nickname: '名' }, 'OWNER_PRIVATE_ONLY'],
+    ['setGroupName', { chatId: 'x', name: '群' }, 'INVALID_CHAT'],
+    ['setGroupName', { name: '太长的群名' }, 'INVALID_TEXT'],
+    ['setGroupCard', { userId: 'x', card: '群' }, 'INVALID_USER_ID'],
+    ['setGroupAdmin', { userId: '10002', enable: 'on' }, 'INVALID_ENABLE'],
+    ['setGroupBan', { userId: '10002', durationSeconds: -1 }, 'INVALID_DURATION'],
+    ['setGroupKick', { userId: '10002', confirmed: true }, 'CONFIRM_REQUIRED'],
+    ['deleteMsg', { messageId: '12' }, 'CONFIRM_REQUIRED'],
+    ['setEssence', { messageId: 'bad' }, 'INVALID_MESSAGE_ID'],
+  ]
+  for (const [method, args, error] of cases) assert.equal((await service[method]({ ...adminContext, ...args })).error, error, method)
+  assert.equal(calls.length, 0)
+  assert.equal((await adminHarness({ enabled: false }).service.setGroupName({ ...adminContext, name: '群' })).error, 'QQ_ADMIN_DISABLED')
+  const defaultOff = createQqActions({ getConfig: () => ({ ownerQQ: '10001' }) })
+  assert.equal((await defaultOff.setGroupName({ ...adminContext, name: '群' })).error, 'QQ_ADMIN_DISABLED')
+  const optional = adminHarness({ requireConfirm: false })
+  assert.equal((await optional.service.setGroupKick({ ...adminContext, userId: '10002' })).error, 'CONFIRM_REQUIRED')
+  assert.equal((await optional.service.deleteMsg({ ...adminContext, messageId: '12' })).ok, true)
+})
+
+test('qq admin: message actions fail closed across chats, missing scope or unavailable query', async () => {
+  for (const scope of [{}, { message_type: 'group', group_id: '99999' }, { message_type: 'private', user_id: '10001' }]) {
+    const { service, calls } = adminHarness({ scope })
+    for (const method of ['setEssence', 'deleteMsg']) assert.equal((await service[method]({ ...adminContext, messageId: '12', confirmed: 'confirm' })).error, 'MESSAGE_SCOPE_UNVERIFIED')
+    assert.ok(calls.every(([method]) => method === 'getMsg'))
+  }
+  const { service, api, calls } = adminHarness()
+  delete api.getMsg
+  assert.equal((await service.deleteMsg({ ...adminContext, messageId: '12', confirmed: 'confirm' })).error, 'MESSAGE_SCOPE_UNVERIFIED')
+  assert.equal(calls.length, 0)
+  const privateChat = adminHarness({ scope: { message_type: 'private', sender: { user_id: 10001 } } })
+  assert.equal((await privateChat.service.deleteMsg({ ...adminContext, chatType: 'private', chatId: '10001', messageId: '12', confirmed: 'confirm' })).ok, true)
+})
+
+test('qq admin: unsupported profile, gateway rejection and destructive audit contain no secrets', async () => {
+  for (const response of [new Error('token=secret'), { status: 'failed', retcode: 1404 }]) {
+    const { service, audit } = adminHarness({ response })
+    assert.deepEqual(await service.setProfile({ ...adminContext, chatType: 'private', chatId: '10001', nickname: '名' }), { ok: false, error: 'UNSUPPORTED_SET_QQ_PROFILE' })
+    assert.deepEqual(await service.setGroupKick({ ...adminContext, userId: '10002', confirmed: 'confirm' }), { ok: false, error: 'GATEWAY_REJECTED' })
+    assert.match(JSON.stringify(audit), /setGroupKick/)
+    assert.doesNotMatch(JSON.stringify(audit), /token|secret|nickname/)
+  }
+  const { service, api } = adminHarness()
+  delete api.setProfile
+  assert.equal((await service.setProfile({ ...adminContext, chatType: 'private', chatId: '10001', nickname: '名' })).error, 'UNSUPPORTED_SET_QQ_PROFILE')
+})

@@ -71,7 +71,7 @@ function harness(overrides = {}, services = {}) {
     llm,
     memory,
     runtime,
-    qqActions,
+    qqActions: services.qqActions || qqActions,
     purpose,
     media: services.media,
     stickers: services.stickers,
@@ -330,4 +330,83 @@ test('commands：/purpose 列表/新建/完成/进度', async () => {
   const done = await service.handle(turn('/purpose done abc12345'))
   assert.match(done.reply, /已完成/)
   assert.equal(sent.length, 4)
+})
+
+const adminEnabled = { cognition: { qqAdmin: { enabled: true, requireConfirm: true, maxText: 100 } } }
+function adminCommands(overrides = {}, services = {}) {
+  const calls = []
+  const qqActions = Object.fromEntries(['setProfile', 'setGroupCard', 'setGroupName', 'setGroupAdmin', 'setGroupBan', 'setGroupWholeBan', 'setGroupKick', 'setEssence', 'deleteMsg'].map((method) => [method, async (args) => { calls.push([method, args]); return { ok: true } }]))
+  return { ...harness({ ...adminEnabled, ...overrides }, { qqActions, ...services }), calls }
+}
+
+test('commands admin: every fixed command dispatches validated args in current conversation', async () => {
+  const { service, calls } = adminCommands()
+  const group = { chatType: 'group', chatId: '20001' }
+  const cases = [
+    ['/card 10002 名片 含空格', 'setGroupCard', { userId: '10002', card: '名片 含空格' }],
+    ['/groupname 新群名', 'setGroupName', { name: '新群名' }],
+    ['/admin 10002 off', 'setGroupAdmin', { userId: '10002', enable: false }],
+    ['/mute 10002 2', 'setGroupBan', { userId: '10002', durationSeconds: 120 }],
+    ['/mute 10002 0', 'setGroupBan', { userId: '10002', durationSeconds: 0 }],
+    ['/wholemute on', 'setGroupWholeBan', { enable: true }],
+    ['/kick 10002 confirm', 'setGroupKick', { userId: '10002', confirmed: 'confirm' }],
+    ['/essence -12', 'setEssence', { messageId: '-12', confirmed: undefined }],
+    ['/recall 12 confirm', 'deleteMsg', { messageId: '12', confirmed: 'confirm' }],
+  ]
+  for (const [command, method, expected] of cases) {
+    await service.handle(turn(command, group))
+    assert.deepEqual(calls.at(-1), [method, { operatorId: '10001', ...group, ...expected }])
+  }
+  await service.handle(turn('/profile 新昵称'))
+  assert.deepEqual(calls.at(-1), ['setProfile', { operatorId: '10001', chatType: 'private', chatId: '10001', nickname: '新昵称' }])
+  await service.handle(turn('/recall 12 confirm'))
+  assert.equal(calls.at(-1)[1].chatType, 'private')
+  assert.match((await service.handle(turn('/help'))).reply, /\/file 相对路径/)
+})
+
+test('commands admin: owner, opt-in, chat and access guards prevent replies and actions as appropriate', async () => {
+  const names = ['profile 名', 'card 10002 卡', 'groupname 群', 'admin 10002 on', 'mute 10002 0', 'wholemute off', 'kick 10002 confirm', 'essence 12', 'recall 12 confirm', 'file a.txt']
+  let mediaCalls = 0
+  const denied = adminCommands({}, { allowSend: false, media: { async sendMedia() { mediaCalls++ } } })
+  const disabled = adminCommands({ cognition: {} })
+  const nonOwner = adminCommands()
+  for (const name of names) {
+    assert.equal((await denied.service.handle(turn('/' + name))).reply, '')
+    assert.match((await disabled.service.handle(turn('/' + name))).reply, /未启用/)
+    assert.equal((await nonOwner.service.handle(turn('/' + name, { senderId: '10002' }))).reply, '')
+  }
+  for (const h of [denied, disabled, nonOwner]) assert.equal(h.calls.length, 0)
+  assert.equal(mediaCalls, 0)
+  assert.equal(denied.sent.length, 0)
+  const h = adminCommands()
+  assert.match((await h.service.handle(turn('/profile 名', { chatType: 'group', chatId: '20001' }))).reply, /主人私聊/)
+  for (const name of names.slice(1, 8)) assert.match((await h.service.handle(turn('/' + name))).reply, /当前群/)
+  assert.equal(h.calls.length, 0)
+})
+
+test('commands admin: malformed args, extra tokens, invalid IDs, limits and confirmation never dispatch', async () => {
+  const { service, calls } = adminCommands()
+  const group = { chatType: 'group', chatId: '20001' }
+  const invalid = ['/profile', '/card abc 卡', '/card 10002', '/groupname', '/groupname ' + '长'.repeat(101), '/admin 10002 yes', '/admin 10002 on extra', '/mute 10002 -1', '/mute 10002 1.5', '/mute 10002 43201', '/mute 10002 0 extra', '/wholemute on extra', '/kick 10002', '/kick 10002 CONFIRM', '/kick 10002 confirm extra', '/essence abc', '/essence 12 extra', '/recall 12', '/recall 12 yes', '/recall 12 confirm extra', '/recall 2147483648 confirm']
+  for (const command of invalid) {
+    const result = await service.handle(turn(command, command.startsWith('/profile') ? {} : group))
+    assert.match(result.reply, /用法|确认/, command)
+  }
+  assert.equal(calls.length, 0)
+  const optional = adminCommands({ cognition: { qqAdmin: { enabled: true, requireConfirm: false } } })
+  await optional.service.handle(turn('/recall 12', group))
+  assert.equal(optional.calls.at(-1)[0], 'deleteMsg')
+  await optional.service.handle(turn('/kick 10002', group))
+  assert.equal(optional.calls.length, 1)
+})
+
+test('commands admin: /file only passes relative media paths; rejects absolute and traversal', async () => {
+  const mediaCalls = []
+  const { service } = adminCommands({}, { media: { async sendMedia(payload) { mediaCalls.push(payload) } } })
+  await service.handle(turn('/file inbound/report notes.pdf'))
+  assert.deepEqual(mediaCalls, [{ chatType: 'private', chatId: '10001', kind: 'file', relativePath: 'inbound/report notes.pdf' }])
+  for (const path of ['', '/etc/passwd', '../out.txt', 'inbound/../../out.txt', 'C:/out.txt', 'C:\\out.txt', '\\\\server\\file']) assert.match((await service.handle(turn('/file ' + path))).reply, /用法/)
+  assert.equal(mediaCalls.length, 1)
+  const failing = adminCommands({}, { media: { async sendMedia() { throw new Error('secret') } } })
+  assert.doesNotMatch((await failing.service.handle(turn('/file a.txt'))).reply, /secret/)
 })

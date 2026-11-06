@@ -2,7 +2,7 @@
 //
 // 设计原则：
 //   1. 面板/后续插件不直接拼 action 名与参数，避免每个调用点重复校验；
-//   2. 只封装 OneBot v11 标准 action，不夹带任何网关私有接口；
+//   2. 显式封装 OneBot v11 action；资料/精华/文件等扩展取决于网关支持；
 //   3. 超时/重试由 onebot client 的配置驱动（timeouts.*），这里只透传 opts。
 
 import { OneBotError } from '../onebot/client.js'
@@ -22,6 +22,27 @@ function requireText(value, field) {
   const text = String(value ?? '').trim()
   if (!text) throw new OneBotError('validate', { message: `${field} 不能为空` })
   return text
+}
+
+/** 管理动作只接受合法数值 ID；消息 ID 可以是负 int32。 */
+function requireId(value, message = false) {
+  const valueText = String(value ?? '').trim()
+  const n = Number(valueText)
+  if (!(message ? /^-?[1-9]\d*$/.test(valueText) : /^[1-9]\d*$/.test(valueText)) || !Number.isSafeInteger(n) || (message && (n < -2147483648 || n > 2147483647))) {
+    throw new OneBotError('validate', { message: 'ID 无效' })
+  }
+  return n
+}
+
+function adminText(value, field) {
+  const result = requireText(value, field)
+  if (Array.from(result).length > 100 || /[\x00-\x1f\x7f]/.test(result)) throw new OneBotError('validate', { message: `${field} 最多 100 字符且不能含控制字符` })
+  return result
+}
+
+function requireBoolean(value) {
+  if (typeof value !== 'boolean') throw new OneBotError('validate', { message: 'enable 必须是 boolean' })
+  return value
 }
 
 /**
@@ -129,9 +150,35 @@ export function createActions({ call }) {
         no_cache: noCache !== false,
       }, opts)
     },
+    /** 网关扩展；拒绝时由 QQ 服务给出明确 unsupported 错误。 */
+    setProfile({ nickname } = {}, opts = {}) {
+      return call('set_qq_profile', { nickname: adminText(nickname, '昵称') }, opts)
+    },
+    setGroupCard(groupId, userId, card, opts = {}) {
+      return call('set_group_card', { group_id: requireId(groupId), user_id: requireId(userId), card: adminText(card, '名片') }, opts)
+    },
+    setGroupName(groupId, name, opts = {}) {
+      return call('set_group_name', { group_id: requireId(groupId), group_name: adminText(name, '群名') }, opts)
+    },
+    setGroupAdmin(groupId, userId, enable, opts = {}) {
+      return call('set_group_admin', { group_id: requireId(groupId), user_id: requireId(userId), enable: requireBoolean(enable) }, opts)
+    },
+    setGroupBan(groupId, userId, durationSeconds, opts = {}) {
+      if (!Number.isInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 2592000) throw new OneBotError('validate', { message: '禁言秒数必须为 0–2592000 的整数' })
+      return call('set_group_ban', { group_id: requireId(groupId), user_id: requireId(userId), duration: durationSeconds }, opts)
+    },
+    setGroupWholeBan(groupId, enable, opts = {}) {
+      return call('set_group_whole_ban', { group_id: requireId(groupId), enable: requireBoolean(enable) }, opts)
+    },
+    setGroupKick(groupId, userId, opts = {}) {
+      return call('set_group_kick', { group_id: requireId(groupId), user_id: requireId(userId), reject_add_request: false }, opts)
+    },
+    setEssence(messageId, opts = {}) {
+      return call('set_essence_msg', { message_id: requireId(messageId, true) }, opts)
+    },
     /** 撤回消息 */
     deleteMsg(messageId, opts = {}) {
-      return call('delete_msg', { message_id: idParam(requireText(messageId, '消息 ID')) }, opts)
+      return call('delete_msg', { message_id: requireId(messageId, true) }, opts)
     },
     /** 查询消息 */
     getMsg(messageId, opts = {}) {

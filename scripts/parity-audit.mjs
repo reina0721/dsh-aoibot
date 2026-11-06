@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const statuses = ['has', 'partial', 'none', 'limited', 'leading']
+const statuses = ['has', 'partial', 'none', 'limited', 'leading', 'exempt']
 const header = ['#', '能力', 'Aurabot', 'dsh-bot', '状态', '目标']
 
 // Pipes in inline code (including multi-backtick spans) and escaped pipes are cells' content.
@@ -26,6 +26,7 @@ function cells(line) {
 }
 
 function normalizeStatus(status) {
+  if (status.replace(/[*_`]/g, '').trim().startsWith('豁免')) return 'exempt'
   if (status.includes('部分')) return 'partial'
   if (status.includes('受限')) return 'limited'
   if (status.includes('无')) return 'none'
@@ -80,9 +81,9 @@ export function summarize(rows) {
     byStatus[row.status]++
     ids.set(row.id, (ids.get(row.id) || 0) + 1)
   }
-  const remaining = valid.filter((row) => row.status !== 'has')
+  const remaining = valid.filter((row) => !['has', 'exempt'].includes(row.status))
     .map(({ id, capability, status, target }) => ({ id, capability, status, target }))
-  const missingTargets = remaining.filter((row) => !row.target.replace(/[*_`\s—–-]/g, ''))
+  const missingTargets = valid.filter((row) => row.status !== 'has').filter((row) => !row.target.replace(/[*_`\s—–-]/g, ''))
   const duplicateIds = [...ids].filter(([, count]) => count > 1).map(([id]) => id)
   const malformedRows = rows.filter((row) => row.error)
   return { total: valid.length, byStatus, duplicateIds, malformedRows, missingTargets, remaining,
@@ -121,11 +122,11 @@ export function formatReport(result) {
   const report = [
     '# 对标审计（并非全量对齐 / not full parity）', '',
     `矩阵 ${total} 项；${statuses.map((status) => `${status}: ${byStatus[status]}`).join('，')}。`,
-    `剩余 ${remaining.length} 项（所有非 has 项，包括领先项；不等于缺失功能数）。`,
+    `剩余 ${remaining.length} 项（排除 has/exempt，包括领先项；不等于缺失功能数）。`,
   ]
   if (source) report.push(`源码：${source.files} 个 JS 文件 / ${source.lines} 行。`)
   if (tests) report.push(`测试静态计数：${tests.files} 个文件 / ${tests.lines} 行 / ${tests.cases} 个顶层 test 声明；包含 skip，不代表执行结果。`)
-  report.push('', `结构检查：${result.ok ? '通过' : '失败'}；重复编号 ${duplicateIds.length}，格式错误 ${malformedRows.length}，非 has 缺目标 ${missingTargets.length}。`)
+  report.push('', `结构检查：${result.ok ? '通过' : '失败'}；重复编号 ${duplicateIds.length}，格式错误 ${malformedRows.length}，非 has（含 exempt）缺目标 ${missingTargets.length}。`)
   if (duplicateIds.length) report.push(`- 重复编号：${duplicateIds.join(', ')}`)
   for (const row of malformedRows) report.push(`- 第 ${row.line} 行：${row.error}`)
   for (const row of missingTargets) report.push(`- #${row.id} ${row.capability}：缺少目标（当前：${row.target || '空'}）`)

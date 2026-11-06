@@ -1,6 +1,6 @@
 // Media ingest/outbound foundation. External providers are opt-in and all failures are non-fatal.
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { basename, extname, join, resolve, sep } from 'node:path'
+import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, isAbsolute, join, resolve, sep, win32 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
@@ -204,29 +204,33 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     return file
   }
 
-  async function sendMedia({ chatType, chatId, kind, filePath, name } = {}) {
+  async function sendMedia({ chatType, chatId, kind, filePath, relativePath, name } = {}) {
     const c = config()
     if (!c.enabled) throw new Error('媒体功能未启用')
     if (!['image', 'record', 'file'].includes(kind)) throw new Error('kind 必须是 image、record 或 file')
     if (!['private', 'group'].includes(chatType) || !String(chatId || '').trim()) throw new Error('chatType/chatId 无效')
-    const fullPath = resolve(String(filePath || ''))
     const root = rootDir()
+    if (relativePath !== undefined && (typeof relativePath !== 'string' || !relativePath.trim() || isAbsolute(relativePath) || win32.isAbsolute(relativePath) || /^[a-z]:/i.test(relativePath) || relativePath.includes('\\') || relativePath.split('/').includes('..'))) throw new Error('仅支持媒体根内相对路径')
+    const fullPath = relativePath !== undefined ? resolve(root, relativePath) : resolve(String(filePath || ''))
     if (fullPath !== root && !fullPath.startsWith(`${root}${sep}`)) throw new Error('媒体路径必须在媒体目录内')
-    const info = await stat(fullPath)
+    const realRoot = await realpath(root)
+    const realFile = await realpath(fullPath)
+    if (!realFile.startsWith(`${realRoot}${sep}`)) throw new Error('媒体路径不能通过符号链接逃逸媒体目录')
+    const info = await stat(realFile)
     if (!info.isFile()) throw new Error('媒体路径不是文件')
     if (info.size > maxBytes()) throw new Error(`媒体超过大小限制 ${maxBytes()} bytes`)
     const ext = extname(fullPath).toLowerCase()
     const allowed = kind === 'image' ? IMAGE_EXTENSIONS : kind === 'record' ? AUDIO_EXTENSIONS : FILE_EXTENSIONS
-    if (!allowed.has(ext)) throw new Error(`${kind} 文件扩展名不在允许列表`)
+    if (!allowed.has(ext) || !allowed.has(extname(realFile).toLowerCase())) throw new Error(`${kind} 文件扩展名不在允许列表`)
     if (kind === 'image' && c.images?.enabled !== true) throw new Error('图片功能未启用')
     if (kind === 'file' && c.files?.enabled !== true) throw new Error('文件功能未启用')
     if (kind === 'file') {
       const action = chatType === 'group' ? gateway?.actions?.uploadGroupFile : gateway?.actions?.uploadPrivateFile
       if (typeof action !== 'function') throw new Error('网关不支持文件上传')
-      return action(chatId, fullPath, safeName(name || basename(fullPath)))
+      return action(chatId, realFile, safeName(name || basename(fullPath)))
     }
     if (typeof gateway?.actions?.sendMessage !== 'function') throw new Error('网关不支持发送消息')
-    const buffer = await readFile(fullPath)
+    const buffer = await readFile(realFile)
     return gateway.actions.sendMessage({ chatType, chatId, message: [{ type: kind, data: { file: `base64://${buffer.toString('base64')}` } }] })
   }
 

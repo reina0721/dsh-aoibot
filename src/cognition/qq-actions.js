@@ -113,5 +113,86 @@ export function createQqActions({ gateway = null, getConfig = null, logger = nul
     }
   }
 
-  return { like, poke, groupInfo, memberInfo }
+  // Fixed command-only operations. Never forward an arbitrary action name/params.
+  function adminConfig() {
+    try { return getConfig?.()?.cognition?.qqAdmin || {} } catch { return {} }
+  }
+
+  function validId(value, message = false) {
+    const str = text(value), n = Number(str)
+    return (message ? /^-?[1-9]\d*$/.test(str) : /^[1-9]\d*$/.test(str)) && Number.isSafeInteger(n)
+      && (!message || (n >= -2147483648 && n <= 2147483647))
+  }
+
+  function validText(value) {
+    const max = Math.max(1, Math.min(100, Number(adminConfig().maxText) || 100))
+    return typeof value === 'string' && Boolean(text(value)) && Array.from(text(value)).length <= max && !/[\x00-\x1f\x7f]/.test(value)
+  }
+
+  async function adminAction(method, input = {}) {
+    const { operatorId, chatType, chatId, userId, messageId, confirmed } = input
+    if (!ownerId(operatorId)) return { ok: false, error: 'NOT_OWNER' }
+    const cfg = adminConfig()
+    if (cfg.enabled !== true) return { ok: false, error: 'QQ_ADMIN_DISABLED' }
+    if (!['group', 'private'].includes(chatType) || !validId(chatId)) return { ok: false, error: 'INVALID_CHAT' }
+    if (method === 'setProfile') {
+      if (chatType !== 'private' || text(chatId) !== text(operatorId)) return { ok: false, error: 'OWNER_PRIVATE_ONLY' }
+    } else if (method !== 'deleteMsg' && chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }
+    if (chatType === 'private' && text(chatId) !== text(operatorId)) return { ok: false, error: 'OWNER_PRIVATE_ONLY' }
+    if (['setGroupCard', 'setGroupAdmin', 'setGroupBan', 'setGroupKick'].includes(method) && !validId(userId)) return { ok: false, error: 'INVALID_USER_ID' }
+    if (['setProfile', 'setGroupCard', 'setGroupName'].includes(method) && !validText(input.nickname ?? input.card ?? input.name)) return { ok: false, error: 'INVALID_TEXT' }
+    if (['setGroupAdmin', 'setGroupWholeBan'].includes(method) && typeof input.enable !== 'boolean') return { ok: false, error: 'INVALID_ENABLE' }
+    if (method === 'setGroupBan' && (!Number.isInteger(input.durationSeconds) || input.durationSeconds < 0 || input.durationSeconds > 2592000)) return { ok: false, error: 'INVALID_DURATION' }
+    const destructive = method === 'setGroupKick' || method === 'deleteMsg'
+    if (destructive && (method === 'setGroupKick' || cfg.requireConfirm !== false) && confirmed !== 'confirm') return { ok: false, error: 'CONFIRM_REQUIRED' }
+    const api = actions()
+    if (!api?.[method]) return { ok: false, error: method === 'setProfile' ? 'UNSUPPORTED_SET_QQ_PROFILE' : 'GATEWAY_UNAVAILABLE' }
+    try {
+      if (method === 'setEssence' || method === 'deleteMsg') {
+        if (!validId(messageId, true)) return { ok: false, error: 'INVALID_MESSAGE_ID' }
+        if (!api.getMsg) return { ok: false, error: 'MESSAGE_SCOPE_UNVERIFIED' }
+        const raw = await api.getMsg(messageId)
+        const msg = raw?.data || raw || {}
+        // get_msg's standard response need not include a chat ID. Fail closed if the
+        // gateway cannot prove the current conversation (do not infer from text).
+        const sameChat = msg.message_type === chatType && (chatType === 'group'
+          ? text(msg.group_id) === text(chatId)
+          : !msg.group_id && text(msg.user_id || msg.target_id || msg.sender?.user_id) === text(chatId))
+        if (!sameChat) return { ok: false, error: 'MESSAGE_SCOPE_UNVERIFIED' }
+      }
+      const args = {
+        setProfile: [{ nickname: text(input.nickname) }],
+        setGroupCard: [chatId, userId, text(input.card)],
+        setGroupName: [chatId, text(input.name)],
+        setGroupAdmin: [chatId, userId, input.enable],
+        setGroupBan: [chatId, userId, input.durationSeconds],
+        setGroupWholeBan: [chatId, input.enable],
+        setGroupKick: [chatId, userId],
+        setEssence: [messageId],
+        deleteMsg: [messageId],
+      }[method]
+      if (destructive) log.info?.('QQ destructive action', { action: method, operatorId: text(operatorId), chatType, chatId: text(chatId), target: text(userId || messageId) })
+      const result = await api[method](...args)
+      if (result?.status === 'failed' || (result?.retcode != null && Number(result.retcode) !== 0)) {
+        return { ok: false, error: method === 'setProfile' ? 'UNSUPPORTED_SET_QQ_PROFILE' : 'GATEWAY_REJECTED' }
+      }
+      return { ok: true }
+    } catch {
+      // Do not return raw gateway errors: they may contain request URLs or tokens.
+      return { ok: false, error: method === 'setProfile' ? 'UNSUPPORTED_SET_QQ_PROFILE' : 'GATEWAY_REJECTED' }
+    }
+  }
+
+  return {
+    like, poke, groupInfo, memberInfo,
+    setProfile: (input) => adminAction('setProfile', input),
+    setGroupCard: (input) => adminAction('setGroupCard', input),
+    setGroupName: (input) => adminAction('setGroupName', input),
+    setGroupAdmin: (input) => adminAction('setGroupAdmin', input),
+    setGroupBan: (input) => adminAction('setGroupBan', input),
+    setGroupWholeBan: (input) => adminAction('setGroupWholeBan', input),
+    setGroupKick: (input) => adminAction('setGroupKick', input),
+    setEssence: (input) => adminAction('setEssence', input),
+    deleteMsg: (input) => adminAction('deleteMsg', input),
+  }
 }

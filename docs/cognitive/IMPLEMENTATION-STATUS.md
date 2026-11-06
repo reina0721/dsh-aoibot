@@ -2,9 +2,11 @@
 
 0.10.0 调整命名、仓库及发布体系；以下功能基线以 v0.10.0 代码与测试为准。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 
+> M7-b：2026-11-06 用户批准 #16（仅远端 API 鉴权）、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 迁移/离峰为发布门槛豁免；保留本机-only/CSRF 行为。豁免是明确用户决定，不是实现证据；#42/#44/#49/#50 及其他差距不豁免。精确范围见 [GAP §8.1](../research/GAP-AURABOT.md#81-用户批准豁免)。
+
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.10.0` 未发布分支，308 个测试（304 通过、4 项 live 需 key）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.10.0` 未发布分支，320 个测试（316 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
@@ -29,7 +31,7 @@
 | 目的系统 | I/T | `cognition/purpose.js`、pipeline、面板「目的」 | goal/plan/intent；优先级/进度/步骤/作用域；少量注入 compose；`/purpose` 增删改；面板 CRUD | 不执行工具/不自动发消息；无计划执行器 | M3 剩余 |
 | 时间轴 | I/T | `cognition/timeline.js`、认知「时间轴」页 | 轮次/记忆/决策合并、倒序、before 分页、type/scope 过滤；只读 | 无导入旧档案；无编辑 | M3 剩余 |
 | 每日整理/反思 | I/T | `cognition/consolidation.js`、记忆页按钮 | 04:00 调度、按作用域巩固、可选 LLM 反思、只压缩已有记忆、私聊隔离 | 无批次/重试/保留策略；无时间轴；反思最多 2 个作用域/次 | M3 剩余 |
-| 合并转发/拍一拍/表态/QQ 动作 | I/T | `gateway/forward.js`、`commands.js`、`cognition/qq-actions.js`、`runtime/qq-tools.js` | 合并转发展开、拍一拍回应+冷却、表情表态归因、4 个主人命令；主人私聊 Session 运行时挂 3 个固定当前会话 QQ 工具，发送仍走 outbound | social/group 不挂工具；无资料编辑/群管/文件/精华/撤回/通用 action bus；真实 QQ 未验证 | M5-b 受限完成 |
+| 合并转发/拍一拍/表态/QQ 动作 | I/T | `gateway/forward.js`、`commands.js`、`cognition/qq-actions.js`、`runtime/qq-tools.js` | 合并转发展开、拍一拍回应+冷却、表情表态归因、4 个主人命令；主人私聊 Session 运行时挂 3 个固定当前会话 QQ 工具，发送仍走 outbound | social/group 不挂工具；新增 M7-b 默认关闭的主人资料/群管/文件/精华/撤回命令；新动作不挂 Agent，无任意 action 透传；真实 QQ 管理/资料/文件未验证 | M5-b 受限完成 |
 | 回复分条/引用/@/防刷屏 | I/T | `cognition/reply-split.js`、`pipeline.sendDecision` | 长回复分条、段落/句末优先、最多条数合并、分条间隔；引用与群聊 @ 可配；连续未点名接话上限 | 分条失败不回滚；QQ 工具边界见动作行 | M2-b |
 | DSH Session 运行时 | I/T | `runtime/agent.js`、`runtime/qq-tools.js`、`cordis.patch.yml` | 每聊天 Session、private/social preset、followup/event、超时/串行、oneshot 回退；仅 full/主人私聊挂 3 个 QQ 工具，注册失败隔离并可 dispose | 默认 oneshot；social/group 0 个 QQ 工具；未真机 V | M1/M5-b 受限完成 |
 | QQ 命令/按聊天模型 | I/T | `cognition/commands.js`、`cognition/llm.js` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`（主人）；`modelRouting` 按会话覆盖；/model 写回配置 | 非主人静默；无 `/sing`；只影响认知 LLM，不改变 agent Session 模型 | M1 剩余：agent 真机 smoke |
@@ -42,7 +44,8 @@
 | 本地模块（M5-a） | I/T/L | `src/modules/kernel.js`、`commands.js`、模块面板 | 本地 manifest、权限门控、异步 setup/cleanup、热重载/启停、命令/规范化事件/1 MiB JSON 存储、只读认知注册、统一 outbound 发送、错误隔离与路径/符号链接逃逸检查 | 模块仍是同进程任意代码，不是沙箱；无远程安装、依赖解析、签名、自动更新、文件监视、marketplace 或 `.d.ts`；未做真实第三方模块 V |
 | B站公共内容（M5-b） | I/T | `src/content/bilibili.js`、`commands.js`、内容面板 | 默认关闭；公开搜索/热门/BV 详情；`/bili`、2 个 REST 路由与结果卡；标题/作者/播放/时长/链接规范化 | 无 Cookie/WBI、评论/分享/字幕；QQ空间因授权/ToS 未实现；真实 B站未验证 |
 | 本地备份/恢复（M6-a） | I/T/L | `src/ops/backup.js`、REST、备份面板 | 目录快照（无 zip）；默认配置/模型/认知/模块/表情包，可选根内全部媒体；200 MiB/5000 文件/10 份，原子发布/可选清理、路径/符号链接/hash 校验、默认暂存、allowRestore 门控与恢复前备份 | 含密钥需保护；复制 SQLite 前必须停写，恢复后重启；不保证在线一致性或整目录事务；不删除未列出的文件；无加密/云端/自动恢复/迁移（版本检查见 M6-b），未做真实数据恢复 V |
-| 对标审计/临时 profile smoke（M7-a） | I/T/V | `scripts/parity-audit.mjs`、`scripts/smoke-temp-profile.sh`、`docs/PARITY-AUDIT.md` | 矩阵结构审计/JSON 输出/源码与测试静态计数；临时 DSH profile 启动、关闭 QQ、查询健康/状态/配置/模块/媒体/备份/升级并创建一次备份、清理；实际 smoke 通过 | 不是全量对齐；不替代真实 QQ/媒体/GitHub 验证；矩阵仍有 55 项非 has | M7 剩余 |
+| 主人 QQ 管理命令（M7-b） | I/T/L | `commands.js`、`qq-actions.js`、`gateway/actions.js`、`media/index.js` | 默认关/主人/当前会话/access 闸门；昵称、名片/群名、管理员、禁言/全禁、踢人、精华/撤回、媒体根内相对路径文件；踢人始终 confirm、撤回默认确认；破坏动作简短审计；ID/文本/归属/realpath 校验 | 无逐项权限矩阵/任意 action 透传/新 Agent 工具；get_msg 缺归属则拒绝；机器人需群管权限；profile/精华/文件依赖网关扩展；真实 QQ 管理/资料/文件动作未验证 | M7-b 受限完成 |
+| 对标审计/临时 profile smoke（M7-a） | I/T/V | `scripts/parity-audit.mjs`、`scripts/smoke-temp-profile.sh`、`docs/PARITY-AUDIT.md` | 矩阵结构审计/JSON 输出/源码与测试静态计数；临时 DSH profile 启动、关闭 QQ、查询健康/状态/配置/模块/媒体/备份/升级并创建一次备份、清理；实际 smoke 通过 | 不是全量对齐；不替代真实 QQ/媒体/GitHub 验证；矩阵剩余 50 项（排除 6 has + 5 exempt，仍含 6 leading） | M7 剩余 |
 | 安全页/上线清单/升级检查（M6-b） | I/T/L | `src/ops/upgrade.js`、REST、`SecurityPage` | 15 个顶层标签；只读访问/危险面、最近 5 条审计、6 项上线清单；默认关闭的手动 GitHub 检查，最近 10 条内 stable/beta 过滤、版本比较、内存缓存/force、超时/真实错误；GET 状态零网络 | beta 仅放宽预发布过滤；模块审核始终人工提醒，媒体只检查字段；无后台/自动更新、下载/安装、token、云端、工作区迁移或离峰省钱；API 鉴权不变，依赖 DSH 本机信任边界；未做真实 GitHub/浏览器 V |
 | 群体网络 | N | — | 关系有 group scope | 成员角色/群体氛围/多人冲突/群体规范是 v0.5 |
 | 显式目标与规划 | N | — | 策略按候选效用选择动作 | 没有长期目标树、计划执行、失败重规划；当前由 DSH agent 层提供规划，认知内核不假装拥有 |

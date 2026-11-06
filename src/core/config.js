@@ -176,6 +176,7 @@ export const DEFAULTS = {
       quote: true,
       atSender: false,
     },
+    qqAdmin: { enabled: false, requireConfirm: true, maxText: 100 },
     notice: {
       patReply: true,
       patCooldownMs: 60000,
@@ -709,6 +710,16 @@ export const CONFIG_GROUPS = [
     ],
   },
   {
+    id: 'cog-admin',
+    title: 'QQ 管理命令',
+    description: '默认关闭，仅主人、当前会话；群管需要机器人具备相应权限。',
+    fields: [
+      { path: 'cognition.qqAdmin.enabled', label: '启用 QQ 管理命令', type: 'switch', default: false },
+      { path: 'cognition.qqAdmin.requireConfirm', label: '撤回需要 confirm', type: 'switch', default: true, help: '踢人始终需要字面量 confirm；不受此开关影响。' },
+      { path: 'cognition.qqAdmin.maxText', label: '资料/群名片/群名长度上限', type: 'number', default: 100, min: 1, max: 100, step: 1 },
+    ],
+  },
+  {
     id: 'cog-purpose',
     title: '目的',
     description: '长期目标 / 计划 / 近期意图；只注入 prompt 与面板管理，不自动执行工具。',
@@ -1168,6 +1179,11 @@ function normalizeCognition(raw, rawCognition = {}) {
     dryRun: pickBool(src.dryRun, d.dryRun),
     locale: pickEnum(src.locale, d.locale, ['zh-CN']),
     timezone: pickString(src.timezone, '', { max: 64 }),
+    qqAdmin: {
+      enabled: pickBool(src.qqAdmin?.enabled, d.qqAdmin.enabled),
+      requireConfirm: pickBool(src.qqAdmin?.requireConfirm, d.qqAdmin.requireConfirm),
+      maxText: pickNumber(src.qqAdmin?.maxText, d.qqAdmin.maxText, { min: 1, max: 100, integer: true }),
+    },
     turn: {
       privateBaseMs: pickNumber(src.turn?.privateBaseMs, d.turn.privateBaseMs, { min: 500, max: 5000, integer: true }),
       privateMaxMs: pickNumber(src.turn?.privateMaxMs, d.turn.privateMaxMs, { min: 3000, max: 20000, integer: true }),

@@ -5,7 +5,8 @@
 
 import { isOwner } from '../core/access.js'
 
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker', 'bili']
+const ADMIN_COMMANDS = ['profile', 'card', 'groupname', 'admin', 'mute', 'wholemute', 'kick', 'essence', 'recall', 'file']
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker', 'bili', ...ADMIN_COMMANDS]
 const EXTERNAL_COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 export function parseCommand(text) {
@@ -43,6 +44,13 @@ const HELP_TEXT = [
   '/say 文本 — 向当前聊天发送文本',
   '/sticker [标签] — 随机发送一个表情包',
   '/bili hot|关键词|BV号 — B站热门、搜索或视频信息',
+  '/profile 昵称 — 主人私聊修改机器人昵称',
+  '/card QQ 名片 | /groupname 名称 — 当前群资料',
+  '/admin QQ on|off | /mute QQ 分钟（0=解除）',
+  '/wholemute on|off | /kick QQ confirm — 当前群管理',
+  '/essence 消息ID | /recall 消息ID [confirm] — 当前会话消息',
+  '/file 相对路径 — 上传媒体目录内文件',
+  '上述 QQ 管理/文件命令默认关闭，仅主人；踢人始终 confirm，撤回默认 confirm。',
   '/help — 本帮助',
 ].join('\n')
 
@@ -142,6 +150,66 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     } catch (error) { return false }
   }
 
+  async function handleAdmin(turn, parsed) {
+    // Gate both replies and side effects before inspecting arguments or services.
+    if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+    const cfg = currentConfig().cognition?.qqAdmin || {}
+    if (cfg.enabled !== true) return send(turn, 'QQ 管理命令未启用（cognition.qqAdmin.enabled）。')
+    if (!['group', 'private'].includes(turn.chatType)) return send(turn, '仅支持群聊或主人私聊。')
+    if (!/^[1-9]\d*$/.test(String(turn.chatId || '')) || !Number.isSafeInteger(Number(turn.chatId))) return send(turn, '当前会话 ID 无效。')
+    if (turn.chatType === 'private' && String(turn.chatId) !== String(turn.senderId)) return send(turn, '只能在主人私聊使用。')
+    const { name, args } = parsed
+    if (name === 'profile' && turn.chatType !== 'private') return send(turn, '这个命令只能在主人私聊使用。')
+    if (!['profile', 'recall', 'file'].includes(name) && turn.chatType !== 'group') return send(turn, '这个命令只能在当前群里用。')
+    const payload = { operatorId: turn.senderId, chatType: turn.chatType, chatId: turn.chatId }
+    const usages = { profile: '昵称', card: 'QQ 名片', groupname: '名称', admin: 'QQ on|off', mute: 'QQ 分钟（0–43200，0=解除）', wholemute: 'on|off', kick: 'QQ confirm', essence: '消息ID', recall: '消息ID [confirm]', file: '相对路径' }
+    const usage = () => send(turn, `用法：/${name} ${usages[name]}`)
+    const parts = args.split(/\s+/)
+    let method
+    if (name === 'file') {
+      if (!args || /[\x00-\x1f\x7f\\]/.test(args) || /^(?:\/|[a-z]:)/i.test(args) || args.split('/').includes('..')) return usage()
+      if (!media?.sendMedia) return send(turn, '媒体服务不可用。')
+      try {
+        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'file', relativePath: args })
+        return { handled: true, reply: '' }
+      } catch { return send(turn, '文件发送失败：请检查媒体/文件开关、媒体根内相对路径、文件大小/扩展名及网关权限。') }
+    }
+    const id = (value, message = false) => {
+      const n = Number(value)
+      return (message ? /^-?[1-9]\d*$/.test(value || '') : /^[1-9]\d*$/.test(value || '')) && Number.isSafeInteger(n) && (!message || (n >= -2147483648 && n <= 2147483647))
+    }
+    const validText = (value) => Boolean(value) && Array.from(value).length <= Math.max(1, Math.min(100, Number(cfg.maxText) || 100)) && !/[\x00-\x1f\x7f]/.test(value)
+    if (name === 'profile' || name === 'groupname') {
+      if (!validText(args)) return usage()
+      method = name === 'profile' ? 'setProfile' : 'setGroupName'
+      payload[name === 'profile' ? 'nickname' : 'name'] = args
+    } else if (name === 'card') {
+      const match = /^(\d+)\s+([\s\S]+)$/.exec(args)
+      if (!match || !id(match[1]) || !validText(match[2])) return usage()
+      method = 'setGroupCard'; payload.userId = match[1]; payload.card = match[2]
+    } else if (name === 'admin' || name === 'wholemute') {
+      const enable = parts[name === 'admin' ? 1 : 0]
+      if (parts.length !== (name === 'admin' ? 2 : 1) || !['on', 'off'].includes(enable) || (name === 'admin' && !id(parts[0]))) return usage()
+      method = name === 'admin' ? 'setGroupAdmin' : 'setGroupWholeBan'
+      payload.enable = enable === 'on'; if (name === 'admin') payload.userId = parts[0]
+    } else if (name === 'mute') {
+      if (parts.length !== 2 || !id(parts[0]) || !/^\d+$/.test(parts[1]) || !Number.isSafeInteger(Number(parts[1])) || Number(parts[1]) > 43200) return usage()
+      method = 'setGroupBan'; payload.userId = parts[0]; payload.durationSeconds = Number(parts[1]) * 60
+    } else if (name === 'kick') {
+      if (parts.length !== 2 || !id(parts[0]) || parts[1] !== 'confirm') return usage()
+      method = 'setGroupKick'; payload.userId = parts[0]; payload.confirmed = parts[1]
+    } else {
+      if (!id(parts[0], true) || (name === 'essence' ? parts.length !== 1 : parts.length > 2 || (parts.length === 2 && parts[1] !== 'confirm'))) return usage()
+      if (name === 'recall' && cfg.requireConfirm !== false && parts[1] !== 'confirm') return send(turn, '撤回需要确认：/recall 消息ID confirm')
+      method = name === 'essence' ? 'setEssence' : 'deleteMsg'; payload.messageId = parts[0]; payload.confirmed = parts[1]
+    }
+    if (!qqActions?.[method]) return send(turn, 'QQ 动作服务不可用。')
+    try {
+      const result = await qqActions[method](payload)
+      return send(turn, result?.ok ? 'QQ 动作已完成。' : `QQ 动作失败：${oneLine(result?.error || 'UNKNOWN', 100)}`)
+    } catch { return send(turn, 'QQ 动作失败：网关拒绝或不支持此操作。') }
+  }
+
   async function statusText(turn) {
     const cfg = currentConfig()
     const accessSummary = access?.summary?.() || { mode: 'open' }
@@ -230,6 +298,8 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
         return send(turn, `命令 /${parsed.name} 执行失败。`)
       }
     }
+
+    if (ADMIN_COMMANDS.includes(parsed.name)) return handleAdmin(turn, parsed)
 
     if (parsed.name === 'help') {
       const names = [...externalCommands.entries()]

@@ -37,7 +37,7 @@ test('parity: statuses normalize with partial/limited before none, leading and h
   const variants = ['**有**（M1）', '部分（受限是许可要求）', '**无**', '**受限实现**', '领先（但无媒体）', '**领先**']
   // The explicit priority treats 无 inside the annotation as none.
   const summary = summarize(parseMatrix(matrix(...variants.map((status, i) => row(i + 1, status, 'M7')))))
-  assert.deepEqual(summary.byStatus, { has: 1, partial: 1, none: 2, limited: 1, leading: 1 })
+  assert.deepEqual(summary.byStatus, { has: 1, partial: 1, none: 2, limited: 1, leading: 1, exempt: 0 })
   assert.equal(summary.total, 6)
   assert.equal(summary.remaining.length, 5)
   assert.equal(summary.ok, true)
@@ -126,5 +126,23 @@ test('parity: CLI JSON shape and exit code distinguish remaining gaps from struc
     const failure = run('--json')
     assert.equal(failure.status, 1, failure.stderr)
     assert.equal(JSON.parse(failure.stdout).ok, false)
+  }
+})
+
+test('parity: user exemptions count separately, leave remaining and still require targets', () => {
+  const rows = parseMatrix(matrix(row(1, '豁免（用户批准）', '2026-11-06 用户批准：远端 API 鉴权'), row(2, '有'), row(3, '无', 'M7')))
+  const result = summarize(rows)
+  assert.equal(result.byStatus.exempt, 1)
+  assert.equal(parseMatrix(matrix(row(1, '无（未获豁免）', 'M7')))[0].status, 'none')
+  assert.equal(parseMatrix(matrix(row(1, '**豁免**（用户批准）', '2026-11-06')))[0].status, 'exempt')
+  assert.deepEqual(result.remaining.map((r) => r.id), [3])
+  assert.equal(result.ok, true)
+  assert.match(formatReport(result), /exempt: 1/)
+  assert.match(formatReport(result), /排除 has\/exempt/)
+  for (const target of ['', '—', '**—**']) {
+    const invalid = summarize(parseMatrix(matrix(row(1, '豁免（用户批准）', target))))
+    assert.equal(invalid.ok, false)
+    assert.deepEqual(invalid.missingTargets.map((r) => r.id), [1])
+    assert.equal(invalid.remaining.length, 0)
   }
 })

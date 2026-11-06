@@ -430,3 +430,11 @@ API 均位于 `/onebot-qq/api`：
 `SecurityPage` 进入页面或手动刷新时只读 `/status`、`/access/stats`、`/backup`、`/upgrade`，分别处理失败；唯一 POST 是手动升级检查（force=true）。四张卡为访问控制（名单数量/拦截计数/最近 5 条审计）、危险面（raw action、allowRestore、同进程模块警告、媒体环境变量名）、上线检查（连接、allowlist+owner、备份、raw 关闭、媒体配置、人工模块审核）和版本信息。只按已保存配置检查媒体字段，不读取密钥或探测连通性；模块审核恒为人工待检查，不写入“已审核”状态。清单内按钮只导航 connect/config/backup，复用原有视觉组件，无独立向导。
 
 精确边界：无自动检查/更新、下载/安装、云服务、工作区/格式迁移或离峰省钱；beta 仅改变 release 过滤。保留 DSH 本机信任边界，不改变 API 鉴权，也不新增本机-only/CSRF/可信反代机制。测试均使用注入 fetch 或禁网替身，没有真实 GitHub/QQ/浏览器验证。
+
+### 3.23 主人 QQ 管理命令（M7-b）
+
+`commands → qq-actions → gateway.actions` 显式映射资料/群管/精华/撤回动作；`/file` 走 `media.sendMedia(kind=file, relativePath)`。新增命令共享 `cognition.qqAdmin.enabled=false`；命令先核对 owner、当前会话类型与 `access.canSend`，服务再次检查 owner/config/类型/ID/长度。群号从当前 turn 取得；昵称仅主人私聊；不存在任意 action 名或参数透传入口，原 Agent 工具列表保持 3 项且群聊 0 项。
+
+OneBot 参数按 [OneBot v11 公开 API](https://github.com/botuniverse/onebot-11/blob/master/api/public.md) 显式封装；`set_qq_profile`、`set_essence_msg` 与文件上传为网关扩展，支持情况取决于实现。昵称拒绝返回明确 unsupported。踢人强制字面量 confirm；撤回默认确认（可配置）；破坏性动作在调用前仅记录动作/操作者/会话/目标 ID，不记录文本或网关原始错误。精华/撤回先 get_msg 检查 message_type 与 group_id 或私聊目标；标准响应可能不提供归属字段，此时拒绝，不尝试跨聊推断。
+
+媒体服务统一验证相对路径/根内 realpath、普通文件、扩展名和大小；不允许通过文件或目录符号链接访问媒体根外。上传路径由网关进程读取。自动化使用 fake 网关与本地临时文件，无网络；真实 QQ 管理/资料/文件动作未验证。逐项权限矩阵与通用审批仍未实现。2026-11-06 用户豁免范围见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)，不修改本机-only/CSRF 行为。

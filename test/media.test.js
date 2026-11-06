@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -131,4 +131,28 @@ test('媒体：默认禁用时 ingest 不产生网络请求', async () => {
   const result = await media.ingestTurn(turn({ type: 'image', data: { url: 'https://image.test/a.png' } }))
   assert.deepEqual(result, { text: '', attachments: [] })
   assert.equal(calls, 0)
+})
+
+test('media file command: relative paths, size/extension gates and symlink confinement use fake uploads', async (t) => {
+  const base = mkdtempSync(join(tmpdir(), 'dsh-file-command-'))
+  t.after(() => rmSync(base, { recursive: true, force: true }))
+  const root = join(base, 'media')
+  mkdirSync(join(root, 'inbound'), { recursive: true })
+  writeFileSync(join(root, 'inbound', 'ok.txt'), 'ok')
+  writeFileSync(join(root, 'bad.exe'), 'bad')
+  writeFileSync(join(root, 'big.txt'), Buffer.alloc(1024 * 1024 + 1))
+  writeFileSync(join(base, 'outside.txt'), 'secret')
+  symlinkSync(join(base, 'outside.txt'), join(root, 'link.txt'))
+  symlinkSync(base, join(root, 'escape'), 'dir')
+  const calls = []
+  const service = createMediaService({ getConfig: () => config(), dataDir: root, gateway: { actions: {
+    async uploadPrivateFile(...args) { calls.push(['private', ...args]) },
+    async uploadGroupFile(...args) { calls.push(['group', ...args]) },
+  } } })
+  await service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', relativePath: 'inbound/ok.txt' })
+  await service.sendMedia({ chatType: 'group', chatId: '20001', kind: 'file', relativePath: 'inbound/ok.txt' })
+  assert.deepEqual(calls, [['private', '10001', join(root, 'inbound/ok.txt'), 'ok.txt'], ['group', '20001', join(root, 'inbound/ok.txt'), 'ok.txt']])
+  for (const relativePath of ['/etc/passwd', '../outside.txt', 'C:/outside.txt', 'link.txt', 'escape/outside.txt', 'bad.exe', 'big.txt', 'inbound']) await assert.rejects(service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', relativePath }))
+  await assert.rejects(service.sendMedia({ chatType: 'private', chatId: '10001', kind: 'file', filePath: join(root, 'link.txt') }), /符号链接/)
+  assert.equal(calls.length, 2)
 })

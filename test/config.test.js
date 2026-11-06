@@ -162,3 +162,9 @@ test('cognition 配置：默认值、字段分组、非法枚举/数值回退与
   assert.equal(bad.privacy.privateIsolation, DEFAULTS.cognition.privacy.privateIsolation)
   assert.equal(bad.privacy.rawRetentionDays, 0)
 })
+
+test('qqAdmin config: opt-in defaults, bounded maxText and confirmation normalization', () => {
+  assert.deepEqual(normalizeConfig({}).config.cognition.qqAdmin, { enabled: false, requireConfirm: true, maxText: 100 })
+  assert.deepEqual(normalizeConfig({ cognition: { qqAdmin: { enabled: true, requireConfirm: false, maxText: 500 } } }).config.cognition.qqAdmin, { enabled: true, requireConfirm: false, maxText: 100 })
+  assert.equal(normalizeConfig({ cognition: { qqAdmin: { maxText: -10 } } }).config.cognition.qqAdmin.maxText, 1)
+})

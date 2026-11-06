@@ -206,7 +206,21 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 | `/bili hot` | 查看 B站公开热门视频（需先启用内容服务） |
 | `/bili 关键词` | 搜索 B站公开视频 |
 | `/bili BV号` | 查询一个 BV 视频的基本信息 |
+| `/profile 昵称` | 主人私聊修改机器人昵称；网关需支持 |
+| `/card QQ 名片` | 修改当前群成员名片 |
+| `/groupname 名称` | 修改当前群名 |
+| `/admin QQ on\|off` | 设置/取消当前群管理员（通常要求机器人为群主） |
+| `/mute QQ 分钟` | 当前群禁言；整数 0–43200 分钟，0 解除 |
+| `/wholemute on\|off` | 当前群全员禁言开关 |
+| `/kick QQ confirm` | 当前群踢人，必须字面量 confirm；不禁止再次申请加群 |
+| `/essence 消息ID` | 当前群消息设精华；需查明所属群 |
+| `/recall 消息ID [confirm]` | 当前群/主人私聊撤回，默认必须 confirm；需查明所属会话 |
+| `/file 相对路径` | 上传媒体根内文件到当前会话，例如 `/file inbound/report.pdf` |
 | `/help` | 命令帮助 |
+
+**管理/文件命令安全边界（M7-b）**：上述 `/profile` 至 `/file` 默认关闭，先在「配置 → QQ 管理命令」开启 `cognition.qqAdmin.enabled`。仅主人可用，动作和回复先检查当前会话的 `access.canSend`；群管只作用于当前群，机器人必须具备管理员/群主权限。昵称、名片、群名默认最多 100 字符（可调低，网关限制可能更严）。踢人始终要求小写字面量 `confirm`；撤回默认也要求，可通过 `requireConfirm=false` 取消撤回确认。精华/撤回无法用网关 `get_msg` 核实当前会话时拒绝，不能指定其他群。参数错误返回用法。
+
+`/file` 还需开启媒体总开关和 `media.files.enabled`；路径相对于 `media.dir`（留空用默认媒体目录），仅白名单扩展名/大小内普通文件；拒绝绝对路径、`..`、Windows 路径和符号链接逃逸。文件在网关进程可读路径下才可上传。未开放任意 action 透传或新增 Agent 工具。真实 QQ 管理、资料、文件动作未验证；修改昵称遭网关拒绝会明确显示 `UNSUPPORTED_SET_QQ_PROFILE`。先用测试群/账号受控验证。
 
 命令在轮次聚合的快速路径上处理，不进入分析/策略；`/quiet` `/active` `/model` 会写回配置并立即生效。
 
