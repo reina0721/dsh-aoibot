@@ -6,6 +6,7 @@
 import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
 import { analyzeTurn, composeReply } from './analysis.js'
 import { defaultScope } from './memory.js'
+import { splitReply } from './reply-split.js'
 
 export function createPipeline({
   store, getConfig, clock, logger,
@@ -18,6 +19,7 @@ export function createPipeline({
   const pending = new Map() // chatKey -> { decisionId, sentAt, action }
   const groupReplyAt = new Map() // chatKey -> last reply timestamp
   const groupReplyTimes = [] // sliding minute window
+  const consecutiveAmbientReplies = new Map() // chatKey -> 连续未点名接话数
   const cfg = () => getConfig()?.cognition || {}
   const isDry = () => (dryRun == null ? Boolean(cfg().dryRun) : Boolean(dryRun))
   const stats = {
@@ -62,6 +64,9 @@ export function createPipeline({
     const max = Math.max(1, Number(cfg().turn?.groupMaxRepliesPerMinute) || 6)
     if (groupReplyTimes.length >= max) return { ok: false, reason: 'rate_limited' }
     if (!turn.addressed) {
+      const consecutive = Number(consecutiveAmbientReplies.get(chatKey(turn)) || 0)
+      const limit = Math.max(1, Number(cfg().turn?.maxConsecutiveGroupReplies) || 3)
+      if (consecutive >= limit) return { ok: false, reason: 'consecutive_limit' }
       const cooldown = Math.max(0, Number(cfg().turn?.groupCooldownMs) || 0)
       const last = Number(groupReplyAt.get(chatKey(turn)) || 0)
       if (cooldown && last && now - last < cooldown) return { ok: false, reason: 'cooldown' }
@@ -72,8 +77,11 @@ export function createPipeline({
   function noteGroupReply(turn) {
     if (turn?.chatType !== 'group') return
     const now = clock.now()
-    groupReplyAt.set(chatKey(turn), now)
+    const key = chatKey(turn)
+    groupReplyAt.set(key, now)
     groupReplyTimes.push(now)
+    if (turn.addressed) consecutiveAmbientReplies.set(key, 0)
+    else consecutiveAmbientReplies.set(key, (consecutiveAmbientReplies.get(key) || 0) + 1)
   }
 
   function markLast(turn, outcome, reason = '', extra = {}) {
@@ -251,21 +259,25 @@ export function createPipeline({
     })
   }
 
-  async function sendDirect(decision, segments, turn) {
+  async function sendDirect(decision, segments, turn, { mark = true } = {}) {
     if (!gateway?.actions?.sendMessage) return { ok: false, error: 'GATEWAY_UNAVAILABLE' }
     if (isDry()) {
-      policy.markSent(decision.id, { dryRun: true })
+      if (mark) policy.markSent(decision.id, { dryRun: true })
       return { ok: true, dryRun: true, messageId: '' }
     }
     try {
       const result = await gateway.actions.sendMessage({ chatType: turn.chatType, chatId: turn.chatId, message: segments })
       const messageId = String(result?.message_id ?? result?.data?.message_id ?? result?.id ?? '')
-      policy.markSent(decision.id, { messageId })
+      if (mark) policy.markSent(decision.id, { messageId })
       return { ok: true, messageId, result }
     } catch (error) {
-      policy.markFailed(decision.id, error.message)
+      if (mark) policy.markFailed(decision.id, error.message)
       return { ok: false, error: error.message }
     }
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)))
   }
 
   async function sendDecision(decision, text, turn, opts = {}) {
@@ -274,35 +286,70 @@ export function createPipeline({
       if (isDry()) stats.dryRun += 1
       return { ok: true, dryRun: isDry(), messageId: '' }
     }
-    const segments = []
+    const replyCfg = cfg().reply || {}
+    const parts = replyCfg.split === false
+      ? [String(text)]
+      : splitReply(text, { maxChars: replyCfg.maxChars, maxParts: replyCfg.maxParts })
     const replyTo = turn.messages?.at(-1)?.messageId
-    if (replyTo && !opts.noReplySegment) segments.push({ type: 'reply', data: { id: replyTo } })
-    segments.push({ type: 'text', data: { text } })
-    const delivered = outbound && typeof outbound.deliver === 'function'
-      ? await outbound.deliver({
+    const quote = !opts.noReplySegment && replyCfg.quote !== false
+    const atSender = turn.chatType === 'group' && replyCfg.atSender === true
+    const delayMs = Math.max(0, Number(replyCfg.delayMs) || 0)
+    let firstMessageId = ''
+    let sentParts = 0
+    let lastResult = null
+    for (let index = 0; index < parts.length; index += 1) {
+      const segments = []
+      if (index === 0 && quote && replyTo) segments.push({ type: 'reply', data: { id: replyTo } })
+      if (index === 0 && atSender && turn.senderId) segments.push({ type: 'at', data: { qq: String(turn.senderId) } })
+      segments.push({ type: 'text', data: { text: parts[index] } })
+      const delivered = outbound && typeof outbound.deliver === 'function'
+        ? await outbound.deliver({
+            chatType: turn.chatType,
+            chatId: turn.chatId,
+            segments,
+            decisionId: index === 0 ? decision.id : '',
+            source: 'pipeline',
+            dryRun: isDry() ? true : null,
+          })
+        : await sendDirect(decision, segments, turn, { mark: index === 0 })
+      if (!delivered?.ok) {
+        if (sentParts === 0) {
+          log.warn?.('发送认知回复失败：', delivered?.message || delivered?.error || 'unknown')
+          return { ok: false, error: delivered?.error || 'SEND_FAILED', blocked: Boolean(delivered?.blocked), reason: delivered?.reason || '' }
+        }
+        log.warn?.('认知回复分条中途失败：', delivered?.message || delivered?.error || 'unknown')
+        break
+      }
+      if (delivered.dryRun) {
+        if (index === 0) {
+          stats.dryRun += 1
+          return { ok: true, dryRun: true, messageId: '' }
+        }
+        break
+      }
+      const messageId = String(delivered.messageId || '')
+      if (!firstMessageId) firstMessageId = messageId
+      lastResult = delivered.result
+      sentParts += 1
+      turnAggregatorRef?.noteBotMessage?.(messageId)
+      try {
+        ctxEmit('onebot-qq/cognition-sent', {
+          decisionId: decision.id,
+          messageId,
           chatType: turn.chatType,
           chatId: turn.chatId,
-          segments,
-          decisionId: decision.id,
-          source: 'pipeline',
-          dryRun: isDry() ? true : null,
+          action: decision.action,
+          part: index,
+          parts: parts.length,
         })
-      : await sendDirect(decision, segments, turn)
-    if (!delivered?.ok) {
-      log.warn?.('发送认知回复失败：', delivered?.message || delivered?.error || 'unknown')
-      return { ok: false, error: delivered?.error || 'SEND_FAILED', blocked: Boolean(delivered?.blocked), reason: delivered?.reason || '' }
+      } catch (error) {}
+      if (index < parts.length - 1 && delayMs) await sleep(delayMs)
     }
-    if (delivered.dryRun) {
-      stats.dryRun += 1
-      return { ok: true, dryRun: true, messageId: '' }
-    }
-    const messageId = String(delivered.messageId || '')
-    turnAggregatorRef?.noteBotMessage?.(messageId)
-    stats.sent += 1
+    if (!sentParts) return { ok: false, error: 'SEND_FAILED' }
+    stats.sent += sentParts
     noteGroupReply(turn)
     pending.set(chatKey(turn), { decisionId: decision.id, sentAt: clock.now(), action: decision.action, text })
-    try { ctxEmit('onebot-qq/cognition-sent', { decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId, action: decision.action }) } catch (error) {}
-    return { ok: true, messageId, result: delivered.result }
+    return { ok: true, messageId: firstMessageId, result: lastResult, parts: sentParts }
   }
 
   function ctxEmit() {}

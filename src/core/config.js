@@ -129,8 +129,17 @@ export const DEFAULTS = {
       groupReplyProbability: 0.2,
       groupCooldownMs: 3000,
       groupMaxRepliesPerMinute: 6,
+      maxConsecutiveGroupReplies: 3,
       addressedOnlyGroups: true, // 兼容旧配置；新代码以 groupReplyMode 为准
       wakeWords: [],
+    },
+    reply: {
+      split: true,
+      maxChars: 300,
+      maxParts: 3,
+      delayMs: 600,
+      quote: true,
+      atSender: false,
     },
     llm: {
       mode: 'auto', // auto | dsh | fixed | direct | chain
@@ -572,7 +581,21 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.turn.groupReplyProbability', label: '未点名参与概率', type: 'number', default: 0.2, min: 0, max: 1, step: 0.05 },
       { path: 'cognition.turn.groupCooldownMs', label: '同群回复冷却', type: 'number', default: 3000, min: 0, max: 60000, step: 500, unit: 'ms' },
       { path: 'cognition.turn.groupMaxRepliesPerMinute', label: '群聊每分钟上限', type: 'number', default: 6, min: 1, max: 60, step: 1 },
+      { path: 'cognition.turn.maxConsecutiveGroupReplies', label: '连续接话上限', type: 'number', default: 3, min: 1, max: 20, step: 1, help: '连续多少次未点名接话后暂停主动接话；点名/唤醒仍会回复。' },
       { path: 'cognition.turn.wakeWords', label: '唤醒词', type: 'string-list', default: [], placeholder: '输入昵称后回车' },
+    ],
+  },
+  {
+    id: 'cog-reply',
+    title: '回复与出站',
+    description: '长回复分条、引用、@ 与分条间隔；只影响认知侧自动发送，不影响面板手动发送。',
+    fields: [
+      { path: 'cognition.reply.split', label: '长回复分条', type: 'switch', default: true, help: '超过字数上限时拆成多条，优先按段落/句末标点切。' },
+      { path: 'cognition.reply.maxChars', label: '单条字数上限', type: 'number', default: 300, min: 80, max: 2000, step: 10 },
+      { path: 'cognition.reply.maxParts', label: '最多分条', type: 'number', default: 3, min: 1, max: 10, step: 1, help: '超过上限的剩余内容并入最后一条，不截断。' },
+      { path: 'cognition.reply.delayMs', label: '分条间隔', type: 'number', default: 600, min: 0, max: 5000, step: 100, unit: 'ms' },
+      { path: 'cognition.reply.quote', label: '回复时引用原消息', type: 'switch', default: true },
+      { path: 'cognition.reply.atSender', label: '群聊回复时 @ 对方', type: 'switch', default: false, help: '默认关闭，避免每条回复都带 @；与引用同时开启时可能显得重叠。' },
     ],
   },
   {
@@ -978,8 +1001,17 @@ function normalizeCognition(raw, rawCognition = {}) {
       groupReplyProbability: pickNumber(src.turn?.groupReplyProbability, d.turn.groupReplyProbability, { min: 0, max: 1 }),
       groupCooldownMs: pickNumber(src.turn?.groupCooldownMs, d.turn.groupCooldownMs, { min: 0, max: 60000, integer: true }),
       groupMaxRepliesPerMinute: pickNumber(src.turn?.groupMaxRepliesPerMinute, d.turn.groupMaxRepliesPerMinute, { min: 1, max: 60, integer: true }),
+      maxConsecutiveGroupReplies: pickNumber(src.turn?.maxConsecutiveGroupReplies, d.turn.maxConsecutiveGroupReplies, { min: 1, max: 20, integer: true }),
       addressedOnlyGroups: pickBool(src.turn?.addressedOnlyGroups, d.turn.addressedOnlyGroups),
       wakeWords: pickStringArray(src.turn?.wakeWords, d.turn.wakeWords, { maxItems: 20 }),
+    },
+    reply: {
+      split: pickBool(src.reply?.split, d.reply.split),
+      maxChars: pickNumber(src.reply?.maxChars, d.reply.maxChars, { min: 80, max: 2000, integer: true }),
+      maxParts: pickNumber(src.reply?.maxParts, d.reply.maxParts, { min: 1, max: 10, integer: true }),
+      delayMs: pickNumber(src.reply?.delayMs, d.reply.delayMs, { min: 0, max: 5000, integer: true }),
+      quote: pickBool(src.reply?.quote, d.reply.quote),
+      atSender: pickBool(src.reply?.atSender, d.reply.atSender),
     },
     llm: {
       mode: pickEnum(src.llm?.mode, d.llm.mode, ['auto', 'dsh', 'fixed', 'direct', 'chain']),

@@ -300,6 +300,14 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
   provider 在直连注册表里 → `kind:'direct'`，否则 `kind:'dsh'`。`currentRoute(chat)` 供 `/model` 与面板诊断。
 - 限制：只影响认知 LLM 路由；`agent` 引擎的 DSH Session 模型仍由 preset/DSH 选择，后续再通过 sessionController 选模型。
 
+### 3.14 回复分条、引用/@ 与群聊防刷屏
+
+- `src/cognition/reply-split.js`：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
+- `pipeline.sendDecision`：按 `cognition.reply` 配置分条；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
+- 失败语义：第一条失败 → 整轮失败；后续条失败 → 已发部分保留，记录 `SEND_FAILED`，不回滚、不重发。
+- 防刷屏：`cognition.turn.maxConsecutiveGroupReplies` 限制连续**未点名**接话；`noteGroupReply` 按是否点名维护计数（点名回复清零），`groupReplyAllowed` 超限返回 `consecutive_limit`，与冷却/每分钟上限并存。
+- 边界：合并转发展开、拍一拍/表态、QQ 动作工具仍在 M2-b。
+
 ## 4. 数据目录
 
 ```

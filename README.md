@@ -18,6 +18,7 @@
 - 访问控制：`open`/`allowlist`、主人 QQ、私聊/群白名单、统一出站闸门与审计。
 - 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session（preset 带工具），失败自动回退 oneshot。
 - QQ 命令（主人）：`/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；支持按聊天覆盖模型。
+- 回复分条、可配引用/@、连续未点名接话上限，避免长文刷屏与自说自话。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。
 - 连接、消息、人格、模型、认知、日志及系统设置面板。

@@ -81,9 +81,9 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 19 | 轮次聚合/防抖/硬截止 | 有 | 有（完整度、软/硬截止、命令快路径） | **有** | — |
-| 20 | 群 admission | 点名必回、话题相关度、概率插话、防刷屏、连续发言自知 | addressed/probability/all + 冷却/分钟上限 | 部分 | M2 |
-| 21 | 分条回复/引用/@/表情 | 有 | 仅引用段 | 部分 | M2 |
-| 22 | 合并转发展开/拍一拍/表情回应/通知 | 有 | 无 | 无 | M2 |
+| 20 | 群 admission | 点名必回、话题相关度、概率插话、防刷屏、连续发言自知 | addressed/probability/all + 冷却/分钟上限 + 连续未点名接话上限 | 部分（M2-a） | M2-b：话题相关度/接梗 |
+| 21 | 分条回复/引用/@/表情 | 有 | 分条 + 引用 + 群聊 @ 可配；表情/语音未接 | 部分（M2-a） | M2-b/M4 |
+| 22 | 合并转发展开/拍一拍/表情回应/通知 | 有 | 无 | 无 | M2-b |
 | 23 | QQ 动作工具 | 改资料/群管/文件/点赞/撤回/精华等 | 无 | 无 | M2 |
 
 ### 3.5 人格与情绪
@@ -236,7 +236,16 @@ QQ → 网关 → events → access（主人/白名单/档位）
 | **M6** | 运维/UI/安全 | 备份恢复、升级提示、工作区迁移、离峰省钱、本机-only/CSRF/反代、审批/危险确认、向导、25 页 | 安全评审 + 向导 + 备份恢复 |
 | **M7** | 审计发布 | parity matrix 关闭、性能/成本、真机验收、发布 | 所有行「实现」或「豁免」 |
 
-## 7. M0 / M1-a 交付（已完成）
+## 7. M0–M2 交付（已完成）
+
+**M0（视觉与矩阵）**
+- Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。
+- 视觉基线：见 [docs/visuals/README.md](../visuals/README.md)。
+  - `current-architecture.html`、`target-architecture.html`
+  - `message-lifecycle.html`、`turn-lifecycle.html`
+  - `parity-roadmap.html`
+- 全部 5 张图通过 `validate` + `deliver` + `check` + `browser-check`（Archify 3.0.1，Chrome for Testing 157）。
+- 本文 + 文档校正。
 
 **M1-a（访问控制 + 统一出站）**
 - `src/core/access.js`：open/allowlist、主人/私聊/群白名单、入口判定、审计环形缓冲、计数。
@@ -259,14 +268,11 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 测试：`test/commands.test.js`、`test/model-llm.test.js` 的按聊天覆盖用例。
 - 边界：仅认知 LLM；agent Session 模型、`/sing` 等媒体命令留到后续。
 
-**M0（视觉与矩阵）**
-- Archify 安装与验证：见 [ARCHIFY.md](../ARCHIFY.md)。
-- 视觉基线：见 [docs/visuals/README.md](../visuals/README.md)。
-  - `current-architecture.html`、`target-architecture.html`
-  - `message-lifecycle.html`、`turn-lifecycle.html`
-  - `parity-roadmap.html`
-- 全部 5 张图通过 `validate` + `deliver` + `check` + `browser-check`（Archify 3.0.1，Chrome for Testing 157）。
-- 本文 + 文档校正。
+**M2-a（回复分条/引用/@/防刷屏）**
+- `src/cognition/reply-split.js` + `pipeline.sendDecision`：长回复按段落/句末切分，最多 `maxParts` 条，剩余内容并入最后一条；每条走 outbound，支持分条间隔。
+- `cognition.reply.quote` / `atSender`：首条引用原消息、群聊 @ 发送者；配置默认引用开、@ 关。
+- `cognition.turn.maxConsecutiveGroupReplies`：连续未点名接话上限，点名回复清零，与冷却/每分钟上限并存。
+- 测试：`test/reply-split.test.js` + cognition 集成（分条内容不丢、reply/at 段、连续接话后点名仍回）。
 
 ## 8. 完成定义与豁免
 

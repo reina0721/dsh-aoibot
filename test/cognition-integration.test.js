@@ -9,14 +9,14 @@ import { normalizeConfig } from '../src/core/config.js'
 import { createCognition } from '../src/cognition/index.js'
 import { createFakeScheduler, createClock, createRng } from '../src/cognition/util.js'
 
-function fakeLlm(capture = null) {
+function fakeLlm(capture = null, composeText = '测试回复：我在听。') {
   return {
     async *stream(options) {
       const system = options.system || options.messages?.find((message) => message.role === 'system')?.content?.[0]?.text || ''
       if (Array.isArray(capture)) capture.push(system)
       const text = system.includes('认知分析器')
         ? JSON.stringify({ intent: 'chat', confidence: 0.8, novelty: 0.2, risk: 0, serious: false, appraisal: { desirability: 0.3, relevance: 0.7, intensity: 0.5, novelty: 0.2, control: 0.5, agency: 'other', norm: 0 }, unknownCandidates: [], replyGoal: '自然回应', rationale: 'test' })
-        : '测试回复：我在听。'
+        : composeText
       yield { type: 'text-delta', index: 0, text }
       yield { type: 'finish', reason: { kind: 'stop' } }
     },
@@ -291,6 +291,83 @@ test('集成：撤回在无原文时不假装看见；有原文时 sawContent=tr
     await flush(50)
     const latest = cog.services.policy.history({ limit: 3 }).find((item) => item.features?.recall?.sawContent === true)
     assert.ok(latest, '有原文时应记录 sawContent=true')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+
+test('M2-a：长回复按配置分条，首条引用原消息，内容不丢', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-split-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 500 + sent.length } } } }
+  const longReply = '这是一段比较长的回复。'.repeat(30)
+  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(null, longReply), configOverride: { reply: { split: true, maxChars: 100, maxParts: 3, delayMs: 0, quote: true } } })
+  try {
+    cog.observe(privateEvent(1, '请详细说说'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.ok(sent.length >= 2 && sent.length <= 3, `应分 2-3 条，实际 ${sent.length}`)
+    assert.equal(sent[0].message[0].type, 'reply')
+    const text = sent.map((item) => item.message.filter((segment) => segment.type === 'text').map((segment) => segment.data.text).join('')).join('')
+    assert.equal(text.replace(/\s+/g, ''), longReply.replace(/\s+/g, ''))
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('M2-a：群聊回复可引用 + @ 发送者', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-at-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 601 } } } }
+  const cog = makeCog({
+    dir, gateway, scheduler,
+    configOverride: { turn: groupTurnConfig(), reply: { split: false, quote: true, atSender: true } },
+  })
+  try {
+    cog.observe(groupEvent(1, '你好', { chatId: 'g1', senderId: '10001', mentions: [{ userId: '999', name: '机器人' }] }), { accepted: true })
+    scheduler.advance(4000)
+    await flush(60)
+    assert.equal(sent.length, 1)
+    const types = sent[0].message.map((segment) => segment.type)
+    assert.deepEqual(types, ['reply', 'at', 'text'])
+    assert.equal(sent[0].message[1].data.qq, '10001')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('M2-a：连续未点名接话达到上限后暂停主动接话，点名仍回', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-flood-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 700 + sent.length } } } }
+  const cog = makeCog({
+    dir, gateway, scheduler,
+    configOverride: {
+      turn: groupTurnConfig({ groupReplyMode: 'all', groupCooldownMs: 0, groupMaxRepliesPerMinute: 60, maxConsecutiveGroupReplies: 2 }),
+      reply: { split: false },
+    },
+  })
+  try {
+    for (let index = 1; index <= 4; index += 1) {
+      cog.observe(groupEvent(index, `群友 ${index} 在聊天`), { accepted: true })
+      scheduler.advance(4000)
+      await flush(40)
+    }
+    assert.equal(sent.length, 2, '未点名接话达到上限后不再接')
+    const stats = cog.snapshot().pipeline
+    assert.ok(stats.groupSkippedByReason.consecutive_limit >= 1)
+
+    cog.observe(groupEvent(5, '机器人你出来', { mentions: [{ userId: '999', name: '机器人' }] }), { accepted: true })
+    scheduler.advance(4000)
+    await flush(40)
+    assert.equal(sent.length, 3, '点名仍要回复')
   } finally {
     cog.dispose()
     rmSync(dir, { recursive: true, force: true })
