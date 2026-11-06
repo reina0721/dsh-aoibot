@@ -37,7 +37,6 @@
     "files": 5
   },
   "notCovered": [
-    "typing visual confirmation",
     "media provider",
     "file/media send",
     "request approval",
@@ -58,8 +57,9 @@
   "typing": {
     "enabled": true,
     "inboundObserved": true,
-    "visualConfirmation": false,
-    "note": "cognition.typing.enabled=true; private inbound occurred, so set_input_status 1/2 was attempted, but no direct visual capture or gateway success log exists."
+    "visualConfirmation": true,
+    "confirmedBy": "owner",
+    "note": "Owner confirmed seeing the private-chat typing/input status after sending /status; no group typing claimed."
   },
   "upgradeCheck": {
     "enabled": true,
