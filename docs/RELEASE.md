@@ -4,7 +4,7 @@
 
 ## 1. 当前结论
 
-- 版本：`package.json` 为 `0.11.6`；GitHub 标签/Release 与线上 `web` 安装状态见文末。
+- 版本：`package.json` 为 `0.11.7`；GitHub 标签/Release 与线上 `web` 安装状态见文末。
 - **用户决定（2026-11-06）：接受当前 parity 并收束。** 剩余 47 项与 8 项豁免保留为已知边界；不宣称全量 parity，不再以“全部闭环”为发布门槛。
 - 审计：61 项中 `has 6`、`partial 40`、`none 0`、`limited 1`、`leading 6`、`exempt 8`；**47 项非 has/exempt**。完整快照见 [PARITY-AUDIT.md](PARITY-AUDIT.md)。
 - 用户已批准 8 项发布门槛豁免（2026-11-06）：#16 远端 API 鉴权、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 工作区迁移/离峰省钱、#42 RVC/翻唱、#49 抖音/小黑盒、#50 桌宠。豁免是用户决定，不是实现证据；见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)。
@@ -57,13 +57,15 @@ git diff --check
 
 ## 6. 真机验收状态（部分）
 
+**0.11.7 部署**：live 已升级 0.11.7；`GET /modules` 默认含停用 `builtin-sample`，`summary.builtin=1`，外部模块兼容。
+
 **0.11.6 部署**：live 已升级 0.11.6，`/status.brand=小葵`；`cognition.llm.budgetScope=global`，全局已用 315235/1000000，人格 0/300000，`effectiveLeft=684765`。侧栏/页头需刷新网页重载 index 注入；未做浏览器截图验证。
 
 **0.11.5 故障修复**：19:31 live 收到私聊但未回复；日志显示 `Preset services require isolate realms: compaction, toolResultPruner`，回退 one-shot 后 `BUDGET_EXHAUSTED`。已给私有预设 compaction 组补 isolate（与 DSH 标准预设一致），临时切 one-shot 并提高日预算后切回 agent；0.11.5 已发布/live，等待用户重发消息复测。
 
 2026-11-06 已将 `v0.11.1` 本地构建安装到 live `web` profile 并完成**部分**真实 QQ smoke：
 
-- live health `version=0.11.6`、`state=connected`；
+- live health `version=0.11.7`、`state=connected`；
 - 新增 `/media/status`、`/backup`、`/upgrade`、`/modules` 路由均返回 200；
 - 真实私聊入站消息与助手回复出现在 `/events`；通过 `/send` 实际发出消息，message_id `535556004`；
 - 通过 `/backup/create` 创建本地快照 `20261106T153925024Z-f43f618a`。
@@ -72,7 +74,7 @@ git diff --check
 
 ## 7. 版本与发布状态
 
-- 标签/Release：`v0.11.0` 已发布；`v0.11.1` 为 M7-q typing 补丁；`v0.11.2` 为操作员/审批/目的计划；`v0.11.3` 为文件下载/删除；`v0.11.4` 为身份注册表；`v0.11.5` 修复 Agent preset isolate；`v0.11.6` 为双预算与 bot 名称发布（资产已生成）。
+- 标签/Release：`v0.11.0` 已发布；`v0.11.1` 为 M7-q typing 补丁；`v0.11.2` 为操作员/审批/目的计划；`v0.11.3` 为文件下载/删除；`v0.11.4` 为身份注册表；`v0.11.5` 修复 Agent preset isolate；`v0.11.6` 为双预算与 bot 名称；`v0.11.7` 为内置/外部模块架构。
 - 线上 `web`：已升级到 0.11.0 构建并完成部分真实 smoke；未完成主人命令/媒体 provider/审批/typing/提醒投递等验收，不得写“全量实机验收”。
 - 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 通过；GitHub Release 已上传。
 
