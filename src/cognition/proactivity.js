@@ -45,7 +45,7 @@ export function createProactivityService({
     }
     const personRecord = person.detail(rel.personId)
     if (!personRecord) return { ok: false, reason: 'no_person' }
-    const memories = memory.retrieve({ query: '', personId: rel.personId, scope: { scopeType: 'private', scopeId: rel.scopeId || '' }, emotion: emotion.get(), relationship: rel, limit: 4 })
+    const memories = await memory.retrieveAsync({ query: '', personId: rel.personId, scope: { scopeType: 'private', scopeId: rel.scopeId || '' }, emotion: emotion.get(), relationship: rel, limit: 4 })
     const personaState = persona.get()
     const promptSystem = [
       '你在为一段持续的私聊主动发起一句话。',

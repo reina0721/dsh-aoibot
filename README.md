@@ -26,6 +26,7 @@
 - 本地目录备份与「备份」面板：默认 200 MiB / 5000 文件 / 保留 10 份；恢复默认暂存，应用需显式开启并先创建恢复前备份。快照含密钥与认知隐私，请按秘密保护；复制 SQLite 前停止写入，恢复后重启。无 zip、云端传输、自动恢复或工作区迁移，见[备份说明](docs/USER-MANUAL.md#备份)。
 - 「安全」页：只读访问审计与危险面、上线检查清单；默认关闭的手动 GitHub Release 版本检查，stable/beta 仅改变发布过滤，不自动更新、下载或安装。保持 DSH 本机信任边界，不改变 API 鉴权；不提供工作区迁移或离峰省钱，见[安全与上线检查](docs/USER-MANUAL.md#安全与上线检查)。
 - 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；每日记忆整理与按作用域反思；时间轴只读回忆日志。
+- 可选语义检索（M7-f）：默认关闭的 OpenAI 兼容 embeddings 重排词法候选，出错回退词法；仅 fake provider 离线测试，真实 provider 未验证。无本地模型、独立 reranker 或向量数据库，见[配置](docs/CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
 - 旧档案导入：认知记忆页/API 将通用 JSON/JSONL 导入当前人格，默认最多 5 MiB/5000 项，按作用域/人物/正文幂等去重，本地处理。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。

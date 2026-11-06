@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- M7-f：新增默认关闭的 OpenAI 兼容 embeddings 与异步记忆重排；配置 Base URL/模型/密钥环境变量/0–1 权重，32 条批次、4000 字符、8–4096 维校验、超时/禁重定向及 2000 项内存 LRU。pipeline/主动任务 await，保留同步词法检索，失败词法回退且不重复强化。无新依赖、默认零 embedding 网络；离线 fake 测试，不含本地模型/独立 reranker/向量数据库或全库向量召回，真实 provider 未验证，#31 仍 partial。
+
 - M7-e：更新 current-architecture / parity-roadmap 视觉（Archify 3.0.1，四门通过；不声称人工感知评审），新增发布检查表、回滚与声明边界。仍不宣称全量 parity。
 
 - M7-d：新增 `archive-import.js`、`POST /cognition/import` 与认知记忆页「导入旧档案」。通用 JSON/JSONL 导入当前人格，默认 5 MiB/5000 项（可调低）；正文/作用域/人物/时间戳/类型白名单校验、确定性 ID 幂等去重、仅计数日志；新增 `cognition.import` 配置及离线服务/API/面板测试。不联网、不自动发送 QQ，无新依赖；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证，#30 仍为部分实现。

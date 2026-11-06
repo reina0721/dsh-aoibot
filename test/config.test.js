@@ -168,3 +168,18 @@ test('qqAdmin config: opt-in defaults, bounded maxText and confirmation normaliz
   assert.deepEqual(normalizeConfig({ cognition: { qqAdmin: { enabled: true, requireConfirm: false, maxText: 500 } } }).config.cognition.qqAdmin, { enabled: true, requireConfirm: false, maxText: 100 })
   assert.equal(normalizeConfig({ cognition: { qqAdmin: { maxText: -10 } } }).config.cognition.qqAdmin.maxText, 1)
 })
+
+test('embedding config: opt-in defaults, memory fields and normalized bounds', () => {
+  const embedding = normalizeConfig({}).config.cognition.memory.embedding
+  assert.deepEqual(embedding, { enabled: false, baseUrl: '', model: 'text-embedding-3-small', apiKeyEnv: '', weight: 0.35 })
+  const fields = CONFIG_GROUPS.find((group) => group.id === 'cog-memory').fields.map((field) => field.path)
+  for (const name of Object.keys(embedding)) assert.ok(fields.includes(`cognition.memory.embedding.${name}`))
+  const normalize = (input) => normalizeConfig({ cognition: { memory: { embedding: input } } }).config.cognition.memory.embedding
+  assert.equal(normalize({ enabled: 'yes', baseUrl: 'file:///tmp/private', model: 1, weight: 'bad' }).enabled, false)
+  assert.equal(normalize({ baseUrl: 'file:///tmp/private' }).baseUrl, '')
+  assert.equal(normalize({ weight: 2 }).weight, 1)
+  assert.equal(normalize({ weight: -1 }).weight, 0)
+  assert.equal(normalize({ weight: 'bad' }).weight, 0.35)
+  assert.deepEqual(normalize({ enabled: true, baseUrl: 'https://embedding.invalid/v1', model: 'custom', apiKeyEnv: 'EMBED_KEY', weight: 0.5 }),
+    { enabled: true, baseUrl: 'https://embedding.invalid/v1', model: 'custom', apiKeyEnv: 'EMBED_KEY', weight: 0.5 })
+})

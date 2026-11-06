@@ -61,7 +61,7 @@ export function emotionCongruence(memory, emotion) {
   return clamp(1 - Math.abs(v - target) / 2, 0, 1)
 }
 
-export function createMemoryService({ store, getConfig, clock, log } = {}) {
+export function createMemoryService({ store, getConfig, clock, log, embedder = null } = {}) {
   const cfg = () => getConfig()?.cognition || {}
   const working = new Map() // chatKey -> { turn, personId, scope, goal, candidates, updatedAt }
 
@@ -169,7 +169,7 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
   /**
    * 检索：query + person/scope/emotion/relationship；返回带来源与分数的记忆。
    */
-  function retrieve({ query = '', personId = '', scope = { scopeType: 'global', scopeId: '' }, emotion = {}, relationship = null, now = clock.now(), limit = null, maxChars = null } = {}) {
+  function retrieve({ query = '', personId = '', scope = { scopeType: 'global', scopeId: '' }, emotion = {}, relationship = null, now = clock.now(), limit = null, maxChars = null } = {}, recordAccess = true) {
     const c = cfg()
     const topK = Number(limit || c.memory?.retrievalTopK || 8)
     const budgetChars = Number(maxChars || c.memory?.maxContextChars || 4000)
@@ -219,7 +219,11 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
       chars += text.length
       if (chars >= budgetChars) break
     }
-    // 检索成功会强化稳定性（不是修改事实）。
+    if (recordAccess) reinforce(selected, now)
+    return selected
+  }
+
+  function reinforce(selected, now) {
     if (selected.length) {
       store.tx(() => {
         for (const item of selected) {
@@ -236,6 +240,61 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
         }
       })
     }
+  }
+
+  async function retrieveAsync(params = {}) {
+    if (!embedder || !String(params.query || '').trim()) return retrieve(params)
+    try {
+      if (!embedder.enabled()) return retrieve(params)
+    } catch {
+      log?.debug?.('记忆 embedding 回退词法检索')
+      return retrieve(params)
+    }
+    const c = cfg()
+    const requestedLimit = Math.max(1, Math.floor(Number(params.limit || c.memory?.retrievalTopK || 8)))
+    const budgetChars = Number(params.maxChars || c.memory?.maxContextChars || 4000)
+    const now = params.now ?? clock.now()
+    const personaId = store.currentPersonaId?.()
+    // 候选阶段只读；成功或回退仅强化最终选中的记忆一次。
+    const candidates = retrieve({ ...params, now, limit: Math.max(3 * requestedLimit, 24) }, false)
+    if (!candidates.length) return []
+    let ranked
+    try {
+      const similarities = []
+      // 每次最多 32 条（query + 31 个候选），大候选集分批。
+      for (let i = 0; i < candidates.length; i += 31) {
+        const batch = candidates.slice(i, i + 31)
+        const scores = await embedder.similarity(params.query, batch.map((item) => memoryText(item.memory)))
+        if (!Array.isArray(scores) || scores.length !== batch.length || scores.some((score) => !Number.isFinite(score) || score < -1 || score > 1)) throw new Error('invalid similarity')
+        similarities.push(...scores)
+      }
+      const rawWeight = Number(c.memory?.embedding?.weight ?? 0.35)
+      const weight = Number.isFinite(rawWeight) ? clamp(rawWeight, 0, 1) : 0.35
+      ranked = candidates.map((item, i) => ({
+        ...item,
+        score: (1 - weight) * item.score + weight * similarities[i],
+        signals: { ...item.signals, embedding: similarities[i] },
+      })).sort((a, b) => b.score - a.score)
+    } catch {
+      log?.debug?.('记忆 embedding 回退词法检索')
+      return retrieve(params)
+    }
+    // 等待期间切换人格、删除/编辑/强化记忆时，重新词法检索，避免旧快照覆盖新状态。
+    if (store.currentPersonaId?.() !== personaId || candidates.some(({ memory }) => {
+      const current = store.get('memory', memory.id)
+      return !current || current.version !== memory.version || current.status !== memory.status
+        || memoryText(current) !== memoryText(memory)
+    })) return retrieve(params)
+    const selected = []
+    let chars = 0
+    for (const item of ranked) {
+      const length = memoryText(item.memory).length
+      if (selected.length >= requestedLimit) break
+      if (chars + length > budgetChars) continue
+      selected.push(item)
+      chars += length
+    }
+    reinforce(selected, now)
     return selected
   }
 
@@ -442,7 +501,7 @@ export function createMemoryService({ store, getConfig, clock, log } = {}) {
   }
 
   return {
-    workingSet, workingGet, encodeTurn, remember, forgetMatching, retrieve, get, list, activate, forget, remove, contextFor, stats, consolidateAll,
+    workingSet, workingGet, encodeTurn, remember, forgetMatching, retrieve, retrieveAsync, get, list, activate, forget, remove, contextFor, stats, consolidateAll,
     maybeConsolidate, scopeVisible,
   }
 }

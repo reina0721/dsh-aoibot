@@ -333,7 +333,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - 面板：认知 → 目的（增删改/进度/状态）；记忆页「整理/反思」手动触发；API `GET /cognition/purpose`、
   `POST /cognition/purpose/create|update|delete`、`POST /cognition/consolidation/run`。
 - `src/cognition/timeline.js`：只读聚合 turn/memory/decision，支持 `before` 分页、types 与 scope 过滤；面板「时间轴」按类型筛选。
-- 边界：目的不执行工具、不自动发消息；导入旧档案/人物档案编辑/向量检索仍在 M3 剩余。
+- 边界：目的不执行工具、不自动发消息；人物档案编辑与全库向量召回仍在 M3 剩余；导入旧档案见 M7-d，可选 embedding 重排见 M7-f。
 
 ### 3.17 媒体基础（M4-a）
 
@@ -453,3 +453,11 @@ API 均位于 `/onebot-qq/api`：
 OneBot 参数按 [OneBot v11 公开 API](https://github.com/botuniverse/onebot-11/blob/master/api/public.md) 显式封装；`set_qq_profile`、`set_essence_msg` 与文件上传为网关扩展，支持情况取决于实现。昵称拒绝返回明确 unsupported。踢人强制字面量 confirm；撤回默认确认（可配置）；破坏性动作在调用前仅记录动作/操作者/会话/目标 ID，不记录文本或网关原始错误。精华/撤回先 get_msg 检查 message_type 与 group_id 或私聊目标；标准响应可能不提供归属字段，此时拒绝，不尝试跨聊推断。
 
 媒体服务统一验证相对路径/根内 realpath、普通文件、扩展名和大小；不允许通过文件或目录符号链接访问媒体根外。上传路径由网关进程读取。自动化使用 fake 网关与本地临时文件，无网络；真实 QQ 管理/资料/文件动作未验证。逐项权限矩阵与通用审批仍未实现。2026-11-06 用户豁免范围见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)，不修改本机-only/CSRF 行为。
+
+### 3.24 可选 embedding 检索（M7-f）
+
+`cognition/index.js` 构造 `createEmbeddingService({getConfig,logger,fetchImpl})` 并仅注入 memory。`embeddings.js` 默认关闭，enabled/status 不联网；开启后只 POST 配置 base 下的 `/embeddings`，Bearer 密钥从环境读取，redirect=error，超时覆盖请求及 JSON 读取（`timeouts.callMs`）。输入每批 1–32 条、每条 1–4000 Unicode 字符；响应条数对应输入、每条 8–4096 维有限数、维度一致，标准 index 乱序会还原，错误不返回伪向量、不记录文本/秘密。模型+文本摘要键的内存 LRU 上限 2000，端点/密钥切换清空。
+
+memory 保留同步 retrieve 的词法/FTS/关联与强化行为；retrieveAsync 先只读取 `max(3*limit,24)` 个词法候选（仍受现有 scope/person/300 行扫描/字符预算约束），按 query+31 候选分批求 cosine，零范数为 0。按 `(1-weight)*baseScore + weight*cosine` 重排并添加 `signals.embedding`，保留 memory 与原 signals，按 limit/字符预算选取，仅强化最终选中项一次。异常只记录固定 debug 文案，回退原 retrieve，不重复写入；等待中切换人格或候选已删除/编辑/强化则重新词法检索，避免恢复已删除记录或覆盖并发更新。pipeline handleTurn 与 proactivity tick 均 await retrieveAsync；主动任务当前空查询直接词法，UI/同步调用不变。
+
+只支持 OpenAI 兼容 embeddings 重排，不含本地模型、独立 reranker、持久化向量或向量数据库，也不是全库向量召回。fake fetch/假 embedder 的离线服务及集成测试通过，真实 provider 未验证，GAP #31 保持 partial。

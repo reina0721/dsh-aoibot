@@ -269,11 +269,27 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 | `cog-persona` | `persona.traits` / `style` / `values` / `evolutionEnabled` / `evolutionPerDay` | 见默认值 | 12 维稳定人格、6 维表达风格、价值边界；最长每日小步慢演化。**文本人设（名字/背景/性格/风格/喜好/边界）存在认知 persona 记录，不在此表** |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
 | `cog-relationship` | `relationship.inertia` / `conflictGain` / `repairRate` / `maxDeltaPerTurn` | `–` | 多维有向关系；冲突升快降慢、单轮变化有上限 |
-| `cog-memory` | `memory.retrievalTopK` / `maxContextChars` / 权重项 / `consolidateEvery` / `consolidation.enabled` / `hour` / `reflect` / `reflectMinEpisodes` | `8` / `4000` / `0.3` 等 / `25` / `true` / `4` / `true` / `10` | 工作/情景/语义/关联检索、遗忘≠删除、私聊隔离；每日整理与按作用域反思 |
+| `cog-memory` | `memory.retrievalTopK` / `maxContextChars` / 权重项 / `consolidateEvery` / `embedding.*` / `consolidation.enabled` / `hour` / `reflect` / `reflectMinEpisodes` | `8` / `4000` / `0.3` 等 / `25` / `true` / `4` / `true` / `10` | 工作/情景/语义/关联检索、遗忘≠删除、私聊隔离；每日整理与按作用域反思 |
 | `cog-policy` | `policy.proactive` / `silenceThreshold` / `replyThreshold` / `groupPenalty` / `dailyGlobalLimit` / `perChatGroup` | `false` / `0.3` / `0.52` / `0.1` / `120` / `10` | 候选动作效用 + Beta 后验 + 结果归因；沉默/等待是一等动作；旧 `policy.groupAmbient` 只作兼容映射，不再显示 |
 | `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
+
+### 可选语义检索（`cognition.memory.embedding`，M7-f）
+
+在「认知 → 设置 → 记忆」配置；默认关闭，无 embedding 网络请求。启用后会把查询及当前人格、可见作用域的候选记忆文本发送到所配 provider，失败回退原词法检索。只支持 OpenAI 兼容 `/embeddings`；无本地模型、独立 reranker 或向量数据库。自动化只用 fake provider，真实 provider 未验证，GAP #31 仍 partial。
+
+| 字段（前缀 `cognition.memory.embedding.`） | 类型 | 默认 | 约束/含义 |
+|---|---|---|---|
+| `enabled` | boolean | `false` | 是否开启异步检索的 embedding 重排 |
+| `baseUrl` | string | `""` | HTTP(S) API base，如 `https://embedding.example/v1`，追加 `/embeddings`；不允许 URL 凭据、查询或 fragment，不跟随重定向 |
+| `model` | string | `text-embedding-3-small` | 模型名，最多 200 字符 |
+| `apiKeyEnv` | string | `""` | Bearer 密钥的环境变量名，最多 128 字符；密钥不写入配置 |
+| `weight` | number | `0.35` | 规范化到 0–1；最终分数 `(1-weight)*词法基础分 + weight*cosine` |
+
+`enabled()/status()` 不联网；configured 仅判断 base/model/环境变量名字段完整性，不验证密钥存在或连通性。调用时读取环境密钥，超时沿用 `timeouts.callMs`。每批 1–32 条、每条 1–4000 Unicode 字符；返回向量须为 8–4096 维有限数且维度一致。内存 LRU 最多 2000 项，按模型/文本缓存，端点或密钥切换后清空，不持久化向量、不记录正文/密钥。
+
+同步 `retrieve()`、面板查询保持原词法行为。pipeline 和主动任务使用 `retrieveAsync()`；空查询/无候选不调用 provider（主动任务当前查询为空）。词法候选限额为 `max(3*请求条数,24)`，仍受既有作用域、人物、300 行扫描及字符预算限制；每批最多 query+31 候选。仅重排这些候选，不是全库向量召回；最终不超过请求条数和字符预算，调用失败按原词法行为回退，不重复强化记忆。旧 `memory.semanticIndex` 保留兼容，不控制此开关。
 
 ### 导入旧档案（cognition.import，M7-d）
 

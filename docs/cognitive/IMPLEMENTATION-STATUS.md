@@ -6,7 +6,7 @@
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.10.0` 未发布分支，346 个测试（342 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.10.0` 未发布分支，380 个测试（376 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
@@ -21,7 +21,7 @@
 | 情绪 | I/T/V | `emotion.js` | OCC 评价→PAD/离散；惯性、衰减、调节、外显阈值；疲劳/压力影响有效技能 | 评价主要来自 LLM 分析或本地启发式，无真实生理信号；不声称主观体验 |
 | 人物画像 | I/T/V | `person.js` | Person/identity/facet；fact/self_report/observation/inference/hypothesis；scope/confidence/status/outdated/disputed；修正/删除/导出 | 身份合并/拆分是规则+scope，没有强实体消歧；群成员网络未单独建模 |
 | 关系 | I/T/V | `relationships.js` | 10 维有向关系；全局/群/私聊作用域；惯性、冲突升快降慢、修复、单轮上限；历史事件 | 长期衰减未在每次读取时强制应用；群体氛围/多人关系网络为 v0.5 |
-| 记忆 | I/T/V | `memory.js` | 工作/情景/语义/情绪/社会/程序；重要性/显著性；FTS 中文+英文检索；关联 2 跳；检索公式；巩固；遗忘（降权）≠删除；隐私隔离；时间/访问衰减 | 默认词法+图关联，embedding 只是可选接缝未接入真实向量库；长期巩固策略是阈值启发式 |
+| 记忆 | I/T/V | `memory.js` | 工作/情景/语义/情绪/社会/程序；重要性/显著性；FTS 中文+英文检索；关联 2 跳；检索公式；巩固；遗忘（降权）≠删除；隐私隔离；时间/访问衰减 | 默认词法+图关联；M7-f 可选 OpenAI 兼容 embedding 重排（默认关、失败词法回退、fake 测试）；无本地模型/独立 reranker/向量数据库/全库向量召回，真实 provider 未验证，#31 仍 partial；长期巩固为阈值启发式 |
 | 信念/未知 | I/T | `beliefs.js`、`knowledge.js` | 概率化信念、证据 logit 更新、冲突 `disputed`、用户纠正；未知检测/学习任务/claims | 信念候选依赖 LLM 返回；本地无法可靠抽命题；未知到信念的自动桥接有限 |
 | 策略/行为 | I/T/V | `policy.js`、`pipeline.js` | 候选动作效用；关系/情绪/人格/技能约束；沉默/等待是一等动作；上下文 Beta 后验 + 探索；限频；结果归因（用户继续/纠正/情绪）；撤回专项（未看见内容不假装看见）；主动行为默认关且有安静时段/日预算/退避 | 没有显式目标树/规划器；复杂多步任务规划仍交给 DSH agent 层；proactive 的实际模型调用未在真实探针验证（无凭据） |
 | 学习 | I/T/L | `knowledge.js`、`sources` | 未知→任务→多来源→带引用 claim；来源可注册；预算/暂停/重试/取消；默认只检测，自动外部检索显式开启 | 未做 real-world 多源冲突自动裁决的完整回归；Wikipedia/OpenAlex/GitHub 网络调用在测试中用 fake source；真实网络未逐源验证 |
@@ -46,7 +46,7 @@
 | B站公共内容（M5-b） | I/T | `src/content/bilibili.js`、`commands.js`、内容面板 | 默认关闭；公开搜索/热门/BV 详情；`/bili`、2 个 REST 路由与结果卡；标题/作者/播放/时长/链接规范化 | 无 Cookie/WBI、评论/分享/字幕；QQ空间因授权/ToS 未实现；真实 B站未验证 |
 | 本地备份/恢复（M6-a） | I/T/L | `src/ops/backup.js`、REST、备份面板 | 目录快照（无 zip）；默认配置/模型/认知/模块/表情包，可选根内全部媒体；200 MiB/5000 文件/10 份，原子发布/可选清理、路径/符号链接/hash 校验、默认暂存、allowRestore 门控与恢复前备份 | 含密钥需保护；复制 SQLite 前必须停写，恢复后重启；不保证在线一致性或整目录事务；不删除未列出的文件；无加密/云端/自动恢复/迁移（版本检查见 M6-b），未做真实数据恢复 V |
 | 主人 QQ 管理命令（M7-b） | I/T/L | `commands.js`、`qq-actions.js`、`gateway/actions.js`、`media/index.js` | 默认关/主人/当前会话/access 闸门；昵称、名片/群名、管理员、禁言/全禁、踢人、精华/撤回、媒体根内相对路径文件；踢人始终 confirm、撤回默认确认；破坏动作简短审计；ID/文本/归属/realpath 校验 | 无逐项权限矩阵/任意 action 透传/新 Agent 工具；get_msg 缺归属则拒绝；机器人需群管权限；profile/精华/文件依赖网关扩展；真实 QQ 管理/资料/文件动作未验证 | M7-b 受限完成 |
-| 对标审计/临时 profile smoke（M7-a） | I/T/V | `scripts/parity-audit.mjs`、`scripts/smoke-temp-profile.sh`、`docs/PARITY-AUDIT.md` | 矩阵结构审计/JSON 输出/源码与测试静态计数；临时 DSH profile 启动、关闭 QQ、查询健康/状态/配置/模块/媒体/备份/升级并创建一次备份、清理；实际 smoke 通过 | 不是全量对齐；不替代真实 QQ/媒体/GitHub 验证；矩阵剩余 50 项（排除 6 has + 5 exempt，仍含 6 leading） | M7 剩余 |
+| 对标审计/临时 profile smoke（M7-a） | I/T/V | `scripts/parity-audit.mjs`、`scripts/smoke-temp-profile.sh`、`docs/PARITY-AUDIT.md` | 矩阵结构审计/JSON 输出/源码与测试静态计数；临时 DSH profile 启动、关闭 QQ、查询健康/状态/配置/模块/媒体/备份/升级并创建一次备份、清理；实际 smoke 通过 | 不是全量对齐；不替代真实 QQ/媒体/GitHub 验证；矩阵剩余 47 项（排除 6 has + 8 exempt，仍含 6 leading） | M7 剩余 |
 | 安全页/上线清单/升级检查（M6-b） | I/T/L | `src/ops/upgrade.js`、REST、`SecurityPage` | 15 个顶层标签；只读访问/危险面、最近 5 条审计、6 项上线清单；默认关闭的手动 GitHub 检查，最近 10 条内 stable/beta 过滤、版本比较、内存缓存/force、超时/真实错误；GET 状态零网络 | beta 仅放宽预发布过滤；模块审核始终人工提醒，媒体只检查字段；无后台/自动更新、下载/安装、token、云端、工作区迁移或离峰省钱；API 鉴权不变，依赖 DSH 本机信任边界；未做真实 GitHub/浏览器 V |
 | 群体网络 | N | — | 关系有 group scope | 成员角色/群体氛围/多人冲突/群体规范是 v0.5 |
 | 显式目标与规划 | N | — | 策略按候选效用选择动作 | 没有长期目标树、计划执行、失败重规划；当前由 DSH agent 层提供规划，认知内核不假装拥有 |

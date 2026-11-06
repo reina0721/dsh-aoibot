@@ -102,7 +102,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 28 | 每日整理/空闲提炼 | 有；预算/批次/重试/保留 | 每日 04:00 巩固 + 按作用域 LLM 反思；手动触发；私聊隔离 | 部分（M3-b） | M3 剩余：批次/重试/保留 |
 | 29 | 人物档案/群印象/相处经验/说话方式 | 有页面、可编辑、按聊天隔离 | person/relationship 数据有，UI 只有条数；目的已有独立页 | 部分 | M3 剩余 |
 | 30 | 时间轴/回忆日志/导入旧档案 | 有 | 轮次/记忆/决策只读时间轴；M7-d 通用 JSON/JSONL 经面板/API 导入当前人格记忆，默认 5 MiB/5000 项、作用域校验、幂等去重、本地处理 | 部分（M3-c/M7-d） | M7：无 Aurabot 专用档案迁移、向量或时间轴事件导入；无真实旧档案样本验证 |
-| 31 | 语义检索/embedding | 可选，默认关 | 只有 seam，未接真实向量 | 部分 | M3 |
+| 31 | 语义检索/embedding | 可选，默认关 | M7-f 默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法不变，异常回退；32 条/4000 字符/8–4096 维/2000 项内存 LRU，fake 离线测试 | 部分（M7-f） | M7：仅兼容 embeddings；无本地模型/独立 reranker/向量数据库/全库向量召回；真实 provider 未验证 |
 | 32 | 跨平台身份 | 有 | 无 | 无 | M3 |
 
 ### 3.7 学习、信念与知识
@@ -128,7 +128,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | # | 能力 | Aurabot | dsh-bot | 状态 | 目标 |
 |---|---|---|---|---|---|
 | 41 | TTS/语音条/ASR | edge-tts / CosyVoice / GPT-SoVITS / HTTP；QQ PTT 文本/DSH STT | OpenAI 兼容 ASR/TTS；record 转写；TTS 落 MP3/base64 发送；`/tts` 默认 300 字；面板只落盘测试；默认关闭 | 部分（M4-b） | 无自动语音策略、多音色编排、RVC/翻唱或 Agent 工具；待真机 |
-| 42 | 翻唱/RVC | 网易云→分离→RVC→混音 | 无 | 无 | M5（可豁免） |
+| 42 | 翻唱/RVC | 网易云→分离→RVC→混音 | 无 | 豁免（用户批准） | 2026-11-06 用户批准：依赖外部 RVC 模型/客户端，退出发布门槛 |
 | 43 | 表情包 | 收集/尺寸/去重/打标/按语境发/商城 | 面板手动上传；PNG/JPG/JPEG/GIF/WebP；默认 5 MiB/张、200 张；SHA-256 去重；人工标签；`/sticker [标签]` 随机发 | 部分（M4-b） | 不自动收集、缩放转码、语境/情绪选择或接商城 |
 | 44 | 图片收发/视觉/生图/改图 | 有 | M7-c：入站/Vision/base64 出站；主人 /image 普通图片、/draw 生图、/redraw 兼容 edits；媒体页生图/改图只落盘，状态 flags；默认关闭、env 密钥、prompt 1–1000、五档尺寸、限大小 PNG b64_json、PNG 头边长≤1792/像素≤1792×1024；根内相对路径/realpath/扩展名/大小与 access 闸门 | 部分（M7-c） | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
 | 45 | 文件发送/接收 | 有 | 白名单扩展名下载；OneBot 群/私聊文件上传服务；M7-b 主人 /file 媒体根内相对路径，realpath 防逃逸 | 部分（M7-b） | 无文件面板；media.enabled/files.enabled 与 qqAdmin.enabled 必须开启；网关兼容性未实机验证 |
@@ -140,8 +140,8 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 47 | QQ 空间日记/评论/好友动态 | 有 | **未实现**：需要 QQ 登录授权，且需单独审查平台授权与 ToS；面板明确提示 | 豁免（用户批准） | 2026-11-06 用户批准：QQ空间：需 QQ 登录授权与 ToS 审查（见 §8.1） |
 | 48 | B 站浏览/评论/分享 | 有（WBI/字幕/热评） | 默认关闭的公开搜索/热门/BV 基本信息、`/bili`、REST 与内容页；无 Cookie/WBI | 部分（M5-b） | 无评论/分享/字幕/登录态；真实接口待验 |
-| 49 | 抖音/小黑盒 | 社区模块 | 无 | 无 | M5（可豁免） |
-| 50 | 桌宠 | 有（Electron 客户端） | 无 | 无 | M5（可豁免） |
+| 49 | 抖音/小黑盒 | 社区模块 | 无 | 豁免（用户批准） | 2026-11-06 用户批准：依赖外部账号/接口，退出发布门槛 |
+| 50 | 桌宠 | 有（Electron 客户端） | 无 | 豁免（用户批准） | 2026-11-06 用户批准：桌面客户端形态，退出发布门槛 |
 
 ### 3.11 模块与扩展
 
@@ -322,8 +322,11 @@ QQ → 网关 → events → access（主人/白名单/档位）
 | 52 | 模块市场/社区库与远程安装 | 用户批准不作为发布门槛；本地模块内核的隔离、类型等其他差距仍在原行跟踪 |
 | 55 | 25 页级面板 | 用户批准页面规模不作为发布门槛；不豁免其他行的功能/向导/验证差距 |
 | 59 | 工作区迁移/离峰省钱 | 用户批准不作为发布门槛；备份/恢复本身的其他限制仍在 #57 跟踪 |
+| 42 | 翻唱/RVC | 用户批准不作为发布门槛；依赖外部 RVC 模型/客户端，未实现 |
+| 49 | 抖音/小黑盒 | 用户批准不作为发布门槛；依赖外部账号/接口，未实现 |
+| 50 | 桌宠 | 用户批准不作为发布门槛；桌面客户端形态，不做 |
 
-**未批准豁免**：#42 RVC/翻唱、#44 生图/改图、#49 抖音/小黑盒、#50 桌宠及其他所有行继续保留差距。上文“建议/可豁免”仅是建议，不构成批准。#16 的行级 exempt 用于审计计数，仅代表上述远端鉴权范围；不能据此关闭或削弱本机-only/CSRF 行为。批准记录不改变运行时代码或部署边界。
+**未批准豁免**：#44 生图/改图及其他所有行继续保留差距；#42/#49/#50 已于 2026-11-06 后续批准豁免。上文“建议/可豁免”仅是建议，不构成批准。#16 的行级 exempt 用于审计计数，仅代表上述远端鉴权范围；不能据此关闭或削弱本机-only/CSRF 行为。批准记录不改变运行时代码或部署边界。
 
 ## 9. 复现与维护
 
@@ -347,3 +350,9 @@ bash scripts/archify-visuals.sh
 Aurabot 证据入口：`README.md`（能力表/模块/安全/面板）、`docs/USER-MANUAL.md`（逐项用法）、`docs/DESIGN.md`（实现取舍）、`src/chat/access.js`（权限）、`src/chat/hub.js`（Session/工具）、`src/features/memory.js`（记忆）、`src/purpose/engine.js`（目的）、`cordis.patch.yml`（4 个 preset）。
 
 dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognition/**`、`src/model/**`、`src/gateway/**`、`src/http/routes.js`、`client.js`、`test/**`。
+
+### M7-f：可选语义检索证据与限制
+
+`src/cognition/embeddings.js` 提供配置驱动、默认关闭的 OpenAI 兼容 `/embeddings` 客户端；`memory.retrieveAsync` 重排已可见的词法候选，pipeline/proactivity await，同步 retrieve 保持原行为。无候选/空查询/关闭时无外部调用；异常 debug 后词法回退，候选不写入、最终强化一次。权重默认 0.35、限制 0–1；每批 query+最多 31 候选，单条 1–4000 Unicode 字符，向量 8–4096 维有限数且一致，LRU 最多 2000 项，redirect=error、超时沿用 callMs，日志不含正文/密钥。
+
+证据：[embeddings.test.js](../../test/embeddings.test.js)、[memory.test.js](../../test/memory.test.js)、[集成测试](../../test/cognition-integration.test.js) 均用 fake provider/假 embedder，不访问外部网络。只支持 OpenAI 兼容 embeddings，无本地模型、独立 reranker、持久化向量、向量数据库或全库向量召回；真实 provider 未验证。#31 仍 partial，#42/#49/#50 及其他行状态不变。

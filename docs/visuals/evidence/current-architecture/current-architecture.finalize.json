@@ -5,16 +5,16 @@
   "status": "pass",
   "type": "architecture",
   "quality": "showcase",
-  "startedAt": "2026-11-06T12:05:52.961Z",
+  "startedAt": "2026-11-06T12:30:55.545Z",
   "specification": {
     "path": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
-    "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
-    "bytes": 7011
+    "sha256": "707457dc30005107733c78abdea1ea1cd621437fdfec3a12e8a8f2d407654207",
+    "bytes": 7022
   },
   "artifact": {
     "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-    "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
-    "bytes": 776775
+    "sha256": "fef01ac3b7993db97859a01241e24806d573fa9ba914da6d6958221081597bb6",
+    "bytes": 776818
   },
   "stages": {
     "validate": {
@@ -38,8 +38,8 @@
         "ok": true,
         "command": "validate",
         "specification": {
-          "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
-          "bytes": 7011
+          "sha256": "707457dc30005107733c78abdea1ea1cd621437fdfec3a12e8a8f2d407654207",
+          "bytes": 7022
         },
         "validation": {
           "checksPassed": 9,
@@ -54,7 +54,7 @@
     "deliver": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 443,
+      "durationMs": 431,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -68,19 +68,19 @@
       ],
       "receipt": {
         "schemaVersion": 1,
-        "receiptId": "aa4fb708-4857-4823-8965-93f45f595251",
+        "receiptId": "6888c08c-6ea3-48ff-8a61-4154a6fadcf6",
         "ok": true,
         "command": "deliver",
         "type": "architecture",
         "input": "/workspace/dsh-bot/docs/visuals/src/current-architecture.json",
         "output": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "specification": {
-          "sha256": "78ec288f93f9864d7f2aace13d4770c87e2484a009ed804f9ed02200388bff60",
-          "bytes": 7011
+          "sha256": "707457dc30005107733c78abdea1ea1cd621437fdfec3a12e8a8f2d407654207",
+          "bytes": 7022
         },
         "artifact": {
-          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
-          "bytes": 776775
+          "sha256": "fef01ac3b7993db97859a01241e24806d573fa9ba914da6d6958221081597bb6",
+          "bytes": 776818
         },
         "validation": {
           "checksPassed": 9,
@@ -106,7 +106,7 @@
     "check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 163,
+      "durationMs": 159,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -118,8 +118,8 @@
         "ok": true,
         "file": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
         "artifact": {
-          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
-          "bytes": 776775
+          "sha256": "fef01ac3b7993db97859a01241e24806d573fa9ba914da6d6958221081597bb6",
+          "bytes": 776818
         },
         "checks": [
           {
@@ -247,13 +247,13 @@
           "issues": []
         },
         "provenance": "current",
-        "deliveryReceiptId": "aa4fb708-4857-4823-8965-93f45f595251"
+        "deliveryReceiptId": "6888c08c-6ea3-48ff-8a61-4154a6fadcf6"
       }
     },
     "browser-check": {
       "status": "pass",
       "exitCode": 0,
-      "durationMs": 2660,
+      "durationMs": 2613,
       "command": [
         "/usr/local/bin/node",
         "/home/node/.dsh/profiles/web/node_modules/@tt-a1i/archify-dsh/skills/archify/bin/archify.mjs",
@@ -273,11 +273,11 @@
         "status": "pass",
         "visualReview": "not-requested",
         "provenance": "current",
-        "deliveryReceiptId": "aa4fb708-4857-4823-8965-93f45f595251",
+        "deliveryReceiptId": "6888c08c-6ea3-48ff-8a61-4154a6fadcf6",
         "artifact": {
           "path": "/workspace/dsh-bot/docs/visuals/current-architecture.html",
-          "sha256": "a10374a5a301ed6363beb67c6866bb5618424e008278b7a2bb3dc71ef1ee3c13",
-          "bytes": 776775
+          "sha256": "fef01ac3b7993db97859a01241e24806d573fa9ba914da6d6958221081597bb6",
+          "bytes": 776818
         },
         "state": {
           "detail": "read",
@@ -320,7 +320,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 6.7723270440251575,
-              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedNonEdgeTextPx": 6.856981132075472,
               "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -372,7 +372,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 7.50188679245283,
-              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedNonEdgeTextPx": 7.595660377358491,
               "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -424,7 +424,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -476,7 +476,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -581,7 +581,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 6.7723270440251575,
-              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedNonEdgeTextPx": 6.856981132075472,
               "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -633,7 +633,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 7.50188679245283,
-              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedNonEdgeTextPx": 7.595660377358491,
               "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -685,7 +685,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -737,7 +737,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -794,7 +794,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 6.7723270440251575,
-              "minimumProjectedNonEdgeTextPx": 7.618867924528303,
+              "minimumProjectedNonEdgeTextPx": 6.856981132075472,
               "minimumProjectedEdgeTextPx": 6.7723270440251575,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -846,7 +846,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 7.50188679245283,
-              "minimumProjectedNonEdgeTextPx": 8.439622641509434,
+              "minimumProjectedNonEdgeTextPx": 7.595660377358491,
               "minimumProjectedEdgeTextPx": 7.50188679245283,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -898,7 +898,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -950,7 +950,7 @@
               },
               "viewBoxWidth": 1590,
               "minimumProjectedNodeTextPx": 8,
-              "minimumProjectedNonEdgeTextPx": 9,
+              "minimumProjectedNonEdgeTextPx": 8.1,
               "minimumProjectedEdgeTextPx": 8,
               "minimumProjectedNodeText": "OneBot v11",
               "minimumProjectedNodeTextDetail": "edge",
@@ -996,8 +996,8 @@
     "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/current-architecture/current-architecture.browser-check.json"
   },
   "visualReview": "not-requested",
-  "finishedAt": "2026-11-06T12:05:57.693Z",
-  "durationMs": 4731,
+  "finishedAt": "2026-11-06T12:30:59.891Z",
+  "durationMs": 4346,
   "update": {
     "status": "update_available",
     "installedVersion": "3.0.1",

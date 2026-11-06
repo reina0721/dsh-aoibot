@@ -570,7 +570,7 @@ export function createPipeline({
     const emotionState = emotion.get()
     const personaState = persona.get()
     const scope = boundScope(turn)
-    const memories = memory.retrieve({ query: turn.text, personId: personRecord?.person?.id || '', scope, emotion: emotionState, relationship: rel })
+    const memories = await memory.retrieveAsync({ query: turn.text, personId: personRecord?.person?.id || '', scope, emotion: emotionState, relationship: rel })
     let purposeLines = []
     try {
       purposeLines = purpose?.promptContext?.({

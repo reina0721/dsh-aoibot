@@ -44,6 +44,6 @@ node "$ARCHIFY_SKILL/bin/archify.mjs" finalize architecture \
 ## 维护约定
 
 - 每个里程碑结束更新 `current-architecture` 与 `parity-roadmap`；M7 已更新两者，但 target-architecture 仍是 M1–M3 历史设计稿。
-- 2026-11-06 的审计快照：61 项中 5 项用户豁免、50 项非 has/exempt；M7 发布门未关闭。
+- 2026-11-06 的审计快照：61 项中 8 项用户豁免、47 项非 has/exempt；M7 发布门未关闭。
 - 图必须与 `docs/research/GAP-AURABOT.md` 的状态一致；不一致时以代码/测试为准，并修图。
 - 不把图当成实现证据；图只说明设计/结构。

@@ -267,6 +267,8 @@ SnowLuma 读取模式：网关类型选 `snowluma`，填安装目录（也可点
 - 面板可新建、+10% 进度、暂停/恢复、完成、放弃；命令用 ID 前 8 位即可；
 - 目的本身**不执行工具**，也不自动发消息；执行仍由策略/主动/Agent 决定。
 
+**记忆检索（M7-f）**：默认使用本地词法/FTS 与关联图，无 embedding 网络请求。可在「认知 → 设置 → 记忆」打开 `cognition.memory.embedding.enabled`，填写 Base URL、模型及密钥环境变量名，默认权重 0.35。开启后会向所配 OpenAI 兼容 `/embeddings` 服务发送查询与候选记忆文本；仅重排词法候选，不做全库向量召回。provider 出错、超时或响应不合法会回退词法检索；空查询/无候选不调用。同步面板查询保持词法检索。配置与批次/维度/缓存限制见 [CONFIG](CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。无本地模型、独立 reranker 或向量数据库；目前仅 fake provider 离线测试通过，真实 provider 未验证，#31 仍部分实现。
+
 **每日整理**（「认知 → 记忆 → 整理/反思」按钮，或 `POST /cognition/consolidation/run`）：
 
 - 默认每天 04:00 扫描情景记忆，按作用域巩固为语义记忆；

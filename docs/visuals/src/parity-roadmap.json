@@ -153,7 +153,7 @@
       "col": 5,
       "type": "database",
       "label": "审计结论",
-      "sublabel": "5 豁免 / 50 待闭环",
+      "sublabel": "8 豁免 / 47 待闭环",
       "width": 160
     }
   ],
@@ -230,9 +230,9 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "已完成（截至 M7-d）",
+      "title": "已完成（截至 M7-f）",
       "items": [
-        "M0–M6 里程碑已提交；M7-a 审计/smoke、M7-b 豁免与群管、M7-c 生图、M7-d 旧档案导入",
+        "M0–M6 已提交；M7-a 审计/smoke、M7-b 豁免与群管、M7-c 生图、M7-d 导入、M7-f 可选 embedding",
         "346 项测试（342 通过、4 live 跳过）；临时 profile smoke 通过"
       ]
     },
@@ -240,8 +240,8 @@
       "dot": "emerald",
       "title": "审计事实",
       "items": [
-        "61 项：6 has、35 partial、8 none、1 limited、6 leading、5 exempt",
-        "50 项非 has/exempt；豁免是用户决定，不是实现证据",
+        "61 项：6 has、35 partial、5 none、1 limited、6 leading、8 exempt",
+        "47 项非 has/exempt；豁免是用户决定，不是实现证据",
         "真实 QQ/媒体/provider/GitHub 仍未验证"
       ]
     },

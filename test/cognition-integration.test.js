@@ -526,3 +526,39 @@ test('M4-a：媒体识别文本进入 LLM prompt 与记忆，媒体失败不打�
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('integration: pipeline awaits configured embeddings rerank; default stays offline', async (t) => {
+  const envName = 'DSH_BOT_TEST_COG_EMBEDDINGS'
+  const previous = process.env[envName]
+  process.env[envName] = 'test-only-key'
+  t.after(() => { if (previous === undefined) delete process.env[envName]; else process.env[envName] = previous })
+  let fetches = 0
+  const fetchMock = t.mock.method(globalThis, 'fetch', async (_url, request) => {
+    fetches += 1
+    const { input } = JSON.parse(request.body)
+    await new Promise((resolve) => setImmediate(resolve))
+    return { ok: true, json: async () => ({ data: input.map((text, index) => ({ index, embedding: [text === 'coffee' ? -1 : 1, 0, 0, 0, 0, 0, 0, 0] })) }) }
+  })
+  for (const enabled of [false, true]) {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-embedding-'))
+    const scheduler = createFakeScheduler()
+    const capture = [], sent = []
+    const cog = makeCog({ dir, scheduler, gateway: { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 1 } } } }, llm: fakeLlm(capture),
+      configOverride: { memory: { retrievalTopK: 1, embedding: { enabled, baseUrl: 'https://embedding.invalid/v1', model: 'fake', apiKeyEnv: envName, weight: 1 } } } })
+    try {
+      cog.services.memory.remember('coffee')
+      cog.services.memory.remember('tea')
+      const before = fetches
+      cog.observe(privateEvent(700 + Number(enabled), 'coffee please'), { accepted: true })
+      scheduler.advance(1500)
+      await flush(50)
+      assert.equal(sent.length, 1)
+      assert.equal(fetches - before, enabled ? 1 : 0)
+      assert.ok(capture.some((prompt) => prompt.includes(enabled ? 'tea' : 'coffee')))
+    } finally {
+      cog.dispose()
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+  fetchMock.mock.restore()
+})

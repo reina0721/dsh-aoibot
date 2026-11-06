@@ -1,10 +1,12 @@
-# M7-a/M7-b/M7-c/M7-d 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f 对标审计、用户豁免与临时 profile smoke
 
-快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #42/#44/#49/#50 或其他差距，不改变本机-only/CSRF 行为。
+快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
+
+M7-f 更新 #31：默认关闭的 OpenAI 兼容 embeddings 重排词法候选；同步词法保留，错误回退，不重复强化。只有 fake provider/假 embedder 离线测试，无本地模型/独立 reranker/向量数据库/全库向量召回，真实 provider 未验证；#31 仍 partial，其余状态与豁免不变。
 
 ## 临时 profile smoke 证据
 
-M7-d 更新 #30：通用 JSON/JSONL 经面板/API 导入当前人格记忆，本地处理、限额/作用域校验与幂等去重。#30 仍 partial；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证。#31/#42/#44/#49/#50 状态保持不变。
+M7-d 更新 #30：通用 JSON/JSONL 经面板/API 导入当前人格记忆，本地处理、限额/作用域校验与幂等去重。#30 仍 partial；无 Aurabot 专用迁移、向量或时间轴事件导入，无真实旧档案样本验证。#31/#44 保持 partial；#42/#49/#50 后续获用户豁免。
 
 2026-11-06 实际运行 `DSH_BIN=/opt/dsh/bin/dsh PATH=/opt/dsh/bin:$PATH npm run smoke:temp`：临时 `web` profile 启动成功，`health/status/config/modules/media/status/backup/upgrade` 全部返回 `ok:true`，创建并列出一次本地备份，退出码 0，临时目录已清理；未连接 QQ、未请求 B站/GitHub/媒体 provider。摘要见 [m7-smoke.json](assets/m7-smoke.json)（已移除 token 与临时路径）。
 
@@ -25,15 +27,15 @@ npm run check:docs
 
 下方快照由 `formatReport({ ...summarize(parseMatrix(markdown)), source: countSource(root), tests: countTests(root) })` 生成。可用 `node scripts/parity-audit.mjs > /tmp/dsh-parity-report.md` 重新生成并替换快照（当前结构检查通过，返回 0）。矩阵旧量化章节是历史快照，不用于本次计数。
 
-当前实跑审计退出码为 **0**：61 行、无重复编号、无格式错误、非 has 项均有目标。先前 #2、#24、#33、#34、#35、#37 的目标为 —，已补为许可复核/领先无缺口说明。剩余表排除 6 个 has 与 5 个 exempt，共 50 项（其中 6 个 leading），不应理解为 50 个缺失功能。按目标列开头的显式里程碑分组；跨里程碑组合保留，无明确里程碑或明确排除范围的目标列归入“未分配里程碑”，不从已交付状态推断未来里程碑。
+当前实跑审计退出码为 **0**：61 行、无重复编号、无格式错误、非 has 项均有目标。先前 #2、#24、#33、#34、#35、#37 的目标为 —，已补为许可复核/领先无缺口说明。剩余表排除 6 个 has 与 8 个 exempt，共 47 项（其中 6 个 leading），不应理解为 47 个缺失功能。按目标列开头的显式里程碑分组；跨里程碑组合保留，无明确里程碑或明确排除范围的目标列归入“未分配里程碑”，不从已交付状态推断未来里程碑。
 
 <!-- parity-snapshot:start -->
 # 对标审计（并非全量对齐 / not full parity）
 
-矩阵 61 项；has: 6，partial: 35，none: 8，limited: 1，leading: 6，exempt: 5。
-剩余 50 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：62 个 JS 文件 / 15866 行。
-测试静态计数：41 个文件 / 7823 行 / 319 个顶层 test 声明；包含 skip，不代表执行结果。
+矩阵 61 项；has: 6，partial: 35，none: 5，limited: 1，leading: 6，exempt: 8。
+剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
+源码：63 个 JS 文件 / 16074 行。
+测试静态计数：43 个文件 / 8226 行 / 344 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -94,7 +96,6 @@ npm run check:docs
 | 27 | 记忆类型 | partial | M3 |
 | 28 | 每日整理/空闲提炼 | partial | M3 剩余：批次/重试/保留 |
 | 29 | 人物档案/群印象/相处经验/说话方式 | partial | M3 剩余 |
-| 31 | 语义检索/embedding | partial | M3 |
 | 32 | 跨平台身份 | none | M3 |
 | 36 | 真实外部知识源 | partial | M3 |
 | 39 | 主动搭话 | partial | M3 |
@@ -111,14 +112,6 @@ npm run check:docs
 |---|---|---|---|
 | 4 | 消息段与富媒体解析 | partial | M4 |
 | 25 | 心情/情绪 | leading | M4 |
-
-## M5
-
-| # | 能力 | 状态 | 目标 |
-|---|---|---|---|
-| 42 | 翻唱/RVC | none | M5（可豁免） |
-| 49 | 抖音/小黑盒 | none | M5（可豁免） |
-| 50 | 桌宠 | none | M5（可豁免） |
 
 ## M5-a
 
@@ -140,6 +133,7 @@ npm run check:docs
 |---|---|---|---|
 | 2 | SnowLuma 检测/读取 | partial | M7：许可边界复核（维持只读） |
 | 30 | 时间轴/回忆日志/导入旧档案 | partial | M7：无 Aurabot 专用档案迁移、向量或时间轴事件导入；无真实旧档案样本验证 |
+| 31 | 语义检索/embedding | partial | M7：仅兼容 embeddings；无本地模型/独立 reranker/向量数据库/全库向量召回；真实 provider 未验证 |
 | 44 | 图片收发/视觉/生图/改图 | partial | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
 | 46 | 本地接口（TTS/生图/识别脚本） | partial | M7：无本地识别脚本桥/任意本地路径/新图片上传下载接口；不抓 provider 返回 URL，只支持兼容 edits；真实 provider/QQ 未验证，面板/API 不自动发送 |
 | 61 | 真机 QQ/媒体验证 | partial | M7 |
@@ -169,7 +163,8 @@ npm run check:docs
 |---|---|---|
 | 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
-| M3 认知 / M7-d 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 向量检索、目的执行器、Aurabot 专用迁移/时间轴事件导入、真实旧档案样本 |
+| M3 认知 / M7-d 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移/时间轴事件导入、真实旧档案样本 |
+| M7-f 可选 embedding 重排 | [embeddings.test.js](../test/embeddings.test.js)、[memory.test.js](../test/memory.test.js)、[集成测试](../test/cognition-integration.test.js)；默认零调用、校验/超时/缓存/隐私、词法回退与并发写保护 | 真实 provider、本地模型、独立 reranker、向量数据库、全库向量召回；#31 仍 partial |
 | M4 媒体 | [media](../src/media)、[media.test.js](../test/media.test.js)、[stickers.test.js](../test/stickers.test.js) | 真实网关/媒体 provider、RVC、生图、自动语境选图 |
 | M5 内容与模块 | [bilibili.test.js](../test/bilibili.test.js)、[modules.test.js](../test/modules.test.js)、[模块文档](MODULES.md) | 真实 B站、QQ空间授权、模块市场或进程沙箱 |
 | M6 运维与面板 | [backup.test.js](../test/backup.test.js)、[upgrade.test.js](../test/upgrade.test.js)、[panel.test.js](../test/panel.test.js)、[API 路由](../src/http/routes.js) | 在线 SQLite 一致性、真实 GitHub、自动升级、迁移、真实浏览器验收 |
@@ -198,4 +193,7 @@ DSH_BIN=/opt/dsh/bin/dsh PATH=/opt/dsh/bin:$PATH npm run smoke:temp
 
 M7-c 本次 `npm test` 实跑退出 **0**：331 项，327 通过、0 失败、4 跳过（live 模型测试）。静态 304 个声明与执行 331 项的差异来自循环/缩进等声明形式。`npm run check:docs` 实跑退出 **0**，本地文档链接与当前命名检查通过；`npm run check:parity` 实跑退出 **0**，快照已按 #44/#46 的 M7-c 状态/目标更新。M7-c 测试使用 fake fetch/FormData、临时 PNG 和 fake QQ 网关；生成/编辑 API 只落盘，不自动发送。上述 smoke 是先前记录，仅证明关闭 QQ 的临时宿主/API 启动与本地备份路径；本次未运行真实 provider/QQ，不宣称真实图片生成/编辑已验证或全量对齐。
 
-M7-d 本次 `npm test` 实跑退出 **0**：346 项，342 通过、0 失败、4 跳过（live 模型测试）。新增 12 项导入服务/配置/人格隔离测试，以及 API 和面板测试；验证通用 JSON/JSONL、去重、作用域/限额、时间戳和日志隐私。`npm run check:docs` 与 `npm run check:parity` 均退出 **0**；快照由本次 parity 命令输出更新，#30 保持 partial，#31/#42/#44/#49/#50 状态未变。本次仅离线合成数据与 fake 宿主测试，未运行真实旧档案或新增真实 DSH/浏览器验证。
+M7-d 本次 `npm test` 实跑退出 **0**：346 项，342 通过、0 失败、4 跳过（live 模型测试）。新增 12 项导入服务/配置/人格隔离测试，以及 API 和面板测试；验证通用 JSON/JSONL、去重、作用域/限额、时间戳和日志隐私。`npm run check:docs` 与 `npm run check:parity` 均退出 **0**；快照由本次 parity 命令输出更新，#30 保持 partial，#31/#44 保持 partial，#42/#49/#50 后续获用户豁免。本次仅离线合成数据与 fake 宿主测试，未运行真实旧档案或新增真实 DSH/浏览器验证。
+
+
+M7-f 本次最终 `npm test` 实跑退出 **0**：380 项，376 通过、0 失败、4 跳过（既有 live 模型测试）。较 M7-d 新增 34 项运行用例，覆盖 fake fetch 请求/auth/超时/向量校验/LRU/cosine/日志隐私、异步重排与回退不重复写入、同步词法不变、默认零 embedding 网络及 pipeline await；等待期间切换人格、删除记忆、并发检索也有回归测试。`npm run check:docs` 与 `npm run check:parity` 均退出 **0**；快照已刷新，仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining。#31 保持 partial，#42/#49/#50 的 exempt 及其他状态不变。无新增依赖或真实 provider/QQ 验证；只实现 OpenAI 兼容 embeddings 对词法候选重排，无本地模型/独立 reranker/向量数据库/全库向量召回。

@@ -82,7 +82,7 @@
       "id": "cognition",
       "type": "backend",
       "label": "认知内核",
-      "sublabel": "turn / memory / purpose",
+      "sublabel": "turn / memory+embedding / purpose",
       "pos": [
         1170,
         320
@@ -362,7 +362,7 @@
       "title": "M7 审计边界",
       "items": [
         "61 项矩阵：6 has / 35 partial / 8 none / 1 limited / 6 leading / 5 exempt",
-        "50 项待闭环或未豁免；真实 QQ/媒体/GitHub 与 RVC/桌宠/抖音未验证"
+        "47 项待闭环或未豁免；真实 QQ/媒体/GitHub 与生图等 provider 未验证"
       ]
     }
   ]

@@ -12,6 +12,7 @@ import { createRelationshipService } from './relationships.js'
 import { createEmotionService } from './emotion.js'
 import { createPersonaService } from './persona.js'
 import { createMemoryService } from './memory.js'
+import { createEmbeddingService } from './embeddings.js'
 import { createArchiveImportService } from './archive-import.js'
 import {
   createPersonaScopedStore,
@@ -104,7 +105,8 @@ export function createCognition({
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
-      state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log })
+      const embedder = createEmbeddingService({ getConfig, logger: log })
+      state.services.memory = createMemoryService({ store: personaStore, getConfig, clock, log, embedder })
       state.services.archiveImport = createArchiveImportService({ store: state.scopedStore, getConfig, clock, logger: log })
       state.services.purpose = createPurposeService({ store: personaStore, getConfig, clock, log })
       state.services.timeline = createTimelineService({ store: state.store, scopedStore: personaStore, clock })

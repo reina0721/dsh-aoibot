@@ -296,7 +296,8 @@ export const DEFAULTS = {
       recencyHalfLifeDays: 30,
       forgetHalfLifeDays: 60,
       consolidateEvery: 25,
-      semanticIndex: 'lexical', // lexical | embedding
+      semanticIndex: 'lexical', // 兼容旧配置；可选向量重排由 embedding.enabled 控制
+      embedding: { enabled: false, baseUrl: '', model: 'text-embedding-3-small', apiKeyEnv: '', weight: 0.35 },
     },
     policy: {
       replyThreshold: 0.52,
@@ -822,7 +823,12 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.memory.recencyHalfLifeDays', label: '新近性半衰期', type: 'number', default: 30, min: 1, max: 365, step: 1, unit: '天' },
       { path: 'cognition.memory.forgetHalfLifeDays', label: '遗忘半衰期', type: 'number', default: 60, min: 5, max: 730, step: 5, unit: '天' },
       { path: 'cognition.memory.consolidateEvery', label: '每 N 条记忆尝试巩固', type: 'number', default: 25, min: 5, max: 200, step: 5 },
-      { path: 'cognition.memory.semanticIndex', label: '语义索引', type: 'select', default: 'lexical', options: [{ value: 'lexical', label: '词法 + 关联图（默认）' }, { value: 'embedding', label: '向量索引（需外部 provider）' }] },
+      { path: 'cognition.memory.semanticIndex', label: '语义索引', type: 'select', default: 'lexical', options: [{ value: 'lexical', label: '词法 + 关联图（默认）' }, { value: 'embedding', label: '兼容旧值（启用请用 Embedding 重排）' }] },
+      { path: 'cognition.memory.embedding.enabled', label: 'Embedding 重排', type: 'switch', default: false, help: '开启后将查询和候选记忆发送到配置的 provider；失败回退词法检索。' },
+      { path: 'cognition.memory.embedding.baseUrl', label: 'Embedding Base URL', type: 'text', default: '' },
+      { path: 'cognition.memory.embedding.model', label: 'Embedding 模型', type: 'text', default: 'text-embedding-3-small' },
+      { path: 'cognition.memory.embedding.apiKeyEnv', label: 'Embedding 密钥环境变量名', type: 'text', default: '' },
+      { path: 'cognition.memory.embedding.weight', label: 'Embedding 权重', type: 'number', default: 0.35, min: 0, max: 1, step: 0.05 },
       { path: 'cognition.consolidation.enabled', label: '每日整理', type: 'switch', default: true, help: '每日定时把情景记忆巩固为语义记忆，并按作用域生成阶段小结。' },
       { path: 'cognition.consolidation.hour', label: '整理时间', type: 'number', default: 4, min: 0, max: 23, step: 1, unit: '点', help: '本地时间；服务重启后会重新计算下一次。' },
       { path: 'cognition.consolidation.reflect', label: 'LLM 阶段反思', type: 'switch', default: true, help: '只压缩已有记忆，不新增事实；预算不足时自动跳过。' },
@@ -1332,6 +1338,13 @@ function normalizeCognition(raw, rawCognition = {}) {
       forgetHalfLifeDays: pickNumber(src.memory?.forgetHalfLifeDays, d.memory.forgetHalfLifeDays, { min: 5, max: 730, integer: true }),
       consolidateEvery: pickNumber(src.memory?.consolidateEvery, d.memory.consolidateEvery, { min: 5, max: 200, integer: true }),
       semanticIndex: pickEnum(src.memory?.semanticIndex, d.memory.semanticIndex, ['lexical', 'embedding']),
+      embedding: {
+        enabled: pickBool(src.memory?.embedding?.enabled, d.memory.embedding.enabled),
+        baseUrl: normalizeUrl(src.memory?.embedding?.baseUrl, d.memory.embedding.baseUrl, ['http:', 'https:']),
+        model: pickString(src.memory?.embedding?.model, d.memory.embedding.model, { max: 200 }),
+        apiKeyEnv: pickString(src.memory?.embedding?.apiKeyEnv, d.memory.embedding.apiKeyEnv, { max: 128 }),
+        weight: pickNumber(src.memory?.embedding?.weight, d.memory.embedding.weight, { min: 0, max: 1 }),
+      },
     },
     policy: {
       replyThreshold: pickNumber(src.policy?.replyThreshold, d.policy.replyThreshold, { min: 0, max: 1 }),
