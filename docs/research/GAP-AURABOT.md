@@ -71,10 +71,10 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
 | 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | M7-b：管理/文件命令独立默认关；仅主人/当前群或主人私聊；踢人始终 confirm，撤回默认 confirm；回复前 access.canSend；媒体根 realpath 校验 | 部分（M7-b） | M2 剩余/M5：无逐项 action 权限矩阵/统一审批；新动作不挂 Agent |
-| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 踢人强制 confirm、撤回默认 confirm；破坏动作元数据日志 | 部分（M7-b） | M2：无统一审批/逐项权限/leak guard；仅固定主人命令确认 |
+| 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | M7-b 固定主人命令确认；M7-i 本地统一认知出站 text 密钥规则，默认启用+redact/可选 block，100k 上限，dry-run 也检查，leakBlocked 计数；只读安全状态，无匹配值日志 | 部分（M7-i） | M2：无统一审批/逐项权限；无 PII/熵或媒体/文件扫描，可能误报/漏报；独立发送路径不覆盖 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 豁免（用户批准） | 2026-11-06 用户批准：仅远端 API 鉴权；保留本机-only/CSRF 行为（见 §8.1） |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
-| 18 | 统一出站闸门 | 执行层兜底 | `cognition/outbound.js`：访问 → 限频 → dryRun → 发送；pipeline/proactivity 统一 | **有**（M1-a） | — |
+| 18 | 统一出站闸门 | 执行层兜底 | `cognition/outbound.js`：访问 → 限频 → leak guard → dryRun → 发送；pipeline/proactivity 统一 | **有**（M1-a） | — |
 
 ### 3.4 群聊与表达
 
@@ -249,7 +249,7 @@ QQ → 网关 → events → access（主人/白名单/档位）
 
 **M1-a（访问控制 + 统一出站）**
 - `src/core/access.js`：open/allowlist、主人/私聊/群白名单、入口判定、审计环形缓冲、计数。
-- `src/cognition/outbound.js`：回复/撤回/主动行为统一出站；访问 → 频率 → dryRun → 发送；失败不重试。
+- `src/cognition/outbound.js`：回复/撤回/主动行为统一出站；访问 → 频率 → leak guard → dryRun → 发送；失败不重试。
 - 配置 `access.*` 与「配置 → 访问控制」分组；概览访问控制卡片；`/access/stats`、`/access/check`。
 - 测试：`test/access.test.js`、`test/outbound.test.js`、e2e allowlist 用例；默认 open 回归不变。
 - 边界：逐项工具权限/审批、真机 allowlist 验证留到 M1 剩余 / M2。
@@ -371,3 +371,9 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 `archive-import.js` 新增 kind=timeline，默认 memory 的既有格式、规范字段与 ID 保留。通用 JSON/JSONL 事件以独立 timeline_event 存入当前人格；正文/标题/时间/作用域校验，独立确定性 ID 幂等，共用 5 MiB/5000 项及 cognition.import 配置。缺时间拒绝，无效/未来时间回退为本次导入时间；因此回退时间的项跨时刻重导可能产生新 ID。面板选择记忆/时间轴并显示结果种类，时间轴默认包含 event，支持独立筛选及既有 scope 规则；事件纳入人格数据生命周期。
 
 证据：[archive-import.test.js](../../test/archive-import.test.js)、[timeline.test.js](../../test/timeline.test.js)、[panel.test.js](../../test/panel.test.js)、[e2e.test.js](../../test/e2e.test.js)，均为合成数据/本地 fake 宿主与 mock 请求。无 Aurabot 专用档案迁移、向量导入、真实旧档案样本或本轮真实浏览器/QQ 验证，#30 仍 partial。#31 保持 partial，#42/#49/#50 保持 exempt；47 项 remaining 口径不变。
+
+### M7-i 出站文本防泄漏与安全状态（#15 仍 partial）
+
+`src/core/leak-guard.js` 的纯函数与 `createLeakGuard` 默认启用 + redact，可选 block；本地识别 OpenAI/GitHub/AWS AKIA/Bearer/PEM 私钥/至少 16 字符的 api_key/apiKey 值，只返回脱敏文本和类别/次数。单次及消息 text 合计超过 100,000 UTF-16 单元时整体脱敏/阻止；重叠合并、截断 PEM 防护、无匹配值错误或日志。outbound 在访问/限频后、dry-run/网关前检查；block 返回 LEAK_BLOCKED 并计 leakBlocked，脱敏成功仅带 leakGuard=redacted。dry-run 仍扫描且不发送；原始网关异常不传播。安全页只读展示开关/策略，没有扫描内容/密钥。
+
+仅离线合成密钥、fake 网关、配置与 mock 面板证据，无真实 QQ/浏览器验证；无自动审批或外部调用。逐段扫描不重组跨段/跨消息密钥，无 PII/熵检测，可能误报/漏报；非文本段原样保留，不扫描媒体/base64/文件，媒体服务及面板手动发送/raw action 等独立路径不覆盖。缺统一审批/逐项权限，#15 保持 partial；#31/#42/#49/#50 行不变，remaining 仍 47。

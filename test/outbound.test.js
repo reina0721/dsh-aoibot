@@ -105,7 +105,7 @@ test('outbound：网关失败标记 failed，不重试', async () => {
   assert.equal(result.ok, false)
   assert.equal(result.error, 'SEND_FAILED')
   assert.equal(gw.calls.length, 1, '只发一次，不自动重试')
-  assert.deepEqual(policy.calls.failed, [['d5', 'mock gateway down']])
+  assert.deepEqual(policy.calls.failed, [['d5', 'send_failed']])
   assert.equal(outbound.stats().failed, 1)
   assert.equal(access.counters().outboundFailed, 1)
 })
@@ -118,4 +118,70 @@ test('outbound：非法目标/空消息/网关不可用', async () => {
   const offline = createOutbound({ getConfig: () => ({ cognition: { dryRun: false } }), gateway: {} })
   assert.equal((await offline.deliver({ chatType: 'group', chatId: '1', segments: 'x' })).error, 'GATEWAY_UNAVAILABLE')
   assert.equal(gw.calls.length, 0)
+})
+
+const leakKey = 'sk-' + 'Ab1_'.repeat(12)
+
+test('outbound: default redaction sends clean text after rate check and reports no categories', async () => {
+  const gw = gatewayStub(), policy = policyStub(), logs = []
+  const outbound = createOutbound({ gateway: gw, policy, logger: { warn: (...args) => logs.push(args) } })
+  const input = [{ type: 'text', data: { text: 'key: ' + leakKey } }]
+  const result = await outbound.deliver({ chatType: 'private', chatId: '1', segments: input, decisionId: 'leak1' })
+  assert.equal(result.leakGuard, 'redacted')
+  assert.equal(gw.calls[0].message[0].data.text, 'key: [REDACTED]')
+  assert.equal(input[0].data.text, 'key: ' + leakKey)
+  assert.equal(policy.calls.rate.length, 1)
+  assert.equal(policy.calls.sent.length, 1)
+  assert.ok(!JSON.stringify([result, logs, outbound.stats()]).includes(leakKey))
+  assert.ok(!('detections' in result))
+})
+
+test('outbound: block and malformed text fail closed, count attempts, never call gateway', async () => {
+  const gw = gatewayStub(), policy = policyStub()
+  const outbound = createOutbound({ getConfig: () => ({ security: { leakGuard: { action: 'block' } } }), gateway: gw, policy })
+  for (const segments of [leakKey, [{ type: 'text', data: { text: { secret: leakKey } } }]]) {
+    assert.deepEqual(await outbound.deliver({ chatType: 'private', chatId: '1', segments }), { ok: false, error: 'LEAK_BLOCKED' })
+  }
+  assert.equal(outbound.stats().leakBlocked, 2)
+  assert.equal(policy.calls.rate.length, 2)
+  assert.equal(policy.calls.sent.length, 0)
+  assert.equal(gw.calls.length, 0)
+})
+
+test('outbound: disabled guard passes text; dry-run scans/redacts or blocks without sending', async () => {
+  const gw = gatewayStub()
+  let config = { security: { leakGuard: { enabled: false } } }
+  const outbound = createOutbound({ getConfig: () => config, gateway: gw })
+  assert.equal((await outbound.deliver({ chatType: 'private', chatId: '1', segments: leakKey })).leakGuard, undefined)
+  assert.equal(gw.calls[0].message[0].data.text, leakKey)
+  config = { cognition: { dryRun: true } }
+  const dry = await outbound.deliver({ chatType: 'private', chatId: '1', segments: leakKey })
+  assert.equal(dry.dryRun, true)
+  assert.equal(dry.leakGuard, 'redacted')
+  config.security = { leakGuard: { action: 'block' } }
+  assert.equal((await outbound.deliver({ chatType: 'private', chatId: '1', segments: leakKey })).error, 'LEAK_BLOCKED')
+  assert.equal(gw.calls.length, 1)
+  assert.equal(outbound.stats().dryRuns, 1)
+})
+
+test('outbound: access/rate refusal precedes leak scanning', async () => {
+  const gw = gatewayStub(), logs = [], policy = policyStub({ rateOk: false })
+  const options = { gateway: gw, policy, logger: { warn: (...args) => logs.push(args) } }
+  const rate = createOutbound(options)
+  assert.equal((await rate.deliver({ chatType: 'group', chatId: '1', segments: leakKey })).error, 'RATE_LIMITED')
+  const access = createOutbound({ ...options, access: { canSend: () => ({ allowed: false, reason: 'test' }) } })
+  assert.equal((await access.deliver({ chatType: 'group', chatId: '1', segments: leakKey })).error, 'ACCESS_DENIED')
+  assert.equal(policy.calls.rate.length, 1)
+  assert.equal(logs.length, 0)
+  assert.equal(gw.calls.length, 0)
+})
+
+test('outbound: gateway errors never echo secrets into results, logs or policy', async () => {
+  const logs = [], policy = policyStub()
+  const gateway = { actions: { sendMessage: async () => { throw new Error('provider echoed ' + leakKey + ' ghp_' + 'x'.repeat(36)) } } }
+  const outbound = createOutbound({ gateway, policy, logger: { warn: (...args) => logs.push(args) } })
+  const result = await outbound.deliver({ chatType: 'private', chatId: '1', segments: 'hello', decisionId: 'err' })
+  assert.equal(result.error, 'SEND_FAILED')
+  assert.equal(result.message, 'send_failed')
+  assert.ok(!JSON.stringify([result, logs, policy.calls, outbound.stats()]).includes(leakKey))
 })

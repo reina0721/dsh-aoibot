@@ -1201,7 +1201,7 @@ test('SecurityPage: read-only launch checklist, last five audit rows, manual upg
   const calls = [], visited = []
   const originalFetch = globalThis.fetch
   const data = {
-    status: { version: '0.10.0', gateway: { state: 'connected' }, config: { security: { allowRawAction: false }, media: { enabled: true, images: { visionEnabled: true, visionBaseUrl: 'https://example.test/v1', visionModel: 'vision', visionApiKeyEnv: 'VISION_KEY' }, audio: { asrEnabled: false, ttsEnabled: false } } } },
+    status: { version: '0.10.0', gateway: { state: 'connected' }, config: { security: { allowRawAction: false, leakGuard: { enabled: true, action: 'redact', content: 'NEVER_RENDER_SECRET' } }, media: { enabled: true, images: { visionEnabled: true, visionBaseUrl: 'https://example.test/v1', visionModel: 'vision', visionApiKeyEnv: 'VISION_KEY' }, audio: { asrEnabled: false, ttsEnabled: false } } } },
     access: { mode: 'allowlist', ownerQQ: '123456', allow: { private: 2, groups: 3 }, counters: { inboundBlocked: 7, outboundBlocked: 8 }, recent: Array.from({ length: 7 }, (_, index) => ({ at: index + 1, direction: 'in', chatType: 'private', chatId: 'u' + index, reason: 'audit-' + index })) },
     backup: { status: { snapshotCount: 1, allowRestore: false } },
     upgrade: { enabled: true, current: '0.10.0', channel: 'beta', checkedAt: '2026-11-06T00:00:00Z', cached: { latest: 'v0.11.0-beta.1', updateAvailable: true, notes: 'Release note', url: 'https://github.com/reina0721/dsh-bot/releases/tag/v0.11.0-beta.1' } },
@@ -1221,8 +1221,11 @@ test('SecurityPage: read-only launch checklist, last five audit rows, manual upg
     const tree = render(), json = JSON.stringify(tree)
     assert.equal(panel.TABS.length, 15)
     assert.deepEqual(panel.TABS.find((tab) => tab.id === 'security'), { id: 'security', label: '安全', icon: 'shield' })
-    for (const text of ['访问控制', '危险面', '上线检查', '升级', '123456', 'VISION_KEY', '人工审核', '不是沙箱', 'v0.11.0-beta.1', '不自动检查、下载或安装']) assert.ok(json.includes(text), text)
-    assert.doesNotMatch(json, /audit-0|audit-1/)
+    for (const text of ['访问控制', '出站文本防泄漏', '没有扫描内容/密钥', 'redact（脱敏后发送）', '危险面', '上线检查', '升级', '123456', 'VISION_KEY', '人工审核', '不是沙箱', 'v0.11.0-beta.1', '不自动检查、下载或安装']) assert.ok(json.includes(text), text)
+    assert.doesNotMatch(json, /audit-0|audit-1|NEVER_RENDER_SECRET/)
+    const disabledGuard = JSON.stringify(render({ ...data, status: { config: { security: { leakGuard: { enabled: false, action: 'block' } } } } }))
+    assert.match(disabledGuard, /禁用/)
+    assert.match(disabledGuard, /block（阻止发送）/)
     assert.match(json, /audit-2/)
     assert.match(json, /audit-6/)
     assert.equal(nodes(tree).filter((node) => node.children?.includes('通过')).length, 5)

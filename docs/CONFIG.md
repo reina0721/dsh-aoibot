@@ -171,6 +171,14 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | 路径 | 类型 | 默认值 | 取值 / 范围 | 作用 | 面板 |
 |---|---|---|---|---|---|
 | `security.allowRawAction` | switch | `false` | `true`/`false` | 允许面板通过 `POST /onebot-qq/api/action` 透传任意 OneBot action；仅调试用，默认关闭 | ✅ |
+| `security.leakGuard.enabled` | switch | `true` | `true`/`false` | 认知统一出站文本密钥检查（M7-i）；关闭后原样通过 | ✅ |
+| `security.leakGuard.action` | select | `redact` | `redact` / `block` | 命中后用 `[REDACTED]` 替换或拒绝整条消息（`LEAK_BLOCKED`） | ✅ |
+
+M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 text 段；dry-run 也扫描但不发送，block 命中优先返回失败。检查本地执行，无外部调用；配置每次读取，非法/缺失值回退启用 + redact。识别 OpenAI `sk-`（后缀至少 20 字符）、GitHub `gh[pousr]_`（后缀至少 20 字符）、AWS AKIA、Bearer（至少 16 字符）、PEM 私钥（含截断块）、`api_key=` / `apiKey:`（值至少 16 字符）。重叠匹配合并为一次替换；不提供匹配值或位置，日志只有类别/次数。
+
+单次文本扫描与一次消息所有 text 段总长度上限均为 100,000 个 UTF-16 单元；超限时全部 text 段整体脱敏或整条阻止，不能只扫描前缀。成功脱敏返回 `leakGuard: "redacted"`，阻止计入 outbound `leakBlocked`；限频检查仍执行，阻止不记为成功发送（既有配额按 sent 统计）。网关异常对调用者、policy 与日志统一使用固定 `send_failed`，不转发原始错误。
+
+安全页只读展示开关/策略，没有扫描内容/密钥。此检查不是统一审批或逐项权限；无 PII/熵检测，可能误报/漏报，逐段扫描不重组跨段或跨消息的密钥。非文本段原样保留，不扫描媒体 base64 或文件；媒体服务及面板手动 `/send`、raw action 等独立路径不经此 guard。
 
 ### 3.9 媒体（`media`）
 
@@ -437,7 +445,8 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
     "pageTransition": "default"
   },
   "security": {
-    "allowRawAction": false
+    "allowRawAction": false,
+    "leakGuard": { "enabled": true, "action": "redact" }
   },
   "media": {
     "enabled": false,

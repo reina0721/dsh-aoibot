@@ -94,6 +94,7 @@ export const DEFAULTS = {
   security: {
     // 面板「高级」里透传任意 OneBot action（调试用，默认关）
     allowRawAction: false,
+    leakGuard: { enabled: true, action: 'redact' },
   },
   ops: {
     upgrade: { enabled: false, channel: 'stable', repo: 'reina0721/dsh-bot', timeoutMs: 10000, cacheMinutes: 60 },
@@ -613,8 +614,10 @@ export const CONFIG_GROUPS = [
   {
     id: 'security',
     title: '安全',
-    description: '调试与危险操作开关。',
+    description: '出站文本密钥防泄漏、调试与危险操作开关。',
     fields: [
+      { path: 'security.leakGuard.enabled', label: '启用出站文本防泄漏', type: 'switch', default: true },
+      { path: 'security.leakGuard.action', label: '检测到密钥时', type: 'select', default: 'redact', options: [{ value: 'redact', label: '脱敏后发送' }, { value: 'block', label: '阻止发送' }] },
       { path: 'security.allowRawAction', label: '允许面板透传任意 OneBot action', type: 'switch', default: false, help: '仅调试用；开启后面板可以向网关发送任意 v11 接口调用。' },
     ],
   },
@@ -1108,6 +1111,10 @@ export function normalizeConfig(raw) {
     cognition: normalizeCognition(merged.cognition, isPlainObject(raw.cognition) ? raw.cognition : {}),
     security: {
       allowRawAction: pickBool(merged.security?.allowRawAction, DEFAULTS.security.allowRawAction),
+      leakGuard: {
+        enabled: pickBool(merged.security?.leakGuard?.enabled, DEFAULTS.security.leakGuard.enabled),
+        action: pickEnum(merged.security?.leakGuard?.action, DEFAULTS.security.leakGuard.action, ['redact', 'block']),
+      },
     },
     ops: {
       upgrade: {

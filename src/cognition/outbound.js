@@ -1,10 +1,11 @@
 // 统一出站：认知侧所有自动消息（回复、撤回处理、主动行为）都从这里走。
 //
-// 顺序：访问闸门 → 频率上限 → dryRun → 发送 → 归因/计数。
+// 顺序：访问闸门 → 频率上限 → 文本 leak guard（dryRun 也扫描）→ dryRun → 发送 → 归因/计数。
 // 只做一次发送，不自动重试（OneBot 发送非幂等，重试可能重复发消息）。
 // 面板手动 /send 是人工操作，不经过这里。
 
 import { reasonText } from '../core/access.js'
+import { createLeakGuard } from '../core/leak-guard.js'
 
 function toSegments(message) {
   if (Array.isArray(message)) return message
@@ -32,6 +33,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
     dryRuns: 0,
     blocked: 0,
     rateLimited: 0,
+    leakBlocked: 0,
     failed: 0,
     lastError: '',
     lastAt: 0,
@@ -43,6 +45,8 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       return {}
     }
   }
+
+  const leakGuard = createLeakGuard({ getConfig: cfg, logger })
 
   function finish(result) {
     state.lastAt = now()
@@ -64,7 +68,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
     const id = String(chatId ?? '').trim()
     if (!type || !id) return finish({ ok: false, error: 'INVALID_TARGET' })
 
-    const body = toSegments(segments)
+    let body = toSegments(segments)
     if (!body.length) return finish({ ok: false, error: 'EMPTY_MESSAGE' })
 
     const gate = access?.canSend?.({ chatType: type, chatId: id })
@@ -82,6 +86,19 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       }
     }
 
+    let guarded
+    try {
+      guarded = leakGuard.guard(body)
+    } catch {
+      // 畸形文本也不能绕过检查；异常内容不进入日志/返回值。
+      guarded = { blocked: true }
+    }
+    if (guarded.blocked) {
+      state.leakBlocked += 1
+      return finish({ ok: false, error: 'LEAK_BLOCKED' })
+    }
+    body = guarded.segments
+    const leakStatus = guarded.detections.length ? { leakGuard: 'redacted' } : {}
     const config = cfg()
     const isDry = dryRun === true || (dryRun == null && Boolean(config?.cognition?.dryRun))
     if (isDry) {
@@ -90,7 +107,7 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       } catch (error) {}
       state.dryRuns += 1
       access?.noteDryRun?.()
-      return finish({ ok: true, dryRun: true, messageId: '' })
+      return finish({ ok: true, dryRun: true, messageId: '', ...leakStatus })
     }
 
     const actions = gateway?.actions
@@ -106,9 +123,9 @@ export function createOutbound({ getConfig, gateway, policy = null, access = nul
       try {
         if (decisionId) policy?.markSent?.(decisionId, { messageId })
       } catch (error) {}
-      return finish({ ok: true, messageId, result, source })
+      return finish({ ok: true, messageId, result, source, ...leakStatus })
     } catch (error) {
-      const message = String(error?.message || error)
+      const message = 'send_failed' // 网关异常可能回显正文/密钥，不传播原始异常。
       state.failed += 1
       access?.noteFailed?.({ chatType: type, chatId: id, reason: 'send_failed' })
       try {

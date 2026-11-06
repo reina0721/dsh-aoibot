@@ -266,9 +266,13 @@ export function normalizeEvent(raw, cfg) -> null | {
 
 - `src/core/access.js`：`normalizeAccess` / `decideInbound` / `canSend` 纯函数；`createAccess` 负责配置读取、审计环形缓冲与计数。
 - `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 是认知侧唯一自动发送入口；
-  顺序为访问控制 → 频率上限 → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
+  顺序为访问控制 → 频率上限 → leak guard → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
 - `pipeline.sendDecision`、撤回处理与 `proactivity` 全部走 outbound；面板 `POST /send` 是人工操作，保留独立路径。
 - 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
+
+`src/core/leak-guard.js`（M7-i）提供纯函数 `scanText`（clean 为脱敏文本）、`redactText`、`guardSegments`，以及动态读 `security.leakGuard` 的 `createLeakGuard`。默认启用 + redact；文本规则限 OpenAI/GitHub/AWS AKIA/Bearer/PEM 私钥/至少 16 字符的 api_key/apiKey 值；私钥块通过单向游标查找 END，其他模式无嵌套量词，重叠区间合并。每次扫描及一次消息 text 总长度最多 100,000 UTF-16 单元；超限整体脱敏或阻止，畸形 text 段 fail closed。非文本段原样保留，不读取 base64。
+
+outbound 在限频检查后调用 guard；block 返回 `{ok:false,error:'LEAK_BLOCKED'}` 并累加 `leakBlocked`，成功脱敏只增加 `leakGuard:'redacted'`。dry-run 也检查，block 优先；不实际发送。每次尝试仍经过既有访问/限频，block 不记 sent 配额。摘要仅类别/次数；网关异常用固定 `send_failed` 供调用者、policy 与日志，避免异常回显密钥。无新依赖/外部调用/自动审批；不检测 PII/熵，可能误报/漏报，不重组跨段/跨消息密钥；媒体/文件及面板手动 `/send`、raw action 等独立路径不覆盖。#15 仍 partial（缺统一审批/逐项权限）。
 
 ### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
 
@@ -442,7 +446,7 @@ API 均位于 `/onebot-qq/api`：
 
 只缓存成功结果和 ISO checkedAt，内存缓存按 repo/channel/current 隔离，force 绕过，重启丢失；配置缓存分钟数对下一次请求生效。失败抛出真实 HTTP/超时/响应/版本错误，保留上次成功结果及时间，不延长有效期。状态读取不会触发刷新。无 token 支持，未认证 GitHub API 通常每 IP 每小时 60 次请求。
 
-`SecurityPage` 进入页面或手动刷新时只读 `/status`、`/access/stats`、`/backup`、`/upgrade`，分别处理失败；唯一 POST 是手动升级检查（force=true）。四张卡为访问控制（名单数量/拦截计数/最近 5 条审计）、危险面（raw action、allowRestore、同进程模块警告、媒体环境变量名）、上线检查（连接、allowlist+owner、备份、raw 关闭、媒体配置、人工模块审核）和版本信息。只按已保存配置检查媒体字段，不读取密钥或探测连通性；模块审核恒为人工待检查，不写入“已审核”状态。清单内按钮只导航 connect/config/backup，复用原有视觉组件，无独立向导。
+`SecurityPage` 进入页面或手动刷新时只读 `/status`、`/access/stats`、`/backup`、`/upgrade`，分别处理失败；唯一 POST 是手动升级检查（force=true）。五张卡为出站文本防泄漏（M7-i，只读 enabled/action，没有扫描内容/密钥）、访问控制（名单数量/拦截计数/最近 5 条审计）、危险面（raw action、allowRestore、同进程模块警告、媒体环境变量名）、上线检查（连接、allowlist+owner、备份、raw 关闭、媒体配置、人工模块审核）和版本信息。只按已保存配置检查媒体字段，不读取密钥或探测连通性；模块审核恒为人工待检查，不写入“已审核”状态。清单内按钮只导航 connect/config/backup，复用原有视觉组件，无独立向导。
 
 精确边界：无自动检查/更新、下载/安装、云服务、工作区/格式迁移或离峰省钱；beta 仅改变 release 过滤。保留 DSH 本机信任边界，不改变 API 鉴权，也不新增本机-only/CSRF/可信反代机制。测试均使用注入 fetch 或禁网替身，没有真实 GitHub/QQ/浏览器验证。
 

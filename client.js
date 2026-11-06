@@ -6996,6 +6996,13 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
               h('li', { key: index, className: 'ob-small' }, formatDateTime(entry.at) + ' · ' + (entry.direction === 'in' ? '入站' : '出站') + ' · ' + String(entry.chatType || '') + ':' + String(entry.chatId || '') + ' · ' + String(entry.senderId || '') + ' · ' + String(entry.reason || '')),
             )) : h('p', { className: 'ob-small ob-muted' }, '暂无审计记录'),
           ),
+          h(Panel, { title: '出站文本防泄漏', description: '只展示已保存的开关与处理策略，没有扫描内容/密钥。' },
+            h(KV, { rows: [
+              ['防泄漏开关', cfg.security ? (cfg.security.leakGuard?.enabled === false ? '禁用' : '启用') : '未知'],
+              ['处理策略', cfg.security ? (cfg.security.leakGuard?.action === 'block' ? 'block（阻止发送）' : 'redact（脱敏后发送）') : '未知'],
+            ] }),
+            h('p', { className: 'ob-small ob-muted' }, '仅认知统一出站文本；不扫描媒体/文件，不检测 PII 或熵。可能误报或漏报；不提供统一审批或逐项权限。'),
+          ),
           h(Panel, { title: '危险面', description: '本地模块在同一进程执行任意代码，权限门控不是沙箱；仅加载可信、已审核的模块。' },
             h(KV, { rows: [
               ['任意 OneBot action', cfg.security ? (cfg.security.allowRawAction ? '开启' : '关闭') : '未知'],
