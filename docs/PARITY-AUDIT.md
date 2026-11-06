@@ -1,4 +1,4 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
 
@@ -7,6 +7,8 @@ M7-f 更新 #31：默认关闭的 OpenAI 兼容 embeddings 重排词法候选；
 M7-g 更新 #29：当前人格 facet（含 group-scope 群印象）可编辑内容/置信度/可选状态；关系卡可在原作用域内手动调整 API 返回的 10 维，显式保存变化项，既有后端记录 source=ui 历史。仅 UI 与 mock 面板测试，无新增端点/Agent 工具/自动审批；无独立人物说话方式编辑器或 Aurabot 专用人物/群档案导入，无本轮浏览器 V，#29 仍 partial。
 
 M7-h 更新 #30：通用 JSON/JSONL 新增时间轴事件导入（默认仍为记忆），事件时间必填、独立存储/幂等 ID、当前人格及 scope 隔离；面板种类选择与 event 筛选。仅合成数据/离线服务、API 与面板测试；无 Aurabot 专用迁移或真实旧档案样本，#30 保持 partial，#31/#42/#49/#50 状态不变。
+
+M7-k 更新 #45：本地文件上传/列表 API 与媒体页文件区，固定 files 目录、媒体/文件双开关、安全 basename≤120、严格规范 base64、解码大小与 15 MiB JSON 体积上限、realpath/符号链接检查和 wx 防覆盖；最新 500 项、全部合格文件总字节数、客户端预检/防重/错误/刷新。仅离线服务/fake 宿主/mock 面板证据；无文件发送/删除/下载面板，发送仍用主人 `/file`，真实 QQ 未验证。#45 仍 partial，#31/#42/#49/#50 不变，remaining 47。
 
 M7-j 更新 #3/#15：十种已知通知（含群名/头衔/精华/离线文件）校验/去重写当前人格时间轴；好友/群请求只存 pending，主人列表与 approve/reject 固定 confirm，服务复核身份/开关/状态，固定请求 action、并发防重及原人格完成写入。flag 不进公共列表/回复/日志，备注和通知文本限长/去控制字符/已知密钥脱敏；新增 requests 人格数据组。仅合成事件/fake 网关证据，无自动审批/审批面板/新增请求 API/Agent 工具，无通用审批/逐项权限或 PII 检测，真实 QQ 未验证；#3/#15 仍 partial，#31/#42/#49/#50 不变，remaining 47。
 
@@ -42,8 +44,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 35，none: 5，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：65 个 JS 文件 / 16430 行。
-测试静态计数：45 个文件 / 9161 行 / 389 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：65 个 JS 文件 / 16505 行。
+测试静态计数：45 个文件 / 9430 行 / 400 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -158,7 +160,7 @@ npm run check:docs
 | 37 | 候选效用/bandit/结果归因 | leading | 已领先（无缺口） |
 | 41 | TTS/语音条/ASR | partial | 无自动语音策略、多音色编排、RVC/翻唱或 Agent 工具；待真机 |
 | 43 | 表情包 | partial | 不自动收集、缩放转码、语境/情绪选择或接商城 |
-| 45 | 文件发送/接收 | partial | 无文件面板；media.enabled/files.enabled 与 qqAdmin.enabled 必须开启；网关兼容性未实机验证 |
+| 45 | 文件发送/接收 | partial | 无文件发送/删除/下载面板；上传/列表需 media.enabled/files.enabled，主人发送另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
 | 48 | B 站浏览/评论/分享 | partial | 无评论/分享/字幕/登录态；真实接口待验 |
 | 56 | 设置向导 | partial | 无独立向导/自动修复；模块始终人工待检查，媒体只检查字段，不验密钥/服务；无 API 鉴权变更，仍依赖 DSH 本机信任边界；未做真实浏览器 V |
 | 57 | 备份/恢复 | partial | 复制 SQLite 前停写，恢复后重启；无在线一致性/整目录事务、云端上传下载、自动恢复或迁移 |
@@ -172,6 +174,7 @@ npm run check:docs
 | 审计工具 | [parity-audit.mjs](../scripts/parity-audit.mjs)、[11 个 fixture/计数/CLI 测试](../test/parity-audit.test.js) | 功能等价性、真实 QQ 验收 |
 | M1/M2 运行时与交互 | [runtime/agent.js](../src/runtime/agent.js)、[runtime.test.js](../test/runtime.test.js)、[access.test.js](../test/access.test.js)、[reply-split.test.js](../test/reply-split.test.js)、[runtime-qq-tools.test.js](../test/runtime-qq-tools.test.js) | 全量工具、权限矩阵、任务系统、真实 QQ |
 | M3 认知 / M7-d/M7-h 导入 | [cognition](../src/cognition)、[consolidation.test.js](../test/consolidation.test.js)、[purpose.test.js](../test/purpose.test.js)、[timeline.test.js](../test/timeline.test.js)、[archive-import.test.js](../test/archive-import.test.js)、[API](../test/e2e.test.js)/[面板](../test/panel.test.js) | 真实 embedding provider、全库向量召回/向量数据库、本地模型/独立 reranker、目的执行器、Aurabot 专用迁移、向量导入、真实旧档案样本 |
+| M7-k 本地文件上传/列表 | [media.test.js](../test/media.test.js)、[API](../test/e2e.test.js)、[面板](../test/panel.test.js)：临时文件/base64/大小/名称/开关/符号链接/固定目录/强制重名防覆盖/排序总量/上传错误/渲染刷新 | 无文件发送/删除/下载面板；真实 QQ 文件兼容性与本轮真实浏览器未验证，#45 仍 partial |
 | M7-j 通知/主人请求审批 | [notices.test.js](../test/notices.test.js)、[commands.test.js](../test/commands.test.js)、[actions.test.js](../test/actions.test.js)、[集成测试](../test/cognition-integration.test.js)：通知映射/时间轴/去重、待办/公共投影、owner/开关/确认、并发/人格切换与静态错误 | 真实 QQ 事件/请求 action；未知/扩展通知与 meta 认知、通用审批/逐项权限、PII 检测、审批队列面板；#3/#15 仍 partial |
 | M7-i 出站文本防泄漏 | [leak-guard.test.js](../test/leak-guard.test.js)、[outbound.test.js](../test/outbound.test.js)、[panel.test.js](../test/panel.test.js)：本地规则、重叠/上限、配置回退、访问/限频/dry-run、错误隐私与只读状态 | 统一审批/逐项权限、PII/熵检测、媒体/文件及独立发送路径、跨段/跨消息密钥；可能误报/漏报，未做真实 QQ/浏览器验证；#15 仍 partial |
 | M7-g 人物/群印象与关系编辑 | [client.js](../client.js)、[panel.test.js](../test/panel.test.js) 新增 6 项；mock API、原作用域/差量保存、Unicode/数值校验、取消/禁用/失败/刷新 | 本轮真实浏览器验证、独立人物说话方式编辑器、Aurabot 专用人物/群档案导入；既有后端 UTF-16 截断未改；#29 仍 partial |
@@ -220,3 +223,5 @@ M7-i 本次最终 `npm test` 实跑退出 **0**：409 项，405 通过、0 失�
 
 
 M7-j 本次最终 `npm test` 实跑退出 **0**：425 项，421 通过、0 失败、4 跳过（既有 live 模型测试），耗时 70843.219057 ms。新增 16 个顶层测试声明；首次 notices/actions/commands 专项 48 项全通过。覆盖十种通知映射/字段/时间轴/确定性去重/未知和无效输入，好友/群请求存储/列表/flag 去重/无自动动作，owner/配置/boolean/长度/confirm/访问控制，固定 OneBot 参数，成功/失败公共投影和日志隐私，并发只调用一次及人格切换完成写入、请求数据统计/复制/删除，accepted/暂停分流与零网关动作。`npm run check:docs`、`npm run check:parity` 均退出 **0**，快照由本次审计生成。矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining；#3/#15 保持 partial，#31/#42/#49/#50 矩阵行逐字不变。无新依赖、外部调用、真实 QQ 发送或自动审批，未改 `cordis.patch.yml`；没有审批队列面板/新增请求 REST API/Agent 工具，也没有通用审批/逐项权限或 PII 检测，真实 QQ 事件/审批动作未验证。
+
+M7-k 本次最终 `npm test` 实跑退出 **0**：436 项，432 通过、0 失败、4 跳过（既有 live 模型测试），耗时 82416.139695 ms。新增 11 个顶层测试声明；最终媒体专项 21 项全通过，面板专项 40 项全通过。覆盖本地上传/列表、规范严格 base64 与空数据/大小/文件名/扩展名、总开关与文件开关、固定目录和文件/目录符号链接、并发重名及强制时间戳/UUID 碰撞不覆盖、最新 500 项与全部合格文件总量、超过旧 1 MiB 请求体的上传及固定 15 MiB 入口上限、客户端预检/读取失败/防重/错误/禁用/渲染/刷新。`npm run check:docs`、`npm run check:parity` 均退出 **0**；快照为源码 65 个 JS 文件 / 16505 行，测试 45 个文件 / 9430 行 / 400 个顶层声明。矩阵仍为 6 has / 35 partial / 5 none / 1 limited / 6 leading / 8 exempt，47 remaining；#45 仍 partial，#31/#42/#49/#50 矩阵行逐字不变。无新依赖、外部调用、QQ 发送或真实浏览器验证，未改 `cordis.patch.yml`；无文件发送/删除/下载面板，发送仍使用主人 `/file`，真实 QQ 文件兼容性未验证。

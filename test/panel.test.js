@@ -1306,3 +1306,107 @@ test('CogTimeline: all remains default, Event filter queries API and renders eve
     assert.match(calls.at(-1).path, /types=event$/)
   } finally { restore() }
 })
+
+function mountMediaFiles(toast = () => {}) {
+  const session = { values: [{ enabled: true, maxBytes: 1024, files: { enabled: true } }, [], false], index: 0 }
+  return () => {
+    session.index = 0
+    hookSession = session
+    try { return panel.MediaPage({ toast }) } finally { hookSession = null }
+  }
+}
+const filePanel = (tree) => treeNodes(tree).find((node) => node.type?.name === 'Panel' && node.props.title === '文件')
+const fileInput = (tree) => field(filePanel(tree).props.actions, '上传文件')
+const refreshFilesButton = (tree) => control(filePanel(tree).props.actions, '刷新文件')
+
+test('MediaPage files: base64 upload, busy guard, refresh and path/size/time rendering without send/delete/download', async () => {
+  const originalFetch = globalThis.fetch, OriginalReader = globalThis.FileReader
+  const calls = [], toasts = [], render = mountMediaFiles((...args) => toasts.push(args))
+  let reader, reads = 0
+  globalThis.FileReader = class {
+    readAsDataURL() { reader = this; reads++ }
+  }
+  globalThis.fetch = async (path, init) => {
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : undefined })
+    assert.ok(['/media/file/upload', '/media/files'].some((suffix) => path.endsWith(suffix)))
+    return { ok: true, json: async () => path.endsWith('/upload')
+      ? { ok: true, path: 'files/1-deadbeef-报告.txt', name: '报告.txt', size: 6 }
+      : { ok: true, items: [{ path: 'files/1-deadbeef-报告.txt', name: '报告.txt', size: 6, at: Date.UTC(2026, 10, 6) }], totalBytes: 6 } }
+  }
+  try {
+    const initial = render()
+    assert.equal(fileInput(initial).props.accept, '.txt,.md,.json,.csv,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.7z,.rar')
+    assert.equal(fileInput(initial).props.disabled, false)
+    assert.match(JSON.stringify(filePanel(initial)), /\/file 相对路径/)
+    const event = () => ({ target: { files: [{ name: '报告.txt', size: 6 }], value: 'selected' } })
+    const firstEvent = event(), pending = fileInput(initial).props.onChange(firstEvent)
+    assert.equal(firstEvent.target.value, '')
+    assert.equal(fileInput(render()).props.disabled, true)
+    await fileInput(render()).props.onChange(event())
+    assert.equal(reads, 1, 'reading and POST must share one busy guard')
+    reader.result = 'data:text/plain;base64,5L2g5aW9'
+    reader.onload()
+    await pending
+    assert.deepEqual(calls, [
+      { path: panel.API_PREFIX + '/media/file/upload', method: 'POST', body: { name: '报告.txt', dataBase64: '5L2g5aW9' } },
+      { path: panel.API_PREFIX + '/media/files', method: 'GET', body: undefined },
+    ])
+    const done = render(), json = JSON.stringify(filePanel(done))
+    for (const text of ['报告.txt', 'files/1-deadbeef-报告.txt', '6 bytes', '2026-11-06']) assert.ok(json.includes(text), text)
+    assert.equal(fileInput(done).props.disabled, false)
+    assert.deepEqual(toasts, [['文件已上传', 'ok']])
+    const fileNodes = [...treeNodes(filePanel(done)), ...treeNodes(filePanel(done).props.actions)]
+    assert.ok(!fileNodes.some((node) => node.type === 'a' || node.props?.download || node.children?.some((child) => typeof child === 'string' && /^(发送|删除|下载)/.test(child))))
+    await refreshFilesButton(done).props.onClick()
+    assert.equal(calls.at(-1).method, 'GET')
+  } finally { globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader }
+})
+
+test('MediaPage files: size/extension checks before reading, read/upload/list errors and disabled input', async () => {
+  const originalFetch = globalThis.fetch, OriginalReader = globalThis.FileReader
+  const render = mountMediaFiles()
+  let reads = 0, calls = 0, readFails = false, uploadFails = true
+  globalThis.FileReader = class {
+    readAsDataURL() {
+      reads++
+      if (readFails) this.onerror()
+      else { this.result = 'data:text/plain;base64,YQ=='; this.onload() }
+    }
+  }
+  globalThis.fetch = async (path) => {
+    calls++
+    return { ok: true, json: async () => path.endsWith('/upload')
+      ? { ok: !uploadFails, message: '文件名无效' }
+      : { ok: false, message: '文件功能未启用' } }
+  }
+  const choose = (file) => fileInput(render()).props.onChange({ target: { files: file ? [file] : [], value: 'selected' } })
+  try {
+    await choose()
+    for (const size of [0, 1025]) {
+      await choose({ name: 'a.txt', size })
+      assert.match(JSON.stringify(filePanel(render())), /大小限制 1024/)
+    }
+    await choose({ name: 'a.exe', size: 1 })
+    assert.match(JSON.stringify(filePanel(render())), /扩展名/)
+    assert.equal(reads, 0)
+    assert.equal(calls, 0)
+    readFails = true
+    await choose({ name: 'a.txt', size: 1 })
+    assert.match(JSON.stringify(filePanel(render())), /读取文件失败/)
+    assert.equal(calls, 0)
+    readFails = false
+    await choose({ name: 'a.txt', size: 1 })
+    assert.match(JSON.stringify(filePanel(render())), /文件名无效/)
+    assert.equal(fileInput(render()).props.disabled, false)
+    uploadFails = false
+    await choose({ name: 'a.txt', size: 1 })
+    assert.match(JSON.stringify(filePanel(render())), /文件功能未启用/)
+    stateOverrides = [{ enabled: true, files: { enabled: false } }, [], false]
+    const disabled = panel.MediaPage({ toast() {} })
+    stateOverrides = null
+    assert.equal(fileInput(disabled).props.disabled, true)
+    assert.ok(treeNodes(disabled).some((node) => node.props?.title === '生图/改图'))
+    stateOverrides = [{ enabled: false, files: { enabled: true } }, [], false]
+    assert.equal(fileInput(panel.MediaPage({ toast() {} })).props.disabled, true)
+  } finally { stateOverrides = null; globalThis.fetch = originalFetch; globalThis.FileReader = OriginalReader }
+})

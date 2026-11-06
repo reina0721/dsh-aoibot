@@ -187,7 +187,7 @@ M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 t
 | 路径 | 默认值 | 作用 |
 |---|---|---|
 | `media.enabled` | `false` | 媒体总开关 |
-| `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、TTS/生图/改图输出、改图源和发送均检查 |
+| `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、本地文件上传/列表、TTS/生图/改图输出、改图源和发送均检查 |
 | `media.dir` | `""` | 留空为 `<数据目录>/media`；可指定自定义目录 |
 | `media.stickers.enabled` | `true` | 启用本地表情包库；QQ 发送仍要求 `media.enabled` 与 `media.images.enabled` 同时开启 |
 | `media.stickers.maxCount` | `200` | 表情包最多 1–5000 个；默认 200 |
@@ -210,9 +210,13 @@ M7-i：只在 `outbound.deliver` 的访问控制、限频检查通过后扫描 t
 | `media.audio.asrBaseUrl/asrModel/asrApiKeyEnv` | `""` / `"whisper-1"` / `""` | ASR 根地址、模型、API Key 环境变量名 |
 | `media.audio.ttsEnabled` | `false` | 调用 `/audio/speech`，输出 MP3；不自动发送 |
 | `media.audio.ttsBaseUrl/ttsModel/ttsVoice/ttsApiKeyEnv` | `""` / `"tts-1"` / `"alloy"` / `""` | TTS 根地址、模型、音色、API Key 环境变量名 |
-| `media.files.enabled` | `false` | 允许白名单扩展名的文件入站下载和 OneBot 文件上传 |
+| `media.files.enabled` | `false` | 允许白名单扩展名的文件入站下载、本地上传/列表和 OneBot 文件上传 |
 
 允许扩展名：图片 `jpg/jpeg/png/gif/webp/bmp`；语音 `mp3/wav/ogg/m4a/aac/amr/silk`；文件 `txt/md/json/csv/pdf/doc/docx/xls/xlsx/ppt/pptx/zip/7z/rar`。网络超时沿用 `timeouts.callMs`。
+
+本地文件（M7-k）：上传和列表均要求 `media.enabled=true` 与 `media.files.enabled=true`，关闭时返回 `文件功能未启用`。`POST /onebot-qq/api/media/file/upload` 接受 `{name,dataBase64}`，JSON 请求体固定上限 15 MiB（含 base64 展开和元数据）；所以即使调高 `media.maxBytes`，面板/API 仍受此请求体上限约束。名称必须是 1–120 字符的安全 basename（字母、数字、点、下划线、空格、连字符），扩展名使用上述文件白名单。只接受非空、规范的严格 base64，不接受 data URL；解码后受 `media.maxBytes` 限制。文件写入 `<media root>/files/<timestamp>-<uuid8>-<safeName>`，独占创建，不覆盖；校验根/目录 realpath，拒绝 files 目录符号链接。
+
+`GET /onebot-qq/api/media/files` 只列固定 `files/` 目录内符合扩展名/大小限制的普通文件，不递归、不跟随符号链接；目录尚未创建时返回空列表。返回 `{ok:true,items:[{path,name,size,at}],totalBytes}`，path 为 `files/...` 相对路径、at 为修改时间毫秒数，最新优先最多 500 项；totalBytes 统计全部合格文件，包含未显示项。上传返回 `{ok:true,path,name,size}`。面板只提供上传/列表/刷新，发送仍由主人 `/file 相对路径` 完成，另需 `cognition.qqAdmin.enabled` 与访问许可；无文件发送/删除/下载面板，真实 QQ 文件兼容性未验证。
 
 生图/改图（M7-c）：`generateImage(prompt,{size?})` POST `/images/generations` JSON（model/prompt/size/n=1/response_format=b64_json）；`editImage(prompt,path,{size?})` POST `/images/edits` multipart（image/prompt/model/size/response_format=b64_json）。提示词 trim 后 1–1000 字符；size 仅 `256x256`、`512x512`、`1024x1024`、`1792x1024`、`1024x1792`。仅接收 `data[0].b64_json` PNG，不获取 provider 返回 URL，也不跟随 provider HTTP 重定向；生成结果受 `media.maxBytes` 限制，PNG 头尺寸每边最多 1792、总像素最多 1792×1024；JSON 响应另限 base64 上限加 64 KiB 元数据。输出为媒体根内 `generated/<uuid>.png` 相对路径。
 

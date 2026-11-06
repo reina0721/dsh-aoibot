@@ -367,7 +367,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 
 面板 `CogMemories` 在列表后提供文件选择、作用域/ID 与导入结果，成功刷新检索。服务只记录计数，错误不包含档案正文；不读取任意路径、不调用网络/模型、不自动发送 QQ，不新增命令/鉴权/依赖。范围是通用 JSON/JSONL 记忆，导入后的记忆可被既有时间轴聚合，但不是时间轴事件导入；不提供 Aurabot 专用转换或向量工作，无真实旧档案样本验证，#30 仍 partial。
 
-### 3.19 表情包、媒体命令与面板（M4-b/M7-c）
+### 3.19 表情包、媒体命令与面板（M4-b/M7-c/M7-k）
 
 - `src/media/stickers.js` 在 `<dataDir>/media/stickers/` 保存图片，以 `<dataDir>/media/stickers.json` 原子维护索引。只接受 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个；SHA-256 去重，索引缺失或损坏按空库容错。HTTP/JSON 只公开 ID、名称、MIME、大小、hash、标签和时间，不公开绝对路径。
 - REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/生图/改图/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
@@ -379,6 +379,10 @@ M7-c 增加 `generateImage(prompt,{size})` 与 `editImage(prompt,sourceRelativeP
 结果仅接收受媒体大小限制的 PNG `data[0].b64_json`，JSON 另有 base64 展开加 64 KiB 上限；不获取任意返回 URL、不跟随 HTTP 重定向，不回显 provider 原始错误/字节/密钥。PNG 头尺寸每边≤1792、总像素≤1792×1024；沿用媒体 1–120 秒超时。生成目录也做 realpath 防逃逸，写入 `generated/<uuid>.png`，返回 `{ok:true,path,size}`；`path` 是媒体根内相对路径。
 
 REST `POST /media/image/generate {prompt,size?}` 与 `/media/image/edit {path,prompt,size?}`、媒体页「生图/改图」只落盘并显示路径/错误，不自动发送 QQ，不新增任意图片上传/下载路由。`status.images.generate/edit` 只报 enabled/configured，字段完整不代表真实连接成功。主人命令 `/draw`、`/redraw`、`/image` 先过 access.canSend；前两者生成后调用 sendMedia，后者直接发送已有图片，三者均要求媒体/图片开关，成功不重复回复文本。不挂 Agent 工具。验证使用 fake fetch/FormData/临时文件，无真实 provider 或 QQ 验证；只支持 OpenAI 兼容 edits，无 mask 或其他图片编辑后端。
+
+M7-k 在同一媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`。两者同时要求媒体总开关和 files 开关，禁用时抛出 `文件功能未启用`。上传校验安全 basename（1–120 字符）、FILE_EXTENSIONS、严格且规范的非空 base64 和解码大小；固定写入 `files/<timestamp>-<uuid8>-<safeName>`，mkdir + 根/目录 realpath 限定，拒绝 files 目录符号链接，`wx` 独占写入避免覆盖。列表只扫描 files 目录的普通文件，不递归、不跟随文件/目录符号链接，过滤扩展名和当前大小上限；按 mtimeMs 降序最多 500 项，totalBytes 统计全部合格文件。未创建目录返回空列表，不自动建目录。
+
+REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBytes}` 与 `POST /media/file/upload {name,dataBase64}` → `{ok:true,path,name,size}`；上传入口 `readBody(req,15*1024*1024)` 固定限制 JSON 体积，包含 base64 展开。path 只返回 `files/...` 相对路径，at 为 mtimeMs。MediaPage 文件区做客户端大小/扩展名预检、FileReader 去除 data URL 前缀、上传期间防重、成功刷新和独立错误显示，保留原媒体区。没有文件发送/删除/下载面板；发送继续走已有主人 `/file` 与身份/access/qqAdmin/媒体路径闸门。不新增外部调用、依赖或 QQ 发送；只验证离线临时文件、mock 面板及 fake 宿主，真实 QQ 未验证，#45 仍 partial。
 
 ### 3.20 B站公共内容（M5-b）
 
@@ -396,7 +400,7 @@ REST `POST /media/image/generate {prompt,size?}` 与 `/media/image/edit {path,pr
 ├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
-├── media/               # 可选：inbound/、outbound/、generated/、stickers/ 与 stickers.json
+├── media/               # 可选：inbound/、outbound/、generated/、files/、stickers/ 与 stickers.json
 ├── modules/             # 操作员安装的本地模块、state.json 与各模块 data.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）

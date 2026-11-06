@@ -6735,11 +6735,31 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [imageResult, setImageResult] = useState('')
       const [imageError, setImageError] = useState('')
       const [busy, setBusy] = useState('')
+      const [filesData, setFilesData] = useState({ items: [], totalBytes: 0 })
+      const [filesError, setFilesError] = useState('')
+      const [filesLoading, setFilesLoading] = useState(false)
+      const fileBusy = useRef(false)
+      const fileAccept = '.txt,.md,.json,.csv,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.7z,.rar'
+
+      const refreshFiles = useCallback(async () => {
+        setFilesLoading(true)
+        try {
+          const result = safeObject(await get('/media/files'))
+          if (result.ok === false) {
+            setFilesData({ items: [], totalBytes: 0 })
+            setFilesError(String(result.message || '文件列表加载失败'))
+          } else {
+            setFilesData(result)
+            setFilesError('')
+          }
+        } catch { setFilesError('文件列表加载失败') }
+        finally { setFilesLoading(false) }
+      }, [])
 
       const refresh = useCallback(async () => {
         setLoading(true)
         setError('')
-        const results = await Promise.all([get('/media/status'), get('/media/stickers?limit=200')])
+        const results = await Promise.all([get('/media/status'), get('/media/stickers?limit=200'), refreshFiles()])
         const statusResult = safeObject(results[0])
         const stickerResult = safeObject(results[1])
         if (statusResult.ok === false || stickerResult.ok === false) {
@@ -6749,7 +6769,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           setItems(safeArray(stickerResult.items))
         }
         setLoading(false)
-      }, [])
+      }, [refreshFiles])
 
       useEffect(() => { refresh() }, [refresh])
 
@@ -6796,6 +6816,36 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
           refresh()
         }
         reader.readAsDataURL(file)
+      }
+
+      const uploadFile = async (event) => {
+        const file = event.target.files && event.target.files[0]
+        event.target.value = ''
+        if (!file || fileBusy.current) return
+        const limit = Number(mediaStatus?.maxBytes) || 10 * 1024 * 1024
+        if (!file.size || file.size > limit) return setFilesError('文件为空或超过大小限制 ' + limit + ' bytes')
+        const extension = '.' + String(file.name).split('.').pop().toLowerCase()
+        if (!fileAccept.split(',').includes(extension)) return setFilesError('文件扩展名不在允许列表')
+        fileBusy.current = true
+        setBusy('file')
+        setFilesError('')
+        try {
+          const dataBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onerror = () => reject(new Error('读取文件失败'))
+            reader.onabort = () => reject(new Error('读取文件已取消'))
+            reader.onload = () => {
+              const encoded = String(reader.result || '')
+              resolve(encoded.slice(encoded.indexOf(',') + 1))
+            }
+            reader.readAsDataURL(file)
+          })
+          const result = safeObject(await post('/media/file/upload', { name: file.name, dataBase64 }))
+          if (!result.ok) return setFilesError(String(result.message || '文件上传失败'))
+          props.toast('文件已上传', 'ok')
+          await refreshFiles()
+        } catch (error) { setFilesError(String(error?.message || '文件上传失败')) }
+        finally { fileBusy.current = false; setBusy('') }
       }
 
       const editTags = async (item) => {
@@ -6852,6 +6902,22 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             h('div', { className: 'ob-row' }, h('input', { className: 'ob-input', value: ttsText, placeholder: '输入要合成的文本', onChange: (event) => setTtsText(event.target.value), style: { flex: '1 1 280px' } }), h(Btn, { kind: 'primary', icon: 'play', busy: busy === 'tts', onClick: runTts }, '生成语音')),
             ttsFile ? h('p', { className: 'ob-note ob-mono' }, '生成文件：' + ttsFile) : null,
           ),
+        ),
+        h(Panel, {
+          title: '文件', description: '上传后由主人使用 /file 相对路径 发送到当前 QQ 会话。',
+          actions: h('div', { className: 'ob-row' },
+            h('label', { className: cx('ob-btn small secondary', (Boolean(busy) || !status.enabled || !status.files?.enabled) && 'disabled') },
+              busy === 'file' ? '上传中…' : '上传文件',
+              h('input', { className: 'ob-sr-only', type: 'file', 'aria-label': '上传文件', accept: fileAccept, disabled: Boolean(busy) || !status.enabled || !status.files?.enabled, onChange: uploadFile })),
+            h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: filesLoading, disabled: busy === 'file', onClick: refreshFiles }, '刷新文件')),
+        },
+          h('p', { className: 'ob-note' }, '单文件上限 ' + (Number(status.maxBytes) || 10 * 1024 * 1024) + ' bytes；按修改时间显示最新 500 项，合计 ' + (Number(filesData.totalBytes) || 0) + ' bytes。'),
+          filesError ? h(Banner, { tone: 'err', message: filesError }) : null,
+          safeArray(filesData.items).length ? h('div', { className: 'ob-stack' }, safeArray(filesData.items).map((item) => h('article', { key: item.path },
+            h('p', { className: 'ob-media-name' }, String(item.name || '未命名')),
+            h('p', { className: 'ob-note ob-mono' }, String(item.path || '')),
+            h('p', { className: 'ob-note' }, String(Number(item.size) || 0) + ' bytes · ' + formatDateTime(item.at)),
+          ))) : !filesError ? h('p', { className: 'ob-note' }, '还没有文件') : null,
         ),
         h(Panel, {
           title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',

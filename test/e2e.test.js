@@ -872,3 +872,32 @@ test('e2e: timeline archive route imports current persona events and filters sco
     assert.equal(response.json.ok, false)
   }
 })
+
+test('media file routes: disabled gates, large local upload/list and 15 MiB body cap without QQ sends', async (t) => {
+  const { fake, mock, dir } = await boot(t)
+  for (const [path, body, method] of [['/media/files', undefined, 'GET'], ['/media/file/upload', { name: 'a.txt', dataBase64: 'YQ==' }, 'POST']]) {
+    const rejected = await fake.call(API + path, body, { method })
+    assert.equal(rejected.json.ok, false)
+    assert.match(rejected.json.message, /文件功能未启用/)
+  }
+  await patchConfig(fake, { media: { enabled: true, files: { enabled: true }, maxBytes: 2 * 1024 * 1024 } })
+  assert.deepEqual((await getJson(fake, '/media/files')).items, [])
+  const buffer = Buffer.alloc(1024 * 1024 + 1, 65)
+  const saved = await postJson(fake, '/media/file/upload', { name: 'report.pdf', dataBase64: buffer.toString('base64') })
+  assert.match(saved.path, /^files\//)
+  assert.equal(saved.name, 'report.pdf')
+  assert.equal(saved.size, buffer.length)
+  assert.deepEqual(await readFile(join(dir, 'media', saved.path)), buffer)
+  const listed = await getJson(fake, '/media/files')
+  assert.equal(listed.items[0].path, saved.path)
+  assert.equal(listed.totalBytes, buffer.length)
+  for (const body of [null, [], { name: '../a.txt', dataBase64: 'YQ==' }, { name: 'a.txt', dataBase64: 'data:text/plain;base64,YQ==' }, { name: 'a.exe', dataBase64: 'YQ==' }]) {
+    assert.equal((await fake.call(API + '/media/file/upload', body, { method: 'POST' })).json.ok, false)
+  }
+  const oversized = await fake.call(API + '/media/file/upload', { name: 'big.txt', dataBase64: 'A'.repeat(15 * 1024 * 1024) }, { method: 'POST' })
+  assert.equal(oversized.json.ok, false)
+  assert.match(oversized.json.message, /请求体过大/)
+  await patchConfig(fake, { media: { files: { enabled: false } } })
+  assert.equal((await fake.call(API + '/media/files', undefined, { method: 'GET' })).json.ok, false)
+  assert.equal(mock.calls.length, 0, 'upload/list must not call QQ gateway')
+})

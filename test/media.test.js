@@ -315,3 +315,139 @@ test('images: fetch timeout aborts and provider errors never expose secrets or r
   await assert.rejects(failing.media.editImage('cat', 'source.png'), { message: '图片 provider 请求失败' })
   assert.deepEqual(failing.logs, [])
 })
+
+function filesHarness(t, patch = {}) {
+  const base = mkdtempSync(join(tmpdir(), 'dsh-files-panel-'))
+  t.after(() => rmSync(base, { recursive: true, force: true }))
+  const root = join(base, 'media'), cfg = config(patch)
+  const media = createMediaService({ getConfig: () => cfg, dataDir: root,
+    fetchImpl: async () => { assert.fail('local files must never fetch') },
+    gateway: { actions: new Proxy({}, { get() { assert.fail('local files must never send') } }) },
+  })
+  return { media, cfg, root, base }
+}
+
+test('files: upload/list Unicode basename, relative path, bytes and newest-first metadata', async (t) => {
+  const { media, root } = filesHarness(t)
+  assert.deepEqual(await media.listFiles(), { items: [], totalBytes: 0 })
+  const saved = await media.saveFile({ name: '报告.TXT', dataBase64: Buffer.from('你好').toString('base64') })
+  assert.deepEqual(Object.keys(saved).sort(), ['name', 'ok', 'path', 'size'])
+  assert.equal(saved.ok, true)
+  assert.equal(saved.name, '报告.TXT')
+  assert.equal(saved.size, 6)
+  assert.match(saved.path, /^files\/\d+-[a-f0-9]{8}-报告.TXT$/)
+  assert.equal(readFileSync(join(root, saved.path), 'utf8'), '你好')
+  const listed = await media.listFiles()
+  assert.equal(listed.totalBytes, 6)
+  assert.deepEqual(listed.items.map(({ at, ...item }) => item), [{ path: saved.path, name: saved.name, size: 6 }])
+  assert.ok(Number.isFinite(listed.items[0].at))
+})
+
+test('files: strict canonical base64 rejects data URLs, whitespace, malformed padding and empty data', async (t) => {
+  const { media } = filesHarness(t)
+  for (const dataBase64 of [undefined, null, 123, {}, '', ' ', 'YQ', 'YQ=', 'YQ===', '=YQ=', 'YQ==\n', 'Y Q==', 'data:text/plain;base64,YQ==', 'YQ-_', 'YR==', 'YWJ=']) {
+    await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64 }), /base64/)
+  }
+  assert.deepEqual(await media.listFiles(), { items: [], totalBytes: 0 })
+  for (const value of ['a', 'ab', 'abc']) await media.saveFile({ name: 'a.txt', dataBase64: Buffer.from(value).toString('base64') })
+  assert.equal((await media.listFiles()).totalBytes, 6)
+})
+
+test('files: size boundary, allowed extensions and safe basename validation', async (t) => {
+  const { media } = filesHarness(t, { maxBytes: 1024 })
+  const dataBase64 = Buffer.alloc(1024).toString('base64')
+  await media.saveFile({ name: 'a'.repeat(116) + '.txt', dataBase64 })
+  await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: Buffer.alloc(1025).toString('base64') }), /大小/)
+  await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: Buffer.alloc(1027).toString('base64') }), /大小/)
+  for (const name of [undefined, null, 1, {}, '', ' ', '.', '..', 'a'.repeat(117) + '.txt', '../a.txt', '/a.txt', 'a/b.txt', 'a\\b.txt', 'C:a.txt', 'a\0.txt', 'a\n.txt', 'a?.txt']) {
+    await assert.rejects(media.saveFile({ name, dataBase64 }), /文件名/)
+  }
+  for (const name of ['a.exe', 'a.png', 'a.txt.exe', 'a.', 'a', '.txt']) await assert.rejects(media.saveFile({ name, dataBase64 }))
+  for (const ext of ['txt', 'md', 'json', 'csv', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', '7z', 'rar']) await media.saveFile({ name: 'file.' + ext, dataBase64: 'YQ==' })
+  assert.equal((await media.listFiles()).items.length, 15)
+})
+
+test('files: total/media switches gate upload and list without creating directories', async (t) => {
+  const { media, cfg, root } = filesHarness(t, { enabled: false })
+  for (const switches of [{ enabled: false, files: { enabled: true } }, { enabled: true, files: { enabled: false } }]) {
+    Object.assign(cfg.media, switches)
+    await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /文件功能未启用/)
+    await assert.rejects(media.listFiles(), /文件功能未启用/)
+  }
+  assert.throws(() => readFileSync(root), /ENOENT/)
+})
+
+test('files: list ignores symlinks, directories, nested/inbound files, bad extensions and oversized files', async (t) => {
+  const { media, root, base } = filesHarness(t, { maxBytes: 1024 })
+  await media.saveFile({ name: 'ok.txt', dataBase64: 'YQ==' })
+  const dir = join(root, 'files')
+  mkdirSync(join(dir, 'nested.txt'))
+  writeFileSync(join(dir, 'nested.txt', 'hidden.txt'), 'hidden')
+  mkdirSync(join(root, 'inbound'))
+  writeFileSync(join(root, 'inbound', 'hidden.txt'), 'hidden')
+  writeFileSync(join(base, 'outside.txt'), 'secret')
+  writeFileSync(join(dir, 'bad.exe'), 'bad')
+  writeFileSync(join(dir, 'big.txt'), Buffer.alloc(1025))
+  symlinkSync(join(base, 'outside.txt'), join(dir, 'escape.txt'))
+  symlinkSync(join(dir, 'big.txt'), join(dir, 'inside.txt'))
+  symlinkSync(join(root, 'inbound'), join(dir, 'directory'), 'dir')
+  const listed = await media.listFiles({ path: base })
+  assert.equal(listed.items.length, 1)
+  assert.equal(listed.items[0].name, 'ok.txt')
+  assert.equal(listed.totalBytes, 1)
+})
+
+test('files: upload/list reject files-directory symlinks inside or outside root and non-directories', async (t) => {
+  const { media, root, base } = filesHarness(t)
+  mkdirSync(root)
+  const target = join(base, 'outside')
+  mkdirSync(target)
+  for (const directory of [target, root]) {
+    symlinkSync(directory, join(root, 'files'), 'dir')
+    await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /符号链接/)
+    await assert.rejects(media.listFiles(), /符号链接/)
+    rmSync(join(root, 'files'))
+  }
+  writeFileSync(join(root, 'files'), 'untouched')
+  await assert.rejects(media.saveFile({ name: 'a.txt', dataBase64: 'YQ==' }), /不是目录/)
+  await assert.rejects(media.listFiles(), /不是目录/)
+  assert.equal(readFileSync(join(root, 'files'), 'utf8'), 'untouched')
+})
+
+test('files: same-name concurrent uploads at one timestamp preserve existing contents without overwriting', async (t) => {
+  const { media, root } = filesHarness(t)
+  t.mock.method(Date, 'now', () => 1793923200000)
+  const payloads = Array.from({ length: 12 }, (_, index) => 'payload-' + index)
+  const saved = await Promise.all(payloads.map((text) => media.saveFile({ name: 'same.txt', dataBase64: Buffer.from(text).toString('base64') })))
+  assert.equal(new Set(saved.map((item) => item.path)).size, payloads.length)
+  saved.forEach((item, index) => assert.equal(readFileSync(join(root, item.path), 'utf8'), payloads[index]))
+  assert.equal((await media.listFiles()).items.length, payloads.length)
+  // Force an actual timestamp/UUID collision to verify exclusive creation, not just unique naming.
+  const { default: crypto } = await import('node:crypto')
+  const { syncBuiltinESMExports } = await import('node:module')
+  const original = crypto.randomUUID
+  try {
+    crypto.randomUUID = () => 'deadbeef-0000-4000-8000-000000000000'
+    syncBuiltinESMExports()
+    const first = await media.saveFile({ name: 'collision.txt', dataBase64: 'YQ==' })
+    await assert.rejects(media.saveFile({ name: 'collision.txt', dataBase64: 'Yg==' }), { code: 'EEXIST' })
+    assert.equal(readFileSync(join(root, first.path), 'utf8'), 'a')
+  } finally { crypto.randomUUID = original; syncBuiltinESMExports() }
+})
+
+test('files: list is limited to newest 500 while totalBytes counts every eligible file', async (t) => {
+  const { media, root } = filesHarness(t)
+  const { utimesSync } = await import('node:fs')
+  mkdirSync(join(root, 'files'), { recursive: true })
+  for (let index = 0; index < 502; index++) {
+    const file = join(root, 'files', index + '.txt')
+    writeFileSync(file, 'a')
+    utimesSync(file, index + 1, index + 1)
+  }
+  const result = await media.listFiles()
+  assert.equal(result.items.length, 500)
+  assert.equal(result.totalBytes, 502)
+  assert.equal(result.items[0].path, 'files/501.txt')
+  assert.equal(result.items.at(-1).path, 'files/2.txt')
+  assert.ok(result.items.every((item, index) => !index || result.items[index - 1].at >= item.at))
+})

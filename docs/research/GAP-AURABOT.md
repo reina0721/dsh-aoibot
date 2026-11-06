@@ -131,7 +131,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 42 | 翻唱/RVC | 网易云→分离→RVC→混音 | 无 | 豁免（用户批准） | 2026-11-06 用户批准：依赖外部 RVC 模型/客户端，退出发布门槛 |
 | 43 | 表情包 | 收集/尺寸/去重/打标/按语境发/商城 | 面板手动上传；PNG/JPG/JPEG/GIF/WebP；默认 5 MiB/张、200 张；SHA-256 去重；人工标签；`/sticker [标签]` 随机发 | 部分（M4-b） | 不自动收集、缩放转码、语境/情绪选择或接商城 |
 | 44 | 图片收发/视觉/生图/改图 | 有 | M7-c：入站/Vision/base64 出站；主人 /image 普通图片、/draw 生图、/redraw 兼容 edits；媒体页生图/改图只落盘，状态 flags；默认关闭、env 密钥、prompt 1–1000、五档尺寸、限大小 PNG b64_json、PNG 头边长≤1792/像素≤1792×1024；根内相对路径/realpath/扩展名/大小与 access 闸门 | 部分（M7-c） | M7：真实 provider/QQ 生图改图未验证；不获取返回 URL，只支持 OpenAI 兼容 edits，无 mask/其他编辑后端；无普通图片发送面板/任意本地路径 |
-| 45 | 文件发送/接收 | 有 | 白名单扩展名下载；OneBot 群/私聊文件上传服务；M7-b 主人 /file 媒体根内相对路径，realpath 防逃逸 | 部分（M7-b） | 无文件面板；media.enabled/files.enabled 与 qqAdmin.enabled 必须开启；网关兼容性未实机验证 |
+| 45 | 文件发送/接收 | 有 | 白名单扩展名下载；OneBot 群/私聊上传服务；主人 /file 根内相对路径；M7-k 文件上传/列表/刷新面板及本地 API，安全 basename/严格 base64/大小限制、固定 files 目录/realpath/wx、最新 500 项与总字节数 | 部分（M7-k） | 无文件发送/删除/下载面板；上传/列表需 media.enabled/files.enabled，主人发送另需 qqAdmin.enabled/access；真实 QQ 文件兼容性未验证 |
 | 46 | 本地接口（TTS/生图/识别脚本） | 有 | M7-c：`/media/status|test|tts`、`POST /media/image/generate {prompt,size?}` / `edit {path,prompt,size?}` 返回根内生成路径；表情包按 ID 取图；默认零网络；超时/大小/五档尺寸限制，只接受 PNG b64_json | 部分（M7-c） | M7：无本地识别脚本桥/任意本地路径/新图片上传下载接口；不抓 provider 返回 URL，只支持兼容 edits；真实 provider/QQ 未验证，面板/API 不自动发送 |
 
 ### 3.10 社交内容
@@ -386,3 +386,9 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 好友请求缺省子类型映射 add，群 add/invite 按 flag 去重存 pending；flag 仅本地凭据存储/固定网关 action 使用，不进入公共列表、回复或日志。备注去控制字符、脱敏 flag/既有密钥模式、限 500 字符；主人 `/requests` 最多 10 条摘要，`/approve ID confirm`、`/reject ID confirm` 固定字面量确认且先检查 access，服务复核 owner/开关/pending/boolean。成功记录处理元数据，失败静态错误且 pending；进程内同 ID 并发防重、await 固定原人格写入。请求新增 requests 人格数据组，支持统计/复制/删除。无自动审批、审批队列面板、新请求 REST API 或新增 Agent 工具。
 
 证据：[notices.test.js](../../test/notices.test.js)、[commands.test.js](../../test/commands.test.js)、[actions.test.js](../../test/actions.test.js)、[集成测试](../../test/cognition-integration.test.js)，全部为离线合成事件/fake 网关；真实 QQ 事件字段/审批动作未验证。没有通用审批/逐项权限或 PII/熵/媒体文件检测；QQ ID/备注仍是隐私，原事件日志策略不变，网关超时需人工核实、跨人格副本不代表新真实请求。#3/#15 保持 partial；#31/#42/#49/#50 行逐字不变，remaining 仍 47。
+
+### M7-k 本地文件上传/列表（#45 仍 partial）
+
+媒体服务新增 `saveFile({name,dataBase64})` / `listFiles()`；媒体与文件开关均需开启，关闭时报错。上传只接受安全 basename≤120、FILE_EXTENSIONS、非空严格规范 base64 与大小内内容；固定 files 目录、根/目录 realpath、拒绝目录符号链接、wx 防覆盖。列表不递归、不跟随符号链接，仅白名单扩展名/大小内普通文件，mtime 最新优先最多 500 项，totalBytes 统计全部合格文件。新增本地 GET `/media/files` / POST `/media/file/upload`，POST 请求体固定 15 MiB；媒体页增加客户端预检、上传防重、路径/大小/时间列表、刷新与独立错误显示。
+
+证据：[media.test.js](../../test/media.test.js)、[API](../../test/e2e.test.js)、[面板](../../test/panel.test.js)，全部离线临时文件/fake 宿主/mock UI，涵盖严格 base64、大小/文件名/扩展名、开关、文件及目录符号链接、固定目录、并发与强制重名不覆盖、500 项排序/总量及上传错误。无文件发送/删除/下载面板；发送仍使用主人 `/file 相对路径`。无新依赖、外部调用或真实 QQ 发送/浏览器验证，真实 QQ 文件兼容性未验证，#45 保持 partial；#31/#42/#49/#50 矩阵行逐字不变，remaining 47。

@@ -1,5 +1,5 @@
 // Media ingest/outbound foundation. External providers are opt-in and all failures are non-fatal.
-import { mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, isAbsolute, join, resolve, sep, win32 } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -205,6 +205,76 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     return file
   }
 
+  function requireFiles() {
+    if (!config().enabled || config().files?.enabled !== true) throw new Error('文件功能未启用')
+  }
+
+  async function filesDir(create = false) {
+    const root = rootDir()
+    if (create) await mkdir(root, { recursive: true })
+    let realRoot
+    try { realRoot = await realpath(root) } catch (error) {
+      if (!create && error.code === 'ENOENT') return null
+      throw error
+    }
+    const dir = join(realRoot, 'files')
+    if (create) {
+      try { await mkdir(dir) } catch (error) { if (error.code !== 'EEXIST') throw error }
+    }
+    let info
+    try { info = await lstat(dir) } catch (error) {
+      if (!create && error.code === 'ENOENT') return null
+      throw error
+    }
+    if (info.isSymbolicLink()) throw new Error('文件目录不能是符号链接')
+    if (!info.isDirectory()) throw new Error('文件目录不是目录')
+    const realDir = await realpath(dir)
+    if (!realDir.startsWith(`${realRoot}${sep}`)) throw new Error('文件目录不能逃逸媒体目录')
+    return realDir
+  }
+
+  async function saveFile({ name, dataBase64 } = {}) {
+    requireFiles()
+    if (typeof name !== 'string' || !name.trim() || name.length > 120 || name !== basename(name) || name !== win32.basename(name) || !/^[\p{L}\p{N}._ -]+$/u.test(name) || name === '.' || name === '..') throw new Error('文件名必须是 1–120 字符的安全 basename')
+    const extension = extname(name).toLowerCase()
+    if (!FILE_EXTENSIONS.has(extension)) throw new Error('文件扩展名不在允许列表')
+    if (!name.slice(0, -extension.length).replace(/[. ]/g, '')) throw new Error('文件名缺少有效名称')
+    if (typeof dataBase64 !== 'string' || !dataBase64) throw new Error('dataBase64 必须是非空的严格 base64（不支持 data URL）')
+    if (dataBase64.length > Math.ceil(maxBytes() / 3) * 4) throw new Error(`文件超过大小限制 ${maxBytes()} bytes`)
+    if (dataBase64.length % 4 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64)) throw new Error('dataBase64 必须是严格 base64（不支持 data URL）')
+    const buffer = Buffer.from(dataBase64, 'base64')
+    if (buffer.toString('base64') !== dataBase64) throw new Error('dataBase64 必须是严格 base64')
+    if (!buffer.length || buffer.length > maxBytes()) throw new Error(`文件为空或超过大小限制 ${maxBytes()} bytes`)
+    const dir = await filesDir(true)
+    const storedName = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeName(name)}`
+    await writeFile(join(dir, storedName), buffer, { flag: 'wx' })
+    return { ok: true, path: `files/${storedName}`, name, size: buffer.length }
+  }
+
+  async function listFiles() {
+    requireFiles()
+    const dir = await filesDir()
+    const items = []
+    let totalBytes = 0
+    if (!dir) return { items, totalBytes }
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (!entry.isFile() || !FILE_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue
+      const file = join(dir, entry.name)
+      try {
+        const info = await lstat(file)
+        if (!info.isFile() || info.size > maxBytes()) continue
+        const realFile = await realpath(file)
+        if (!realFile.startsWith(`${dir}${sep}`)) continue
+        items.push({ path: `files/${entry.name}`, name: entry.name.replace(/^\d+-[a-f0-9]{8}-/, ''), size: info.size, at: info.mtimeMs })
+        totalBytes += info.size
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error
+      }
+    }
+    items.sort((a, b) => b.at - a.at || b.path.localeCompare(a.path))
+    return { items: items.slice(0, 500), totalBytes }
+  }
+
   async function confinedFile(kind, { relativePath, filePath } = {}) {
     const root = rootDir()
     if (relativePath !== undefined && (typeof relativePath !== 'string' || !relativePath.trim() || isAbsolute(relativePath) || win32.isAbsolute(relativePath) || /^[a-z]:/i.test(relativePath) || /[\x00-\x1f\x7f\\]/.test(relativePath) || relativePath.split('/').includes('..'))) throw new Error('仅支持媒体根内相对路径')
@@ -348,5 +418,5 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     throw new Error('kind 必须是 tts、asr 或 vision')
   }
 
-  return { ingestTurn, sendMedia, synthesize, generateImage, editImage, status, test: testProvider }
+  return { ingestTurn, sendMedia, synthesize, generateImage, editImage, saveFile, listFiles, status, test: testProvider }
 }
