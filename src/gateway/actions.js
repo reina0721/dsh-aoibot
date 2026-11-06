@@ -117,6 +117,16 @@ export function createActions({ call }) {
     sendPrivate,
     sendGroup,
     sendMessage,
+    /** 私聊/C2C 输入状态（网关扩展）；user_id 必须保留为字符串。 */
+    setInputStatus(userId, eventType) {
+      if (typeof userId !== 'string' || userId.length > 20 || userId.trim() !== userId || !/^[1-9]\d*$/.test(userId) || !Number.isSafeInteger(Number(userId))) {
+        throw new OneBotError('validate', { message: 'ID 无效' })
+      }
+      if (!Number.isInteger(eventType) || (eventType !== 1 && eventType !== 2)) {
+        throw new OneBotError('validate', { message: 'event_type 必须为 1 或 2 的整数' })
+      }
+      return call('set_input_status', { user_id: userId, event_type: eventType })
+    },
     setFriendAddRequest(flag, approve, remark = '') {
       return call('set_friend_add_request', {
         flag: requestText(flag, 'flag', 256, true), approve: requireBoolean(approve, 'approve'), remark: requestText(remark, 'remark', 100),

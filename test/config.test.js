@@ -8,6 +8,20 @@ import { join } from 'node:path'
 import { DEFAULTS, CONFIG_GROUPS, normalizeConfig, getPath } from '../src/core/config.js'
 import { createLogger } from '../src/core/logger.js'
 
+test('typing config: default off, strict boolean and private-only turn panel switch', () => {
+  assert.deepEqual(DEFAULTS.cognition.typing, { enabled: false })
+  assert.deepEqual(normalizeConfig({}).config.cognition.typing, { enabled: false })
+  for (const enabled of [true, false, 'true', 'false', 1, null]) {
+    assert.deepEqual(normalizeConfig({ cognition: { typing: { enabled } } }).config.cognition.typing, { enabled: enabled === true })
+  }
+  const field = CONFIG_GROUPS.find((group) => group.id === 'cog-turn').fields.find((item) => item.path === 'cognition.typing.enabled')
+  assert.equal(field.type, 'switch')
+  assert.equal(field.default, false)
+  assert.match(field.help, /私聊\/C2C/)
+  assert.match(field.help, /不发送群聊输入状态/)
+  assert.match(field.help, /默认关闭/)
+})
+
 test('command permissions config: empty defaults and string-list panel field', () => {
   const { config, issues } = normalizeConfig({})
   assert.deepEqual(DEFAULTS.cognition.permissions, { deniedCommands: [] })

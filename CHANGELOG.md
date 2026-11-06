@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布
+
+- M7-q：新增 `setInputStatus(userId,eventType)`，严格正安全整数字符串 ID（无前导零/非数字、最多 20 字符）与整数 1/2 校验，固定 `set_input_status` payload；新增默认关闭的 `cognition.typing={enabled:false}` 和轮次面板开关。仅私聊/C2C 的 `handleTurn` 在原 `processTurn` 前等待输入中、`finally` 等待暂停；两次异常均捕获，不改变回复/原异常、不记录原始网关错误或聊天 ID。默认零调用，群聊/缺方法旁路，命令早退与处理异常也清理；不改 outbound/sendMedia/发送 API，入站 `input_status` 仍忽略。新增离线 action/配置/集成测试，无新依赖。没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板；真实 QQ 未验证，尚未部署/全量验收。#9 为 steer + 私聊 typing，仍 partial，remaining 47，#31/#42/#49/#50 不变。
+
 ## 0.11.0（2026-11-06，部分真机验收）
 
 - live `web` 已升级到本地 0.11.0 构建并完成部分真实 QQ smoke：健康/新增 API 200、真实私聊入站与回复、`/send` message_id、本地备份；主人命令/媒体/审批/typing/提醒投递等仍未验收。详见 [验收证据](docs/assets/live-acceptance-2026-11-06.json)。

@@ -60,7 +60,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 6 | 每聊天 DSH Session | `sessionController` + preset + 映射文件 | `src/runtime/agent.js`：Session 映射、preset、followup、超时、oneshot 回退 | 部分（M1-b） | M1 剩余：真机验证/工具面 |
 | 7 | 工具/MCP/子智能体 | 按会话挂载；`aurabot-subagent` | private preset 内置 fs/fs-search/web；full/主人私聊另挂 3 个当前会话 QQ 工具；无 MCP/子智能体 | 部分（M5-b） | M1/M2 |
 | 8 | 后台任务/定时任务 | jobs + schedule + 长任务 preset | M7-l 默认关闭的主人本地固定文本提醒；一次/重复、人格与聊天隔离、统一 outbound、延迟安全重试；离线测试 | 部分（M7-l） | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
-| 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | M7-o 主人显式 `/steer 文本`，1–1000 Unicode 字符；复用/创建当前聊天 Session、固定 user payload、安全错误与 steers 统计；仅离线测试 | 部分（M7-o，仅 steer） | M1 剩余：typing/set_input_status 未实现，真实 DSH/QQ 未验证 |
+| 9 | 会话内插话/steer/typing | `agent.steer` + `set_input_status` | M7-o 主人显式 steer；M7-q 默认关闭的私聊/C2C 输入状态，轮次前 1/finally 2、失败隔离与配置开关；仅离线测试 | 部分（M7-o/M7-q，steer + 私聊 typing） | M1 剩余：无群聊 typing/群 set_input_status、输入状态限频或专用状态面板，真实 DSH/QQ 未验证 |
 | 10 | 按聊天选模型 | `chatModels`（私聊/群/单聊） | `cognition.modelRouting`：私聊/群默认 + 会话覆盖；`/model` 写回 | 部分（M1-c，仅认知 LLM） | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | `/silent` `/active` `/quiet` `/chatty` `/model` `/sing` `/remember` `/status` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`；非主人静默 | 部分（M1-c） | M1 剩余：`/sing` 等媒体命令 |
 
@@ -416,10 +416,19 @@ dsh-bot 证据入口：`docs/cognitive/IMPLEMENTATION-STATUS.md`、`src/cognitio
 
 主人 `/steer 文本` 经命令身份/禁用列表/访问检查后调用 `runtime.steer(turn,text)`；active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。`sessionFor(turn)` 复用或创建当前 Session，向 `agent.steer` 传入 text content 与 user source；缺方法返回 STEER_UNAVAILABLE，异常返回固定 STEER_FAILED，不回显原始异常/文本；成功更新 steers/lastAt。Session 解析串行防并发新建，插话不等待普通 compose 的 turn/end。
 
-普通回合仍走 followup，不自动 steer；非主人私聊/群聊静默，不允许群成员通过此命令注入插话。无新配置/依赖，不写配置或直接调用模型，无插话面板/API。typing/`set_input_status` 未实现；仅 fake agent 离线服务/命令测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial（38 partial / 2 none），remaining 47；#31/#42/#49/#50 保持原状态与豁免。
+普通回合仍走 followup，不自动 steer；非主人私聊/群聊静默，不允许群成员通过此命令注入插话。无新配置/依赖，不写配置或直接调用模型，无插话面板/API。M7-o 交付时未含 typing；M7-q 私聊输入状态见后文。steer 仅 fake agent 离线服务/命令测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial（38 partial / 2 none），remaining 47；#31/#42/#49/#50 保持原状态与豁免。
 
 ### M7-p 可选群聊词法记忆相关度（#20 仍 partial）
 
 `cognition.turn.groupRelevance={enabled:false,minScore:0.15}` 默认不改变行为，`cog-turn` 提供开关与 0–1 阈值（超界夹取、非法值回退）。仅群聊未点名消息，在既有点名模式/概率/分钟上限/连续上限/冷却之后、分析之前，复用已检索记忆最高 `signals.relevance`；缺信号时用有界文本/摘要词法重合。无记忆或低分走既有 `skipGroup`，仍编码 ambient 记忆，记录 `low_relevance`，不调用分析/回复 LLM；点名/私聊绕过相关度，计算异常放行。
 
 证据：[配置测试](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[集成测试](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，离线覆盖默认关闭、阈值夹取、低分/无记忆/等于或超过阈值、点名/私聊旁路、中文/英文摘要重合与边界、计算异常、实际检索复用、既有跳过优先级和跳过仍记忆。门控无新增依赖或外部调用，不用综合检索分数/embedding；既有检索仍先执行。仅词法记忆相关度，没有 LLM 话题判断/接梗/语义分数，真实 QQ/浏览器未验证。#20 保持 partial，矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 行逐字不变。
+
+
+### M7-q 可选私聊输入状态（#9 仍 partial）
+
+`cognition.typing={enabled:false}` 默认零调用、不改变行为，`cog-turn` 提供私聊/C2C 开关及不支持群聊的帮助。`setInputStatus(userId,eventType)` 仅接受无前导零/空白/非数字、最多 20 字符的正安全整数字符串，整数 event_type 只允许 1/2，固定调用 `set_input_status` 并透传结果/错误。
+
+pipeline 保留原处理为 `processTurn`；仅启用且 private、有 action 时，在处理前 await 输入中 1、finally await 暂停 2。两次异常全部捕获，不影响回复或覆盖原处理异常，不记录可能包含聊天 ID 的网关错误；命令提前返回也尝试暂停。关闭/群聊/缺方法旁路，outbound/sendMedia/发送 API 不增加 typing，入站 `input_status` 仍忽略。等待沿用网关超时/重试，可能增加轮次耗时。
+
+证据：[actions.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/actions.test.js)、[config.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/config.test.js)、[cognition-integration.test.js](https://github.com/reina0721/dsh-bot/blob/main/test/cognition-integration.test.js)，均为离线/fake 网关，覆盖 payload/边界/错误、默认与严格布尔/配置字段、私聊 1/2、群聊零调用、缺方法、同步/异步失败不改回复且无 ID 日志、命令早退、处理异常与等待清理。无新增依赖；真实 QQ 未验证，没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板（仅配置开关），未完成全量验收。#9 为 steer + 私聊 typing，仍 partial；矩阵 6 has / 38 partial / 2 none / 1 limited / 6 leading / 8 exempt，remaining 47，#31/#42/#49/#50 行逐字不变。

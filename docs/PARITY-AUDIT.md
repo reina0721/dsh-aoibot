@@ -1,10 +1,12 @@
-# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p 对标审计、用户豁免与临时 profile smoke
+# M7-a/M7-b/M7-c/M7-d/M7-f/M7-g/M7-h/M7-i/M7-j/M7-k/M7-l/M7-m/M7-n/M7-o/M7-p/M7-q 对标审计、用户豁免与临时 profile smoke
 
 快照日期：2026-11-06（UTC）。**并非全量对齐（not full parity）**。本页读取当前仓库的 [§3.x 能力矩阵](research/GAP-AURABOT.md#3-能力矩阵)，不把计划、静态计数或本机 API smoke 当成真实 QQ/媒体/外部服务证据；M7-b 已按 2026-11-06 用户批准将 #16/#47/#52/#55/#59 标为 exempt；后续又批准 #42/#49/#50（RVC/抖音小黑盒/桌宠）豁免，并更新固定主人命令的实际边界。M7-c 更新 #44/#46：默认关闭的兼容生图/edits、本地 API/面板与主人图片命令，仍为 partial，未验证真实 provider/QQ。**exemptions are explicit user decisions, not implementation evidence**（豁免是明确用户决定，不是实现证据）。准确范围与理由见 [GAP §8.1](research/GAP-AURABOT.md#81-用户批准豁免)；不豁免 #44（生图/改图）或其他差距，不改变本机-only/CSRF 行为。
 
+M7-q 更新 #9：`cognition.typing={enabled:false}` 默认零调用，`cog-turn` 私聊/C2C 配置开关；gateway action 严格字符串安全整数 ID、event_type 1/2 与固定 payload。pipeline 在原处理前 await 1、finally await 2，两次错误全捕获、不改回复/原处理异常、不记录原始网关错误或聊天 ID；群聊/缺方法旁路，命令早退也清理，不改 outbound/sendMedia/发送 API，入站 `input_status` 仍忽略。仅离线 action/配置/fake 网关集成测试，没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板（仅配置开关），真实 QQ 未验证，未完成全量验收。#9 为 steer + 私聊 typing，仍 partial，38 partial / 2 none、remaining 47，#31/#42/#49/#50 行逐字不变。
+
 M7-p 更新 #20：默认关闭的 `cognition.turn.groupRelevance` 与 `cog-turn` 开关/0–1 阈值（默认 0.15）。未点名群消息按原点名模式/概率/分钟上限/连续上限/冷却顺序通过后，复用已检索记忆最高词法 relevance，缺信号则有界摘要重合；无记忆/低分仍编码 ambient 记忆、记录 low_relevance 并跳过分析/回复 LLM，点名/私聊绕过相关度、异常放行。关闭保持原行为，无新增依赖或外部调用；仅词法记忆相关度，无 LLM 话题判断/接梗/语义分数。离线配置/fake LLM/实际记忆检索测试，真实 QQ/浏览器未验证。#20 仍 partial、remaining 47，#31/#42/#49/#50 行逐字不变。
 
-M7-o 更新 #9：主人显式 `/steer 文本`，1–1000 Unicode 字符、active/当前 private 或 group 数字 ID 校验；复用或创建 Session，固定 user payload、安全错误与 steers/lastAt 统计。Session 解析串行，插话可在 compose 等待期间送达；命令经 owner/禁用列表/访问检查，非主人静默。普通回合不自动 steer，不写配置/直接调用模型，无新配置/依赖或插话面板/API。typing/`set_input_status` 未实现；仅 fake agent 离线测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial，38 partial / 2 none，remaining 47，#31/#42/#49/#50 不变。
+M7-o 更新 #9：主人显式 `/steer 文本`，1–1000 Unicode 字符、active/当前 private 或 group 数字 ID 校验；复用或创建 Session，固定 user payload、安全错误与 steers/lastAt 统计。Session 解析串行，插话可在 compose 等待期间送达；命令经 owner/禁用列表/访问检查，非主人静默。普通回合不自动 steer，不写配置/直接调用模型，无新配置/依赖或插话面板/API。M7-o 当时未含 typing，M7-q 私聊输入状态见上文；steer 仅 fake agent 离线测试，真实 DSH/QQ 未验证。#9 从 none 改为 partial，38 partial / 2 none，remaining 47，#31/#42/#49/#50 不变。
 
 M7-n 更新 #14：默认空的 `cognition.permissions.deniedCommands`，严格数组/小写命令名、去重/最多100/非法项 issue、string-list 配置字段。身份检查后、内置与模块派发前拦截，小写解析避免大小写绕过；主人固定提示、非主人静默，不调用处理服务/handler 或写配置；未知命令与帮助保持原样。仅离线配置/fake 服务测试，没有所有服务/工具的逐项 allow/deny 矩阵或统一审批，API/直接服务/Agent 工具及模块同进程代码不覆盖。#14 仍 partial，remaining 47，#31/#42/#49/#50 不变。
 
@@ -62,8 +64,8 @@ npm run check:docs
 
 矩阵 61 项；has: 6，partial: 38，none: 2，limited: 1，leading: 6，exempt: 8。
 剩余 47 项（排除 has/exempt，包括领先项；不等于缺失功能数）。
-源码：66 个 JS 文件 / 16916 行。
-测试静态计数：46 个文件 / 10407 行 / 448 个顶层 test 声明；包含 skip，不代表执行结果。
+源码：66 个 JS 文件 / 16942 行。
+测试静态计数：46 个文件 / 10544 行 / 454 个顶层 test 声明；包含 skip，不代表执行结果。
 
 结构检查：通过；重复编号 0，格式错误 0，非 has（含 exempt）缺目标 0。
 
@@ -73,7 +75,7 @@ npm run check:docs
 |---|---|---|---|
 | 6 | 每聊天 DSH Session | partial | M1 剩余：真机验证/工具面 |
 | 8 | 后台任务/定时任务 | partial | M1：无 DSH jobs/长任务/LLM 任务执行/提醒面板，真实定时器与 QQ 未验证 |
-| 9 | 会话内插话/steer/typing | partial | M1 剩余：typing/set_input_status 未实现，真实 DSH/QQ 未验证 |
+| 9 | 会话内插话/steer/typing | partial | M1 剩余：无群聊 typing/群 set_input_status、输入状态限频或专用状态面板，真实 DSH/QQ 未验证 |
 | 10 | 按聊天选模型 | partial | M1 剩余：agent Session 模型 |
 | 11 | QQ 内命令 | partial | M1 剩余：`/sing` 等媒体命令 |
 | 12 | 主人/私聊白名单/群白名单 | partial | M1 剩余：工具级权限 |

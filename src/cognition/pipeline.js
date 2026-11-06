@@ -549,6 +549,20 @@ export function createPipeline({
   }
 
   async function handleTurn(turn) {
+    if (cfg().typing?.enabled !== true || turn?.chatType !== 'private' || typeof gateway?.actions?.setInputStatus !== 'function') {
+      return processTurn(turn)
+    }
+    const userId = String(turn.chatId)
+    // 输入状态只作尽力提示；不记录可能含聊天 ID 的网关异常。
+    try { await gateway.actions.setInputStatus(userId, 1) } catch (error) {}
+    try {
+      return await processTurn(turn)
+    } finally {
+      try { await gateway.actions.setInputStatus(userId, 2) } catch (error) {}
+    }
+  }
+
+  async function processTurn(turn) {
     if (!turn) return buildResult({ ok: false, error: 'no_turn' })
     const c = cfg()
     if (!c.enabled) return buildResult({ ok: false, error: 'cognition_disabled' })

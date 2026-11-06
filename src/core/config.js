@@ -162,6 +162,7 @@ export const DEFAULTS = {
     dryRun: false,
     locale: 'zh-CN',
     timezone: '',
+    typing: { enabled: false },
     turn: {
       privateBaseMs: 1800,
       privateMaxMs: 10000,
@@ -724,6 +725,7 @@ export const CONFIG_GROUPS = [
     title: '轮次与防抖',
     description: '消息不等于完整发言。等待窗口全部可配置，且始终有硬截止。',
     fields: [
+      { path: 'cognition.typing.enabled', label: '私聊输入状态', type: 'switch', default: false, help: '仅私聊/C2C，依赖网关支持；不发送群聊输入状态，默认关闭。' },
       { path: 'cognition.turn.privateBaseMs', label: '私聊基础等待', type: 'number', default: 1800, min: 500, max: 5000, step: 100, unit: 'ms' },
       { path: 'cognition.turn.privateMaxMs', label: '私聊硬截止', type: 'number', default: 10000, min: 3000, max: 20000, step: 500, unit: 'ms' },
       { path: 'cognition.turn.groupMaxMs', label: '群聊硬截止', type: 'number', default: 9000, min: 3000, max: 20000, step: 500, unit: 'ms' },
@@ -1284,6 +1286,7 @@ function normalizeCognition(raw, rawCognition = {}, issues = []) {
     dryRun: pickBool(src.dryRun, d.dryRun),
     locale: pickEnum(src.locale, d.locale, ['zh-CN']),
     timezone: pickString(src.timezone, '', { max: 64 }),
+    typing: { enabled: pickBool(src.typing?.enabled, d.typing.enabled) },
     notices: { enabled: pickBool(src.notices?.enabled, d.notices.enabled) },
     requests: { enabled: pickBool(src.requests?.enabled, d.requests.enabled) },
     permissions: {

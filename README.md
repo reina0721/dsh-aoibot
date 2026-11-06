@@ -18,7 +18,8 @@
 - 访问控制：`open`/`allowlist`、主人 QQ、私聊/群白名单、统一出站闸门与审计。
 - 可选 DSH Session 运行时：`runtime.engine=agent` 时每聊天一个 DSH Session；仅主人私聊在运行时挂载 3 个当前会话 QQ 工具，失败自动回退 oneshot。
 - QQ 命令（主人）：`/status` `/steer` `/quiet` `/active` `/model` `/remember` `/forget` `/tts` `/say` `/sticker` `/bili` `/help`；支持按聊天覆盖模型。
-- 主人会话插话（M7-o）：`/steer 文本` 将 1–1000 Unicode 字符注入当前 agent Session，复用或创建会话；oneshot 不可用。仅显式主人命令，不自动 steer、不写配置；无 typing/`set_input_status` 或插话面板/API，真实 DSH/QQ 未验证，#9 为 partial，remaining 47；见[用户手册](docs/USER-MANUAL.md#32-会话运行时实验默认关闭)。
+- 主人会话插话（M7-o）：`/steer 文本` 将 1–1000 Unicode 字符注入当前 agent Session，复用或创建会话；oneshot 不可用。仅显式主人命令，不自动 steer、不写配置；无插话面板/API，真实 DSH/QQ 未验证，#9 为 partial，remaining 47；见[用户手册](docs/USER-MANUAL.md#32-会话运行时实验默认关闭)。
+- 私聊输入状态（M7-q）：`cognition.typing={enabled:false}`，默认关闭；开启后私聊/C2C 轮次前后调用 `set_input_status`（1 输入中、2 暂停），失败不影响回复。依赖网关支持，无群聊输入状态/群 `set_input_status`、输入状态限频或专用状态面板；仅离线测试，真实 QQ 未验证。#9 仍 partial，remaining 47，#31/#42/#49/#50 不变；见[配置](docs/CONFIG.md#私聊输入状态m7-q)。
 - 命令禁用列表（M7-n）：`cognition.permissions.deniedCommands=[]` 默认保持原行为；操作员可按小写命令名禁用内置或模块命令，派发前拦截且不调用处理服务或写配置。仅覆盖命令入口，没有所有服务/工具的逐项权限矩阵或统一审批，#14 仍 partial，remaining 47；见[配置](docs/CONFIG.md#命令禁用列表m7-n)。
 - M7-l 新增默认关闭的主人本地提醒：`/remind <秒|ISO时间> <文本>`、`/reminders`、`/forgetreminder <id>`。只发送固定文本，按人格和当前聊天隔离，统一经过访问控制、限频与文本防泄漏；没有 DSH jobs、长任务、LLM 任务执行或提醒管理面板/API。真实定时器/QQ 未验证，#8/#40 仅 partial，remaining 47。使用方法见 [用户手册](docs/USER-MANUAL.md#本地主人提醒m7-l)。
 - 回复分条、可配引用/@、连续未点名接话上限，避免长文刷屏与自说自话。

@@ -1,16 +1,17 @@
-# 实现状态（v0.11.0 候选）
+# 实现状态（v0.11.0 发布后，M7-q 工作区）
 
-0.11.0 为 M7 发布候选；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
+0.11.0 已发布并 live，M7-q 为尚未发布的工作区改动；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记，不代表全量验收。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 
 > M7-b：2026-11-06 用户批准 #16（仅远端 API 鉴权）、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 迁移/离峰为发布门槛豁免；保留本机-only/CSRF 行为。豁免是明确用户决定，不是实现证据；#42/#44/#49/#50 及其他差距不豁免。精确范围见 [GAP §8.1](../research/GAP-AURABOT.md#81-用户批准豁免)。
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.11.0` 发布候选分支，505 个测试（501 通过、0 失败、4 项 live 需 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）+ M7-n 操作员命令禁用列表（默认空、离线配置/命令测试，#14 partial）+ M7-o 主人显式会话 steer（fake agent，#9 partial，无 typing）+ M7-p 默认关闭的群聊词法记忆相关度门控（离线配置/集成测试，#20 partial）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.11.0` 发布后工作区，520 个测试（516 通过、0 失败、4 项 live 禁用 key 而跳过）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检 + M4-a/M4-b 媒体与表情包 + M5-a 本地模块 + M5-b QQ Agent 工具/B站公共内容 + M6-a 本地目录备份/恢复 + M6-b 安全页/上线清单/手动升级检查 + M7-a 对标审计/临时 profile smoke + M7-b 用户豁免/主人 QQ 管理命令 + M7-c 受限生图/改图/普通图片发送 + M7-d 通用 JSON/JSONL 旧档案导入 + M7-f 默认关闭的 embedding 重排（真实 provider 未验证）+ M7-g 人物/群印象及关系维度内联编辑（仅离线面板测试）+ M7-h 通用时间轴事件导入（合成数据/离线测试）+ M7-i 默认开启的出站文本防泄漏与只读安全状态（离线测试）+ M7-j 已知 QQ 通知时间轴与主人确认请求处理（fake 网关，真实 QQ 未验证）+ M7-k 本地文件上传/列表面板（离线服务/API/mock UI，真实 QQ 未验证）+ M7-l 默认关闭的主人本地提醒（fake timer/QQ，#8/#40 partial）+ M7-m B站公开评论/离线分享（fake fetch/API/UI，#48 partial，真实接口未验证）+ M7-n 操作员命令禁用列表（默认空、离线配置/命令测试，#14 partial）+ M7-o 主人显式会话 steer（fake agent，#9 partial）+ M7-p 默认关闭的群聊词法记忆相关度门控（离线配置/集成测试，#20 partial）+ M7-q 默认关闭的私聊/C2C 输入状态（离线 fake 网关，#9 仍 partial，真实 QQ 未验证）；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
 |---|---|---|---|---|
+| 私聊输入状态（M7-q） | I/T/L | `gateway/actions.js`、`core/config.js`、`cognition/pipeline.js` | 默认关闭，`cog-turn` 开关；严格字符串安全整数 ID/整数 1、2；私聊/C2C 轮次前 await 输入中、finally await 暂停；同步/异步错误隔离，不改回复/原处理异常，不记录原始错误或聊天 ID；关闭/群聊/缺方法旁路、命令早退与异常也清理；离线 action/配置/集成测试 | 依赖网关，等待沿用既有超时/重试；入站 input_status 仍忽略；没有群聊 typing/群 set_input_status、输入状态限频或专用状态面板（仅配置开关）；真实 QQ 未验证、未全量验收，#9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变 |
 | 群聊词法相关度（M7-p） | I/T/L | `core/config.js`、`cognition/pipeline.js` | 默认关闭；`cog-turn` 开关/0–1 阈值；概率/频率/连续/冷却后复用已检索记忆最高词法信号，缺信号则有界摘要重合；无记忆/低分仍编码 ambient 记忆，记录 low_relevance 且不分析；点名/私聊绕过、异常放行；离线配置与集成测试 | 无新增依赖/外部调用，不用综合分数/embedding；没有 LLM 话题判断/接梗/语义分数，真实 QQ/浏览器未验证；#20 partial、remaining 47，#31/#42/#49/#50 不变 |
 | 感知与轮次 | I/T/V | `src/cognition/turn.js` | 每 `(chatType,chatId,senderId)` 聚合；完整度评分；软/硬截止；命令/超时快路径；撤回通知；跨重启恢复；消息去重；`selfId` 防循环 | 多用户同时插话的「注意力分配」只做了点名/回复门控，没有独立打分模块；编辑事件未完整接入 |
 | 注意力 | L/T | `turn.js` + `pipeline` | 群聊仅点名/回复/唤醒词/命令；群 ambient 默认不决策；回复/情绪/关系/记忆参与候选效用 | 没有独立 `attention.js` 的 salience 评分、话题切换/多人优先级队列；后续版本目标 |
@@ -39,7 +40,7 @@
 | DSH Session 运行时 | I/T | `runtime/agent.js`、`runtime/qq-tools.js`、`cordis.patch.yml` | 每聊天 Session、private/social preset、followup/event、超时/串行、oneshot 回退；仅 full/主人私聊挂 3 个 QQ 工具，注册失败隔离并可 dispose | 默认 oneshot；social/group 0 个 QQ 工具；未真机 V | M1/M5-b 受限完成 |
 | QQ 命令/按聊天模型 | I/T | `cognition/commands.js`、`cognition/llm.js` | `/status` `/quiet` `/active` `/model` `/remember` `/forget` `/help`（主人）；`modelRouting` 按会话覆盖；/model 写回配置 | 非主人静默；无 `/sing`；只影响认知 LLM，不改变 agent Session 模型 | M1 剩余：agent 真机 smoke |
 | 访问控制/统一出站 | I/T | `core/access.js`、`cognition/outbound.js` | `open`/`allowlist`、主人 + 私聊/群白名单、入口闸门（不落 raw/不聚合）、统一出站（访问→限频→leak guard→dryRun→发送）、审计/计数、概览卡片与 `/access/*` | 无逐项工具权限/审批（M2）；allowlist 未做真机 V 验证；默认 open 以兼容升级 | M1 剩余：DSH Session 运行时 |
-| 主人会话插话（M7-o） | I/T/L | `runtime/agent.js`、`cognition/commands.js` | 主人 `/steer 文本`；active/当前私聊或群聊数字 ID/1–1000 Unicode 校验；复用或创建 Session、固定 UserMessage payload、缺方法/安全失败、steers/lastAt；解析串行且可在 compose 等待期间送达；owner/禁用/访问闸门与非主人静默，离线测试 | 无自动 steer/typing/set_input_status/插话面板/API/新配置；不写配置或直接调用模型；真实 DSH/QQ 未验证，#9 partial，remaining 47，#31/#42/#49/#50 不变 |
+| 主人会话插话（M7-o） | I/T/L | `runtime/agent.js`、`cognition/commands.js` | 主人 `/steer 文本`；active/当前私聊或群聊数字 ID/1–1000 Unicode 校验；复用或创建 Session、固定 UserMessage payload、缺方法/安全失败、steers/lastAt；解析串行且可在 compose 等待期间送达；owner/禁用/访问闸门与非主人静默，离线测试 | 无自动 steer/插话面板/API/新配置；私聊 typing 见 M7-q；不写配置或直接调用模型；真实 DSH/QQ 未验证，#9 partial，remaining 47，#31/#42/#49/#50 不变 |
 | 操作员命令禁用（M7-n） | I/T/L | `core/config.js`、`cognition/commands.js` | 默认空 `cognition.permissions.deniedCommands`；严格数组/小写名/去重/最多100/issue 与 string-list 配置；身份检查后、内置/模块派发前拦截；大小写一致、无处理服务调用或配置写入；主人固定提示、非主人静默、未知命令/帮助保持原样；离线配置/命令测试 | 仅命令入口，不覆盖 API/直接服务/Agent 工具/模块同进程代码；无所有服务/工具逐项 allow/deny 矩阵或统一审批；#14 仍 partial，remaining 47，#31/#42/#49/#50 不变 |
 | 出站文本防泄漏（M7-i） | I/T/L | `core/leak-guard.js`、`cognition/outbound.js`、`SecurityPage` | 默认启用 + redact，可选 block；高置信度密钥规则、100k UTF-16 上限、只输出脱敏文本及类别/次数；dry-run 也检查、leakBlocked 计数、固定网关错误；安全页只读开关/策略，没有扫描内容/密钥 | 无统一审批/逐项权限，无 PII/熵检测或媒体/文件扫描；可能误报/漏报，不重组跨段/跨消息；媒体/手动发送等独立路径不覆盖；仅离线/fake 网关与 mock 面板测试，#15 仍 partial，remaining 47 |
 | 隐私/删除 | I/T/V | `memory.js`、`person.js`、`index.deletePerson` | 私聊/群聊作用域隔离；secret 不进 LLM（平台层）；导出；删除人物级联画像/关系/记忆；原始事件镜像可关 | 没有多用户权限模型；DSH 本地单用户认证 |

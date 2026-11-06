@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { createActions, idParam, toSegments } from '../src/gateway/actions.js'
+import { OneBotError } from '../src/onebot/client.js'
 
 function createRecorder() {
   const calls = []
@@ -12,6 +13,39 @@ function createRecorder() {
   }
   return { calls, call }
 }
+
+test('setInputStatus: C2C payload preserves string ID and returns gateway result', async () => {
+  const { calls, call } = createRecorder()
+  const actions = createActions({ call })
+  assert.deepEqual(await actions.setInputStatus('10001', 1), { message_id: 1 })
+  assert.deepEqual(await actions.setInputStatus(String(Number.MAX_SAFE_INTEGER), 2), { message_id: 2 })
+  assert.deepEqual(await actions.setInputStatus('1', 2), { message_id: 3 })
+  assert.deepEqual(calls, [
+    { action: 'set_input_status', params: { user_id: '10001', event_type: 1 }, opts: {} },
+    { action: 'set_input_status', params: { user_id: '9007199254740991', event_type: 2 }, opts: {} },
+    { action: 'set_input_status', params: { user_id: '1', event_type: 2 }, opts: {} },
+  ])
+})
+
+test('setInputStatus: rejects invalid IDs and event types before calling gateway', () => {
+  const { calls, call } = createRecorder()
+  const actions = createActions({ call })
+  const validationError = (error) => error instanceof OneBotError && error.action === 'validate'
+  for (const userId of [undefined, null, 1, 1n, {}, [], '', '0', '-1', '+1', '01', '1.5', '1e3', 'abc', '１', ' 1', '1 ', '1\n', '1\r', '1\u2028', '1\u0000', '9007199254740992', '9007199254740993', '1'.repeat(20), '1'.repeat(21)]) {
+    assert.throws(() => actions.setInputStatus(userId, 1), validationError)
+  }
+  for (const eventType of [undefined, null, false, true, '1', '2', 0, 3, -1, 1.5, NaN, Infinity]) {
+    assert.throws(() => actions.setInputStatus('10001', eventType), validationError)
+  }
+  assert.deepEqual(calls, [])
+})
+
+test('setInputStatus: gateway and transport errors propagate unchanged', async () => {
+  for (const error of [new OneBotError('set_input_status', { message: 'unsupported' }), new OneBotError('set_input_status', { message: 'timeout' }, { transport: true })]) {
+    const actions = createActions({ call: async () => { throw error } })
+    await assert.rejects(() => actions.setInputStatus('10001', 1), (actual) => actual === error)
+  }
+})
 
 test('idParam：数字串转 Number，超长/非数字保留字符串', () => {
   assert.equal(idParam('10001'), 10001)

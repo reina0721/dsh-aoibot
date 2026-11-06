@@ -25,8 +25,9 @@ function fakeLlm(capture = null, composeText = '测试回复：我在听。') {
   }
 }
 
-function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm(), media = null }) {
+function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm(), media = null, logger = null, access = undefined }) {
   const cfg = normalizeConfig({
+    access,
     cognition: {
       enabled: true,
       dryRun: false,
@@ -43,7 +44,7 @@ function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm()
     },
     emit() {},
   }
-  return createCognition({ ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir, media })
+  return createCognition({ ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir, media, logger })
 }
 
 function privateEvent(id, text, userId = '10001') {
@@ -79,6 +80,89 @@ function groupTurnConfig(extra = {}) {
 async function flush(rounds = 20) {
   for (let i = 0; i < rounds; i += 1) await new Promise((resolve) => setImmediate(resolve))
 }
+
+test('M7-q: typing is opt-in, private-only and best effort without ID/error logging', async (t) => {
+  for (const scenario of [
+    { name: 'default off' },
+    { name: 'explicitly disabled', enabled: false },
+    { name: 'non-boolean stays off', enabled: 'true' },
+    { name: 'enabled private', enabled: true, typing: true },
+    { name: 'group never types', enabled: true, chatType: 'group' },
+    { name: 'missing gateway action', enabled: true, missing: true },
+    { name: 'gateway rejects both status calls', enabled: true, typing: true, failure: 'async' },
+    { name: 'gateway throws synchronously', enabled: true, typing: true, failure: 'sync' },
+    { name: 'command early return clears typing', enabled: true, typing: true, command: true },
+  ]) await t.test(scenario.name, async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-typing-'))
+    const chatId = 1000199876543
+    const calls = [], order = [], sent = [], logs = []
+    const logger = Object.fromEntries(['debug', 'info', 'warn', 'error'].map((level) => [level, (...args) => logs.push(args)]))
+    logger.child = () => logger
+    const statusError = new Error(`status failed for ${chatId}`)
+    const actions = {
+      sendMessage: async (payload) => { order.push('send'); sent.push(payload); return { message_id: 71 } },
+      setInputStatus(userId, eventType) {
+        calls.push([userId, eventType])
+        order.push(eventType)
+        if (scenario.failure === 'sync') throw statusError
+        if (scenario.failure === 'async') return Promise.reject(statusError)
+        return Promise.resolve({})
+      },
+    }
+    if (scenario.missing) delete actions.setInputStatus
+    const cog = makeCog({ dir, scheduler: createFakeScheduler(), gateway: { actions }, logger, access: { ownerQQ: '10001' },
+      configOverride: scenario.enabled === undefined ? {} : { typing: { enabled: scenario.enabled } },
+    })
+    try {
+      assert.equal(await cog.ready, true)
+      const result = await cog.services.pipeline.handleTurn({
+        id: 'typing-turn', chatType: scenario.chatType || 'private', chatId, senderId: '10001', selfId: '999',
+        text: scenario.command ? '/status' : '你好', addressed: true, messages: [], messageIds: [],
+      })
+      assert.equal(result.ok, true)
+      if (scenario.command) {
+        assert.equal(result.command, true)
+        assert.ok(result.reply)
+      } else {
+        assert.equal(result.reply, '测试回复：我在听。')
+        assert.equal(sent.length, 1)
+      }
+      assert.deepEqual(calls, scenario.typing ? [[String(chatId), 1], [String(chatId), 2]] : [])
+      if (scenario.typing) {
+        assert.equal(order[0], 1)
+        assert.equal(order.at(-1), 2)
+      }
+      assert.ok(!JSON.stringify(logs).includes(String(chatId)), 'typing failures must not leak chatId into logs')
+      assert.ok(!JSON.stringify(logs).includes(statusError.message), 'raw gateway error stays out of logs')
+      assert.ok(!JSON.stringify(result).includes(statusError.message), 'typing failures must not change the result')
+    } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+test('M7-q: finally awaits paused status on processing failure and preserves original error', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-typing-finally-'))
+  const calls = []
+  const cog = makeCog({ dir, scheduler: createFakeScheduler(), configOverride: { typing: { enabled: true } },
+    gateway: { actions: { async setInputStatus(userId, eventType) {
+      await new Promise((resolve) => setImmediate(resolve))
+      calls.push([userId, eventType])
+      if (eventType === 2) throw new Error('paused status failed')
+    } } },
+  })
+  try {
+    assert.equal(await cog.ready, true)
+    const original = new Error('retrieval failed')
+    t.mock.method(cog.services.memory, 'retrieveAsync', async () => {
+      assert.deepEqual(calls, [['10001', 1]], 'typing status is awaited before processing')
+      throw original
+    })
+    await assert.rejects(() => cog.services.pipeline.handleTurn({
+      id: 'typing-failure', chatType: 'private', chatId: '10001', senderId: '10001', selfId: '999',
+      text: '你好', addressed: true, messages: [], messageIds: [],
+    }), (error) => error === original)
+    assert.deepEqual(calls, [['10001', 1], ['10001', 2]], 'paused status is awaited even after processing fails')
+  } finally { cog.dispose(); rmSync(dir, { recursive: true, force: true }) }
+})
 
 test('集成：连发碎片聚合只形成一次决策/发送，并持久化人物/关系/记忆', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-it-'))

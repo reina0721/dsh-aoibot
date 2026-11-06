@@ -261,7 +261,7 @@ QQ空间没有配置项：它需要 QQ 登录授权并涉及平台授权/服务�
 `agent` 需要宿主提供 `sessionController` / `workspaceRegistry` / `agents`；缺失或失败自动回退 `oneshot`。
 `oneshot` 下配置不影响现有回复链路。
 
-M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Session 服务，不新增配置字段，也不写配置。文本 1–1000 Unicode 字符，注入当前私聊/群聊 Session；oneshot/服务缺失时不可用，宿主必须提供 `agent.steer`。可用现有 `cognition.permissions.deniedCommands` 的 `steer` 禁用此命令。没有自动插话、typing/`set_input_status` 或面板/API；真实 DSH/QQ 未验证，#9 仅 partial。
+M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Session 服务，不新增配置字段，也不写配置。文本 1–1000 Unicode 字符，注入当前私聊/群聊 Session；oneshot/服务缺失时不可用，宿主必须提供 `agent.steer`。可用现有 `cognition.permissions.deniedCommands` 的 `steer` 禁用此命令。没有自动插话或插话面板/API；M7-q 私聊输入状态独立配置，见下文。真实 DSH/QQ 未验证，#9 仅 partial。
 
 ### 3.12 内部字段
 
@@ -290,6 +290,14 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-learning` | `learning.enabled` / `autoResearch` / `minConfidence` / `maxSources` / `dailyTokenBudget` / `sources` | `true` / `false` / `0.3` / `5` / `20000` / built-in off | 未知检测、学习任务、多来源证据、claims；默认只检测，外部检索需显式开启与许可 |
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
+
+### 私聊输入状态（M7-q）
+
+`cognition.typing` 默认 `{enabled:false}`，`enabled` 仅接受布尔值；关闭时零输入状态调用，保持原行为。在「认知 → 设置 → 轮次与防抖」（`cog-turn`）打开「私聊输入状态」，仅对私聊/C2C 生效，不依赖 agent 运行时，群聊不发送。
+
+网关提供 `actions.setInputStatus` 时，在处理轮次前等待 `set_input_status` 的 `{user_id: String(chatId), event_type: 1}`，并在 `finally` 等待 `event_type: 2`（暂停）；命令提前返回或处理异常也会尝试暂停。两次调用均捕获所有异常，不改变回复/原处理异常，也不记录原始网关异常或聊天 ID；不支持此 action 的网关继续原流程。等待受既有网关超时/重试配置约束，可能增加轮次耗时。
+
+仅使用网关私聊扩展：`user_id` 必须是无前导零、无空白/非数字的正安全整数字符串，最多 20 字符；`event_type` 必须为整数 1（输入中）或 2（暂停）。不加入统一 outbound、sendMedia 或手动发送 API。现有入站 `input_status` 通知仍忽略；没有群聊 typing/群 `set_input_status`、输入状态限频或专用状态面板（只有配置开关）。仅离线 fake 网关测试，真实 QQ 未验证。GAP #9 为 steer + 私聊 typing，仍 partial、remaining 47，#31/#42/#49/#50 不变，未完成全量验收。
 
 ### 群聊词法相关度门控（M7-p）
 
