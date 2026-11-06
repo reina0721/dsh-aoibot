@@ -45,7 +45,7 @@
     "reminder delivery",
     "B站登录/WBI/字幕/发布评论"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.6); GitHub release v0.11.6 pending CI",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.6); GitHub release v0.11.6 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,

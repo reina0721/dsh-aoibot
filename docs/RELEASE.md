@@ -72,7 +72,7 @@ git diff --check
 
 ## 7. 版本与发布状态
 
-- 标签/Release：`v0.11.0` 已发布；`v0.11.1` 为 M7-q typing 补丁；`v0.11.2` 为操作员/审批/目的计划；`v0.11.3` 为文件下载/删除；`v0.11.4` 为身份注册表；`v0.11.5` 修复 Agent preset isolate；`v0.11.6` 为双预算与 bot 名称发布。
+- 标签/Release：`v0.11.0` 已发布；`v0.11.1` 为 M7-q typing 补丁；`v0.11.2` 为操作员/审批/目的计划；`v0.11.3` 为文件下载/删除；`v0.11.4` 为身份注册表；`v0.11.5` 修复 Agent preset isolate；`v0.11.6` 为双预算与 bot 名称发布（资产已生成）。
 - 线上 `web`：已升级到 0.11.0 构建并完成部分真实 smoke；未完成主人命令/媒体 provider/审批/typing/提醒投递等验收，不得写“全量实机验收”。
 - 发布包：`npm run pack:release` 生成 `dist/dsh-bot.tgz` / `dsh-bot.zip`，`npm run check:package` 通过；GitHub Release 已上传。
 
