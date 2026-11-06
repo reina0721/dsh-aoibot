@@ -230,9 +230,9 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "已完成（截至 M7-f）",
+      "title": "已完成（截至 M7-j）",
       "items": [
-        "M0–M6 已提交；M7-a 审计/smoke、M7-b 豁免与群管、M7-c 生图、M7-d 导入、M7-f 可选 embedding",
+        "M0–M6 已提交；M7-a 审计/smoke、M7-b 豁免与群管、M7-c 生图、M7-d 导入、M7-f embedding、M7-g 画像编辑、M7-h 时间轴导入、M7-i 防泄漏、M7-j 事件/请求审批",
         "346 项测试（342 通过、4 live 跳过）；临时 profile smoke 通过"
       ]
     },
