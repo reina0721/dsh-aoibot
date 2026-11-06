@@ -116,7 +116,7 @@ test('导出契约：inject / apply / 组件 / 纯函数齐全', () => {
   assert.equal(panel.DEFAULT_UI.contrast, 'system')
   assert.deepEqual(
     panel.TABS.map((tab) => tab.id),
-    ['overview', 'connect', 'messages', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
+    ['overview', 'connect', 'messages', 'media', 'config', 'persona', 'models', 'settings', 'cognition', 'logs', 'about'],
   )
 })
 
@@ -201,7 +201,7 @@ test('OneBotPage：无网关/无 document 时可安全渲染加载骨架', () =>
   assert.equal(icon.props.name, 'message', '侧栏图标应渲染消息图标')
 })
 
-test('九个标签页：无数据与有数据都能渲染（不依赖真实网关）', () => {  const noop = () => {}
+test('全部标签页：无数据与有数据都能渲染（不依赖真实网关）', () => {  const noop = () => {}
   const baseProps = {
     status: null,
     configInfo: null,

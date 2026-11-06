@@ -1826,6 +1826,11 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
 .ob-model-candidate{font-size:var(--ob-text-micro);padding:2px 8px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-pill);background:var(--ob-surface-raised);overflow-wrap:anywhere}
 .ob-model-protocols{display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
 .ob-model-protocol{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-control);background:var(--ob-surface-raised)}
+.ob-media-grid{display:grid;gap:var(--ob-control-gap);grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr))}
+.ob-media-card{display:flex;flex-direction:column;gap:10px;min-width:0;padding:10px;border:1px solid var(--ob-border);border-radius:var(--ob-radius-panel);background:var(--ob-surface-raised)}
+.ob-media-image{display:block;width:100%;aspect-ratio:1;object-fit:contain;border-radius:var(--ob-radius-control);background:var(--ob-surface-muted)}
+.ob-media-name{margin:0;font-size:var(--ob-text-small);font-weight:var(--ob-weight-heading);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-media-file{max-width:min(100%,300px);font-size:var(--ob-text-small)}
 @media (max-width:960px){
   .ob-models-grid{grid-template-columns:minmax(0,1fr)}
 }
@@ -3047,6 +3052,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       { id: 'overview', label: '概览', icon: 'overview' },
       { id: 'connect', label: '连接', icon: 'connect' },
       { id: 'messages', label: '消息', icon: 'message' },
+      { id: 'media', label: '媒体', icon: 'sparkles' },
       { id: 'config', label: '配置', icon: 'config' },
       { id: 'persona', label: '人格', icon: 'sparkles' },
       { id: 'models', label: '模型', icon: 'bolt' },
@@ -6590,6 +6596,118 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ),
       )
     }
+    function MediaPage(props) {
+      const [mediaStatus, setMediaStatus] = useState(null)
+      const [items, setItems] = useState([])
+      const [loading, setLoading] = useState(true)
+      const [error, setError] = useState('')
+      const [ttsText, setTtsText] = useState('')
+      const [ttsFile, setTtsFile] = useState('')
+      const [busy, setBusy] = useState('')
+
+      const refresh = useCallback(async () => {
+        setLoading(true)
+        setError('')
+        const results = await Promise.all([get('/media/status'), get('/media/stickers?limit=200')])
+        const statusResult = safeObject(results[0])
+        const stickerResult = safeObject(results[1])
+        if (statusResult.ok === false || stickerResult.ok === false) {
+          setError(String(statusResult.message || stickerResult.message || '媒体数据加载失败'))
+        } else {
+          setMediaStatus(statusResult)
+          setItems(safeArray(stickerResult.items))
+        }
+        setLoading(false)
+      }, [])
+
+      useEffect(() => { refresh() }, [refresh])
+
+      const runTts = async () => {
+        const text = ttsText.trim()
+        if (!text) return props.toast('请先输入测试文本', 'warn')
+        setBusy('tts')
+        const result = safeObject(await post('/media/tts', { text }))
+        setBusy('')
+        if (!result.ok) return props.toast('TTS 测试失败：' + String(result.message || '未知错误'), 'err')
+        setTtsFile(String(result.file || ''))
+        props.toast('TTS 文件已生成', 'ok')
+      }
+
+      const upload = (event) => {
+        const file = event.target.files && event.target.files[0]
+        event.target.value = ''
+        if (!file) return
+        const reader = new FileReader()
+        reader.onerror = () => props.toast('读取图片失败', 'err')
+        reader.onload = async () => {
+          const encoded = String(reader.result || '')
+          const comma = encoded.indexOf(',')
+          setBusy('upload')
+          const result = safeObject(await post('/media/stickers/upload', { name: file.name, mime: file.type, data: comma >= 0 ? encoded.slice(comma + 1) : encoded }))
+          setBusy('')
+          if (!result.ok) return props.toast('上传失败：' + String(result.message || '未知错误'), 'err')
+          props.toast('表情包已上传', 'ok')
+          refresh()
+        }
+        reader.readAsDataURL(file)
+      }
+
+      const editTags = async (item) => {
+        const current = safeArray(item.tags).join(', ')
+        const value = typeof window !== 'undefined' && window.prompt ? window.prompt('标签（用逗号分隔）', current) : current
+        if (value === null) return
+        const result = safeObject(await post('/media/stickers/tag', { id: item.id, tags: value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean) }))
+        if (!result.ok) return props.toast('标签保存失败：' + String(result.message || '未知错误'), 'err')
+        props.toast('标签已更新', 'ok')
+        refresh()
+      }
+
+      const removeSticker = async (item) => {
+        if (typeof window !== 'undefined' && window.confirm && !window.confirm('删除表情包“' + String(item.name || '') + '”？')) return
+        const result = safeObject(await post('/media/stickers/delete', { id: item.id }))
+        if (!result.ok) return props.toast('删除失败：' + String(result.message || '未知错误'), 'err')
+        props.toast('表情包已删除', 'ok')
+        refresh()
+      }
+
+      if (loading && !mediaStatus) return h('div', { className: 'ob-page' }, h('div', { className: 'ob-stat-grid' }, [0, 1, 2, 3, 4].map((index) => h(StatSkeleton, { key: index }))), h(PanelSkeleton, { rows: 4 }))
+      const status = safeObject(mediaStatus)
+      const images = safeObject(status.images)
+      const audio = safeObject(status.audio)
+      const stickerStatus = safeObject(status.stickers)
+      return h(
+        'div',
+        { className: 'ob-page' },
+        error ? h(Banner, { tone: 'err', message: error, actions: h(Btn, { small: true, onClick: refresh }, '重试') }) : null,
+        h('div', { className: 'ob-stat-grid' },
+          h(StatTile, { label: '媒体总开关', value: status.enabled ? '已开启' : '已关闭', icon: 'sparkles', tone: status.enabled ? 'ok' : 'muted', hint: '默认关闭，无外部网络请求' }),
+          h(StatTile, { label: 'Vision', value: images.configured ? '已配置' : '未配置', icon: 'overview', tone: images.configured ? 'ok' : 'warn', hint: images.visionEnabled ? '功能已启用' : '功能未启用' }),
+          h(StatTile, { label: 'ASR', value: audio.asrConfigured ? '已配置' : '未配置', icon: 'message', tone: audio.asrConfigured ? 'ok' : 'warn', hint: audio.asrEnabled ? '功能已启用' : '功能未启用' }),
+          h(StatTile, { label: 'TTS', value: audio.ttsConfigured ? '已配置' : '未配置', icon: 'bolt', tone: audio.ttsConfigured ? 'ok' : 'warn', hint: audio.ttsEnabled ? '功能已启用' : '功能未启用' }),
+          h(StatTile, { label: '表情包', value: Number(stickerStatus.count) || 0, denominator: Number(stickerStatus.maxCount) || 200, icon: 'inbox', tone: 'brand', hint: stickerStatus.enabled === false ? '功能未启用' : '本地表情包库' }),
+        ),
+        h(Panel, { title: 'TTS 测试', description: '只生成本地语音文件，不会发送到 QQ。' },
+          h('div', { className: 'ob-stack' },
+            h('div', { className: 'ob-row' }, h('input', { className: 'ob-input', value: ttsText, placeholder: '输入要合成的文本', onChange: (event) => setTtsText(event.target.value), style: { flex: '1 1 280px' } }), h(Btn, { kind: 'primary', icon: 'play', busy: busy === 'tts', onClick: runTts }, '生成语音')),
+            ttsFile ? h('p', { className: 'ob-note ob-mono' }, '生成文件：' + ttsFile) : null,
+          ),
+        ),
+        h(Panel, {
+          title: '表情包库', description: '支持 PNG、JPG、JPEG、GIF、WebP；标签可用于 QQ 命令 /sticker [标签]。',
+          actions: h('div', { className: 'ob-row' }, h('label', { className: cx('ob-btn small secondary', busy === 'upload' && 'disabled') }, h(Icon, { name: 'sparkles', size: 14 }), h('span', null, busy === 'upload' ? '上传中…' : '上传图片'), h('input', { className: 'ob-sr-only', type: 'file', accept: '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp', disabled: busy === 'upload', onChange: upload })), h(Btn, { small: true, kind: 'ghost', icon: 'refresh', busy: loading, onClick: refresh }, '刷新')),
+        },
+          items.length
+            ? h('div', { className: 'ob-media-grid' }, items.map((item) => h('article', { className: 'ob-media-card', key: item.id },
+                h('img', { className: 'ob-media-image', src: API + '/media/stickers/file?id=' + encodeURIComponent(item.id), alt: String(item.name || '表情包'), loading: 'lazy' }),
+                h('p', { className: 'ob-media-name', title: String(item.name || '') }, String(item.name || '未命名')),
+                h('div', { className: 'ob-row' }, safeArray(item.tags).length ? safeArray(item.tags).map((tag) => h(Badge, { key: tag, tone: 'muted' }, tag)) : h(Badge, { tone: 'muted' }, '无标签')),
+                h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', onClick: () => editTags(item) }, '编辑标签'), h(Btn, { small: true, kind: 'danger', icon: 'trash', onClick: () => removeSticker(item) }, '删除')),
+              )))
+            : h(EmptyState, { icon: 'inbox', title: '还没有表情包', description: '上传图片后，可在这里编辑标签，并通过 /sticker 命令随机发送。' }),
+        ),
+      )
+    }
+
     // =====================================================================
     // 根组件：外观偏好 → data-* 属性、页头、标签栏、内容转场、全局反馈
     // =====================================================================
@@ -6623,6 +6741,12 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             eyebrow: 'MESSAGES & EVENTS',
             title: '消息',
             description: '向私聊 / 群聊发送文本，并实时观察收到的 QQ 事件。发送只调用 OneBot 的 send_private_msg / send_group_msg 接口。',
+          }
+        case 'media':
+          return {
+            eyebrow: 'MEDIA LIBRARY',
+            title: '媒体',
+            description: '查看图片理解、语音转写与合成状态，测试 TTS，并管理可按标签随机发送的本地表情包库。',
           }
         case 'config':
           return {
@@ -7050,6 +7174,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       if (tab === 'overview') body = h(Overview, tabProps)
       else if (tab === 'connect') body = h(Connect, tabProps)
       else if (tab === 'messages') body = h(Messages, tabProps)
+      else if (tab === 'media') body = h(MediaPage, tabProps)
       else if (tab === 'config') body = h(ConfigTab, tabProps)
       else if (tab === 'persona') body = h(PersonaTab, tabProps)
       else if (tab === 'models') body = h(ModelTab, tabProps)
@@ -7186,6 +7311,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.Overview = Overview
     exports.Connect = Connect
     exports.Messages = Messages
+    exports.MediaPage = MediaPage
     // 注意：这里刻意导出为 ConfigTab（而不是 Config）。Cordis 把插件对象的 `Config`
     // 属性当作配置 schema，会调用 Config['~standard'].validate；面板组件若叫 Config，
     // 客户端插件激活时会直接崩溃（实测踩坑，见 test/panel.test.js 的回归用例）。

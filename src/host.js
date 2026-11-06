@@ -23,6 +23,7 @@ import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
+import { createStickerService } from './media/stickers.js'
 import { personaProfileText } from './cognition/persona.js'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -70,6 +71,7 @@ export function apply(ctx, rowConfig) {
     },
   }
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
+  const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
   const cognition = createCognition({
     ctx,
     getConfig,
@@ -89,6 +91,7 @@ export function apply(ctx, rowConfig) {
     access,
     setConfig,
     media,
+    stickers,
   })
 
   /** 把人格/规则注册成 DSH 提示词变量，供 preset 的 {{dshbot_*}} 使用。 */
@@ -229,6 +232,7 @@ export function apply(ctx, rowConfig) {
     cognition,
     models,
     media,
+    stickers,
     access,
     version: VERSION,
     dataDir: dataDir(),
@@ -285,6 +289,7 @@ export function apply(ctx, rowConfig) {
     cognition,
     models,
     media,
+    stickers,
     access,
     logger,
     routes,

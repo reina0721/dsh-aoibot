@@ -50,6 +50,7 @@ export function createCognition({
   access = null,
   setConfig = null,
   media = null,
+  stickers = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -144,6 +145,8 @@ export function createCognition({
         runtime: state.services.runtime,
         qqActions: state.services.qqActions,
         purpose: state.services.purpose,
+        media,
+        stickers,
         logger: log,
       })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createCommandService, parseCommand } from '../src/cognition/commands.js'
 import { normalizeAccess } from '../src/core/access.js'
 
-function harness(overrides = {}) {
+function harness(overrides = {}, services = {}) {
   let config = {
     botQQ: '999999',
     access: normalizeAccess({ mode: 'allowlist', ownerQQ: '10001', groups: ['20001'] }),
@@ -13,6 +13,7 @@ function harness(overrides = {}) {
       proactivity: { enabled: false },
       modelRouting: { privateDefault: '', groupDefault: '', routes: [] },
     },
+    media: { enabled: true, images: { enabled: true }, audio: { ttsEnabled: true }, stickers: { enabled: true }, tts: { maxChars: 300 } },
     ...overrides,
   }
   const sent = []
@@ -56,6 +57,7 @@ function harness(overrides = {}) {
   const access = {
     isOwner: (cfg, id) => String(id) === '10001',
     summary: () => ({ mode: 'allowlist' }),
+    canSend: () => ({ allowed: services.allowSend !== false }),
   }
   const setConfig = (next) => {
     config = next
@@ -71,6 +73,8 @@ function harness(overrides = {}) {
     runtime,
     qqActions,
     purpose,
+    media: services.media,
+    stickers: services.stickers,
     logger: null,
   })
   return { service, sent, memory, getConfig: () => config, setConfig }
@@ -180,6 +184,61 @@ test('commands：未知命令给提示，非命令交给认知管线', async () 
   assert.equal(sent.length, 1)
   const normal = await service.handle(turn('你好'))
   assert.deepEqual(normal, { handled: false })
+})
+
+test('commands：/tts 合成并向当前聊天发送语音，失败时短回复', async () => {
+  const calls = []
+  const media = {
+    async synthesize(text) { calls.push(['synthesize', text]); return '/media/out.mp3' },
+    async sendMedia(payload) { calls.push(['send', payload]) },
+  }
+  const { service, sent } = harness({}, { media })
+  const result = await service.handle(turn('/tts 你好', { chatType: 'group', chatId: '20001' }))
+  assert.deepEqual(result, { handled: true, reply: '' })
+  assert.equal(sent.length, 0)
+  assert.equal(calls[1][1].kind, 'record')
+  assert.equal(calls[1][1].chatId, '20001')
+
+  media.synthesize = async () => { throw new Error('provider down') }
+  const failed = await service.handle(turn('/tts 失败'))
+  assert.match(failed.reply, /TTS 失败：provider down/)
+})
+
+test('commands：/say 只通过 outbound 发送一次且不返回重复文本', async () => {
+  const { service, sent } = harness()
+  const result = await service.handle(turn('/say 只发一次'))
+  assert.equal(result.reply, '')
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].source, 'command')
+  assert.equal(sent[0].segments[0].data.text, '只发一次')
+})
+
+test('commands：/sticker 发送图片；空库提示上传', async () => {
+  const mediaCalls = []
+  const media = { async sendMedia(payload) { mediaCalls.push(payload) } }
+  const stickers = {
+    async pick({ tag }) { return tag === '空' ? null : { id: 's1', name: 'cat.png' } },
+    async fileFor() { return { path: '/media/stickers/s1.png', mime: 'image/png', size: 3 } },
+  }
+  const { service, sent } = harness({}, { media, stickers })
+  const success = await service.handle(turn('/sticker 猫'))
+  assert.equal(success.reply, '')
+  assert.equal(mediaCalls[0].kind, 'image')
+  const empty = await service.handle(turn('/sticker 空'))
+  assert.match(empty.reply, /还没有表情包/)
+  assert.equal(sent.length, 1)
+})
+
+test('commands：媒体命令发送前检查 access.canSend', async () => {
+  let calls = 0
+  const media = { async synthesize() { calls += 1 }, async sendMedia() { calls += 1 } }
+  const stickers = { async pick() { calls += 1 } }
+  const { service, sent } = harness({}, { media, stickers, allowSend: false })
+  assert.equal((await service.handle(turn('/tts 不应发送'))).error, 'ACCESS_DENIED')
+  assert.equal((await service.handle(turn('/sticker'))).error, 'ACCESS_DENIED')
+  assert.equal((await service.handle(turn('/say 不应发送'))).error, 'ACCESS_DENIED')
+  assert.equal(calls, 0)
+  assert.equal(sent.length, 0)
 })
 
 

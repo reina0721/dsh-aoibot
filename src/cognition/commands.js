@@ -5,7 +5,7 @@
 
 import { isOwner } from '../core/access.js'
 
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose']
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo', 'purpose', 'tts', 'say', 'sticker']
 
 export function parseCommand(text) {
   const raw = String(text || '').trim()
@@ -38,6 +38,9 @@ const HELP_TEXT = [
   '/purpose add 标题 — 新建目的',
   '/purpose done|drop|pause|resume ID — 更新目的',
   '/purpose progress ID 0-100 — 设置进度',
+  '/tts 文本 — 合成语音并发送到当前聊天',
+  '/say 文本 — 向当前聊天发送文本',
+  '/sticker [标签] — 随机发送一个表情包',
   '/help — 本帮助',
 ].join('\n')
 
@@ -53,7 +56,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, purpose = null, media = null, stickers = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
 
   function currentConfig() {
@@ -115,6 +118,13 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       log.warn?.('命令回复发送失败：', error.message)
       return { handled: true, reply: '', error: String(error?.message || error) }
     }
+  }
+
+  function canSendTo(turn) {
+    try {
+      if (!access || typeof access.canSend !== 'function') return false
+      return access.canSend({ chatType: turn.chatType, chatId: turn.chatId })?.allowed === true
+    } catch (error) { return false }
   }
 
   async function statusText(turn) {
@@ -195,6 +205,46 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
 
     if (parsed.name === 'help') return send(turn, HELP_TEXT)
     if (parsed.name === 'status') return send(turn, await statusText(turn))
+
+    if (parsed.name === 'say') {
+      if (!parsed.args) return send(turn, '用法：/say 要发送的文本')
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (!outbound?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
+      try {
+        const result = await outbound.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
+        return { handled: true, reply: '', error: result?.ok ? '' : (result?.error || 'SEND_FAILED') }
+      } catch (error) { return { handled: true, reply: '', error: String(error?.message || error) } }
+    }
+
+    if (parsed.name === 'tts') {
+      const mediaConfig = currentConfig().media || {}
+      if (!mediaConfig.enabled || !mediaConfig.audio?.ttsEnabled) return send(turn, 'TTS 未启用。')
+      if (!parsed.args) return send(turn, '用法：/tts 要朗读的文本')
+      const maxChars = Math.max(1, Number(mediaConfig.tts?.maxChars) || 300)
+      if (parsed.args.length > maxChars) return send(turn, `文本过长，最多 ${maxChars} 字符。`)
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (!media?.synthesize || !media?.sendMedia) return send(turn, '媒体服务不可用。')
+      try {
+        const filePath = await media.synthesize(parsed.args)
+        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'record', filePath })
+        return { handled: true, reply: '' }
+      } catch (error) { return send(turn, `TTS 失败：${oneLine(error?.message || error, 100)}`) }
+    }
+
+    if (parsed.name === 'sticker') {
+      const mediaConfig = currentConfig().media || {}
+      if (!mediaConfig.enabled || !mediaConfig.stickers?.enabled || !mediaConfig.images?.enabled) return send(turn, '表情包功能未启用。')
+      if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
+      if (!stickers?.pick || !stickers?.fileFor || !media?.sendMedia) return send(turn, '表情包服务不可用。')
+      try {
+        const item = await stickers.pick({ tag: parsed.args })
+        if (!item) return send(turn, '还没有表情包，先在媒体面板上传')
+        const file = await stickers.fileFor(item.id)
+        if (!file) return send(turn, '表情包文件不存在。')
+        await media.sendMedia({ chatType: turn.chatType, chatId: turn.chatId, kind: 'image', filePath: file.path, name: item.name })
+        return { handled: true, reply: '' }
+      } catch (error) { return send(turn, `表情包发送失败：${oneLine(error?.message || error, 100)}`) }
+    }
 
     if (parsed.name === 'quiet' || parsed.name === 'active') {
       const quiet = parsed.name === 'quiet'

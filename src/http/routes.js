@@ -3,6 +3,7 @@
 
 import { redact } from '../core/redact.js'
 import { publicConfig, defaultConfig, CONFIG_GROUPS } from '../core/config.js'
+import { readFile } from 'node:fs/promises'
 
 export const API_PREFIX = '/onebot-qq/api'
 export const API_VERSION = 1
@@ -20,14 +21,14 @@ export function send(res, status, body) {
   } catch (error) {}
 }
 
-async function readBody(req) {
+async function readBody(req, maxBytes = MAX_BODY_BYTES) {
   const chunks = []
   let size = 0
   try {
     for await (const chunk of req) {
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       size += buffer.length
-      if (size > MAX_BODY_BYTES) throw new Error('请求体过大')
+      if (size > maxBytes) throw new Error('请求体过大')
       chunks.push(buffer)
     }
   } catch (error) {
@@ -68,7 +69,7 @@ function toInt(value, fallback, min, max) {
  * @param {string} o.version
  * @param {string} o.dataDir
  */
-export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, access = null, version, dataDir }) {
+export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, events, logger, cognition, models, media = null, stickers = null, access = null, version, dataDir }) {
   const registered = []
 
   const answer = async (res, work, { allowRaw = false } = {}) => {
@@ -78,6 +79,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       if (allowRaw && result && result.__raw === true) {
         res.statusCode = result.status || 200
         res.setHeader('content-type', result.type || 'application/octet-stream')
+        res.setHeader('cache-control', 'no-store')
         res.end(result.body)
         return
       }
@@ -107,6 +109,17 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
     }
   }
 
+  const routeRaw = (method, path, handler) => {
+    const register = () => ctx.webServer.register({
+      kind: 'exact', path: API_PREFIX + path,
+      handler: (req, res) => {
+        if (method && String(req.method || '').toUpperCase() !== method) return send(res, 405, { ok: false, message: `只支持 ${method}` })
+        answer(res, () => handler(req, res), { allowRaw: true })
+      },
+    })
+    try { registered.push(ctx.effect(register, `onebot-qq: 路由 ${method} ${path}`)) } catch (error) { register() }
+  }
+
   const statusPayload = () => {
     const cfg = getConfig()
     return {
@@ -130,7 +143,7 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   route('GET', '/status', async () => statusPayload())
 
   if (media) {
-    route('GET', '/media/status', async () => ({ ok: true, ...media.status() }))
+    route('GET', '/media/status', async () => ({ ok: true, ...media.status(), stickers: stickers ? await stickers.status() : null }))
     route('POST', '/media/test', async (req) => {
       const body = await readBody(req)
       const kind = String(body?.kind || '')
@@ -142,6 +155,43 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       const text = String(body?.text || '').trim()
       if (!text) throw new Error('缺少 text')
       return { ok: true, file: await media.synthesize(text) }
+    })
+  }
+
+
+  if (stickers) {
+    route('GET', '/media/stickers', async (req) => {
+      const query = queryOf(req)
+      return { ok: true, items: await stickers.list({ query: query.query || '', tag: query.tag || '', limit: toInt(query.limit, 100, 1, 500) }) }
+    })
+    route('POST', '/media/stickers/upload', async (req) => {
+      const maxBytes = Math.max(1024, Number(getConfig()?.media?.stickers?.maxBytes) || 5 * 1024 * 1024)
+      const body = await readBody(req, Math.ceil(maxBytes * 4 / 3) + 16384)
+      const data = String(body?.data || '').trim()
+      if (!body?.name || !body?.mime || !data) throw new Error('缺少 name、mime 或 data')
+      if (data.length > Math.ceil(maxBytes * 4 / 3) + 8 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data) || data.length % 4 !== 0) throw new Error('data 不是合法 base64 或超过大小限制')
+      const buffer = Buffer.from(data, 'base64')
+      if (buffer.length > maxBytes) throw new Error(`图片超过大小限制 ${maxBytes} bytes`)
+      return { ok: true, item: await stickers.importBuffer(buffer, { name: body.name, mime: body.mime, tags: body.tags }) }
+    })
+    route('POST', '/media/stickers/tag', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id) throw new Error('缺少 id')
+      const item = await stickers.updateTags(body.id, body.tags)
+      if (!item) throw new Error('表情包不存在')
+      return { ok: true, item }
+    })
+    route('POST', '/media/stickers/delete', async (req) => {
+      const body = await readBody(req)
+      if (!body?.id) throw new Error('缺少 id')
+      return { ok: true, removed: await stickers.remove(body.id) }
+    })
+    routeRaw('GET', '/media/stickers/file', async (req) => {
+      const id = queryOf(req).id
+      if (!id) throw new Error('缺少 id')
+      const file = await stickers.fileFor(id)
+      if (!file) throw new Error('表情包不存在')
+      return { __raw: true, type: file.mime, body: await readFile(file.path) }
     })
   }
 

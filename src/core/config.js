@@ -100,6 +100,8 @@ export const DEFAULTS = {
     enabled: false,
     maxBytes: 10 * 1024 * 1024,
     dir: '',
+    stickers: { enabled: true, maxCount: 200, maxBytes: 5 * 1024 * 1024 },
+    tts: { maxChars: 300 },
     images: {
       enabled: false,
       visionEnabled: false,
@@ -339,6 +341,10 @@ export const CONFIG_GROUPS = [
       { path: 'media.enabled', label: '启用媒体基础能力', type: 'switch', default: false },
       { path: 'media.maxBytes', label: '单个媒体大小上限', type: 'number', default: 10485760, min: 1024, max: 104857600, step: 1048576, unit: 'bytes' },
       { path: 'media.dir', label: '媒体目录', type: 'text', default: '', placeholder: '留空使用数据目录 media/' },
+      { path: 'media.stickers.enabled', label: '启用表情包库', type: 'switch', default: true, help: '仍受媒体总开关与图片开关约束。' },
+      { path: 'media.stickers.maxCount', label: '表情包数量上限', type: 'number', default: 200, min: 1, max: 5000, step: 1 },
+      { path: 'media.stickers.maxBytes', label: '单个表情包大小上限', type: 'number', default: 5242880, min: 1024, max: 52428800, step: 1048576, unit: 'bytes' },
+      { path: 'media.tts.maxChars', label: 'TTS 文本字符上限', type: 'number', default: 300, min: 1, max: 5000, step: 10 },
       { path: 'media.images.enabled', label: '接收/发送图片', type: 'switch', default: false },
       { path: 'media.images.visionEnabled', label: '图片理解', type: 'switch', default: false, help: '调用 OpenAI 兼容 chat/completions；默认关闭。' },
       { path: 'media.images.visionBaseUrl', label: 'Vision Base URL', type: 'text', default: '', placeholder: 'https://api.example.com/v1' },
@@ -1023,6 +1029,12 @@ export function normalizeConfig(raw) {
       enabled: pickBool(merged.media?.enabled, DEFAULTS.media.enabled),
       maxBytes: pickNumber(merged.media?.maxBytes, DEFAULTS.media.maxBytes, { min: 1024, max: 104857600, integer: true }),
       dir: pickString(merged.media?.dir, DEFAULTS.media.dir, { max: 1024 }),
+      stickers: {
+        enabled: pickBool(merged.media?.stickers?.enabled, DEFAULTS.media.stickers.enabled),
+        maxCount: pickNumber(merged.media?.stickers?.maxCount, DEFAULTS.media.stickers.maxCount, { min: 1, max: 5000, integer: true }),
+        maxBytes: pickNumber(merged.media?.stickers?.maxBytes, DEFAULTS.media.stickers.maxBytes, { min: 1024, max: 52428800, integer: true }),
+      },
+      tts: { maxChars: pickNumber(merged.media?.tts?.maxChars, DEFAULTS.media.tts.maxChars, { min: 1, max: 5000, integer: true }) },
       images: {
         enabled: pickBool(merged.media?.images?.enabled, DEFAULTS.media.images.enabled),
         visionEnabled: pickBool(merged.media?.images?.visionEnabled, DEFAULTS.media.images.visionEnabled),

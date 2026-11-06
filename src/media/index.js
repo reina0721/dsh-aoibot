@@ -189,7 +189,8 @@ export function createMediaService({ getConfig, dataDir, logger, fetchImpl = glo
     if (!c.enabled || !c.audio?.ttsEnabled) throw new Error('TTS 未启用')
     const input = String(text || '').trim()
     if (!input) throw new Error('text 不能为空')
-    if (input.length > 5000) throw new Error('text 过长（最多 5000 字符）')
+    const maxChars = Math.max(1, Math.min(5000, Number(c.tts?.maxChars) || 300))
+    if (input.length > maxChars) throw new Error(`text 过长（最多 ${maxChars} 字符）`)
     const response = await providerFetch(endpoint(c.audio.ttsBaseUrl, '/audio/speech'), {
       method: 'POST',
       headers: { ...apiHeaders(c.audio.ttsApiKeyEnv), 'content-type': 'application/json' },

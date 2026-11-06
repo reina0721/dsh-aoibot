@@ -340,7 +340,14 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - TTS 调 OpenAI 兼容 `/audio/speech`，MP3 保存到 `<dataDir>/media/outbound/`。API Key 配置只保存环境变量名，密钥从进程环境读取，不进入状态或日志。
 - `sendMedia()` 对图片/语音使用 `base64://` OneBot 消息段，避免网关不能读取 DSH 本地 `file://`；文件使用 `upload_group_file` / `upload_private_file`。发送同样检查总开关、能力开关、大小与扩展名。
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
-- 边界：没有媒体面板、QQ 媒体命令/Agent 工具、表情包市场、RVC、图片生成/编辑；真实网关/provider 兼容性仍需 M7 实机验证。
+- 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.18 的 M4-b 补充。Agent 工具、RVC、图片生成/编辑仍未实现；真实网关/provider 兼容性仍需 M7 实机验证。
+
+### 3.18 表情包、媒体命令与面板（M4-b）
+
+- `src/media/stickers.js` 在 `<dataDir>/media/stickers/` 保存图片，以 `<dataDir>/media/stickers.json` 原子维护索引。只接受 PNG/JPG/JPEG/GIF/WebP，默认单图 5 MiB、最多 200 个；SHA-256 去重，索引缺失或损坏按空库容错。HTTP/JSON 只公开 ID、名称、MIME、大小、hash、标签和时间，不公开绝对路径。
+- REST 提供表情包列表、base64 上传、标签编辑、删除和按 ID 取图。取图只由库内 ID 解析，不能传任意路径；媒体状态合并表情包数量/上限。媒体页展示总开关与 Vision/ASR/TTS 配置状态、执行只落盘的 TTS 测试，并提供表情包上传、预览、标签与删除。
+- 主人命令 `/tts <文本>`、`/say <文本>`、`/sticker [标签]` 只作用于当前聊天。`/tts` 默认最多 300 字符；`/sticker` 在匹配标签中随机选择。媒体发送前显式检查 `access.canSend`，之后仍由媒体/出站服务执行能力开关和路径边界。
+- 精确边界：表情包只支持面板手动上传、SHA-256 去重、人工标签和随机按标签发送；不会自动收集聊天图片、按语境/情绪选择、缩放转码或连接商城。无 `/sing`、自动语音策略、RVC、图片生成/编辑、任意本地脚本/路径接口或 Agent 媒体工具；真实 QQ/provider 兼容性仍待 M7。
 
 ## 4. 数据目录
 
@@ -350,7 +357,7 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 ├── models.json          # 模型 provider/selected/fallback（密钥不通过 API 回传）
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
-├── media/               # 可选：inbound/ 下载与 outbound/ TTS 输出
+├── media/               # 可选：inbound/、outbound/、stickers/ 与 stickers.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）

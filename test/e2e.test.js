@@ -170,6 +170,26 @@ test('product rename preserves OneBot API and config event contract', async (t) 
   assert.ok(fake.emitted.some(event => event.name === 'onebot-qq/config'))
 })
 
+test('媒体表情包 API：上传、列表与按 ID 读取图片', async (t) => {
+  const { fake } = await boot(t, { rowConfig: {} })
+  const bytes = Buffer.from('e2e-png-bytes')
+  const uploaded = await postJson(fake, '/media/stickers/upload', {
+    name: 'e2e.png', mime: 'image/png', data: bytes.toString('base64'),
+  })
+  assert.ok(uploaded.item.id)
+  assert.equal('path' in uploaded.item, false)
+  assert.equal('file' in uploaded.item, false)
+
+  const listed = await getJson(fake, '/media/stickers')
+  assert.equal(listed.items.length, 1)
+  assert.equal(listed.items[0].id, uploaded.item.id)
+
+  const file = await fake.call(API + '/media/stickers/file?id=' + encodeURIComponent(uploaded.item.id), undefined, { method: 'GET' })
+  assert.equal(file.status, 200)
+  assert.equal(file.headers['content-type'], 'image/png')
+  assert.equal(file.text, bytes.toString('utf8'))
+})
+
 // ---------------------------------------------------------------------------
 // 1. 启动即注册的接口形状
 // ---------------------------------------------------------------------------

@@ -174,6 +174,10 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `media.enabled` | `false` | 媒体总开关 |
 | `media.maxBytes` | `10485760` | 单文件上限，1024–104857600 bytes；下载、TTS 输出和发送均检查 |
 | `media.dir` | `""` | 留空为 `<数据目录>/media`；可指定自定义目录 |
+| `media.stickers.enabled` | `true` | 启用本地表情包库；QQ 发送仍要求 `media.enabled` 与 `media.images.enabled` 同时开启 |
+| `media.stickers.maxCount` | `200` | 表情包最多 1–5000 个；默认 200 |
+| `media.stickers.maxBytes` | `5242880` | 单个表情包 1024–52428800 bytes；默认 5 MiB |
+| `media.tts.maxChars` | `300` | 面板和 `/tts` 单次文本上限，1–5000 字符 |
 | `media.images.enabled` | `false` | 允许图片入站下载与 `sendMedia` 发送 |
 | `media.images.visionEnabled` | `false` | 调用 OpenAI 兼容 `/chat/completions` 生成简短图片描述 |
 | `media.images.visionBaseUrl/visionModel/visionApiKeyEnv` | `""` | Vision 根地址、模型、API Key 环境变量名 |
