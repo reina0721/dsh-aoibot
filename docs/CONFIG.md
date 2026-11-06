@@ -207,7 +207,7 @@ SnowLuma 模式只做**只读**解析：从 `config/onebot.json` 与 `config/one
 | `cog-core` | `cognition.enabled` / `dryRun` / `paused` | `true` / `false` / `false` | 总开关、演练（完整决策但不发送）、暂停（保留状态） |
 | `cog-llm` | `llm.mode` / `fallbackToDsh` / `provider` / `model` / `dailyTokenBudget` / `analysisMaxTokens` / `composeMaxTokens` / `modelRouting.*` | `auto` / `true` / `""` / `""` / `300000` / `1800` / `800` / 空 | LLM 只做分析与表达；`auto` 继承 DSH 失败兜底，`direct`/`chain` 使用「模型」页直连；`modelRouting` 按聊天覆盖 provider/model，优先级：会话覆盖 > 私聊/群默认 > 全局路由 |
 | `cog-turn` | `turn.privateBaseMs` / `privateMaxMs` / `groupMaxMs` / `groupReplyMode` / `groupReplyProbability` / `groupCooldownMs` / `groupMaxRepliesPerMinute` / `maxConsecutiveGroupReplies` | `1800` / `10000` / `9000` / `addressed` / `0.2` / `3000` / `6` / `3` | 碎片聚合软/硬等待；群聊参与方式（仅@/概率/所有消息）及冷却/频率上限；旧 `addressedOnlyGroups` 仍兼容映射 |
-| `cog-reply` | `reply.split` / `maxChars` / `maxParts` / `delayMs` / `quote` / `atSender` | `true` / `300` / `3` / `600` / `true` / `false` | 长回复分条、单条字数、最多条数、间隔、引用与群聊 @；分条中途失败不回滚 |
+| `cog-reply` | `reply.split` / `maxChars` / `maxParts` / `delayMs` / `quote` / `atSender` / `notice.patReply` / `patCooldownMs` | `true` / `300` / `3` / `600` / `true` / `false` / `true` / `60000` | 长回复分条、引用与群聊 @；拍一拍回应与冷却；分条中途失败不回滚 |
 | `cog-persona` | `persona.traits` / `style` / `values` / `evolutionEnabled` / `evolutionPerDay` | 见默认值 | 12 维稳定人格、6 维表达风格、价值边界；最长每日小步慢演化。**文本人设（名字/背景/性格/风格/喜好/边界）存在认知 persona 记录，不在此表** |
 | `cog-emotion` | `emotion.halfLifeMinutes` / `regulation` / `expressiveness` | `–` | 情绪惯性/衰减/调节、外显阈值；模拟状态 |
 | `cog-relationship` | `relationship.inertia` / `conflictGain` / `repairRate` / `maxDeltaPerTurn` | `–` | 多维有向关系；冲突升快降慢、单轮变化有上限 |

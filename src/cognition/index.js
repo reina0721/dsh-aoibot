@@ -30,6 +30,7 @@ import { createOutbound } from './outbound.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createCommandService } from './commands.js'
+import { createQqActions } from './qq-actions.js'
 import { createClock, createRng, createScheduler, nowMs, safeJson, uid, truncate } from './util.js'
 
 export function createCognition({
@@ -118,6 +119,7 @@ export function createCognition({
         logger: log,
         dataRoot: pluginDataDir('runtime'),
       })
+      state.services.qqActions = createQqActions({ gateway, getConfig, logger: log })
       state.services.commands = createCommandService({
         getConfig,
         setConfig,
@@ -126,7 +128,7 @@ export function createCognition({
         llm: state.services.llm,
         memory: state.services.memory,
         runtime: state.services.runtime,
-        commands: state.services.commands,
+        qqActions: state.services.qqActions,
         logger: log,
       })
       state.services.skills = createSkillService({ store: personaStore, getConfig, clock, log })
@@ -264,6 +266,17 @@ export function createCognition({
     return Boolean(notice && (String(notice.type || '').includes('recall') || notice.subType === 'recall'))
   }
 
+  function isPoke(notice) {
+    return Boolean(notice && String(notice.type || '') === 'notify' && ['poke', 'pat'].includes(String(notice.subType || '')))
+  }
+
+  function isReaction(notice) {
+    const type = String(notice?.type || '')
+    const subType = String(notice?.subType || '')
+    return type === 'group_msg_emoji_like' || type === 'message_reaction' || type === 'reaction'
+      || subType === 'emoji_like' || subType === 'reaction'
+  }
+
   function sawContentFor(messageId) {
     if (!messageId || !state.store) return false
     const row = state.store.list('raw_event', {
@@ -295,6 +308,14 @@ export function createCognition({
         const sawContent = sawContentFor(messageId)
         state.services.aggregator.handleRecall(normalized.notice)
         state.services.pipeline.handleRecall({ notice: normalized.notice, messageId, sawContent }).catch((error) => log.warn?.('撤回处理失败：', error.message))
+        return
+      }
+      if (normalized?.kind === 'notice' && isPoke(normalized.notice)) {
+        state.services.pipeline.handlePoke?.({ notice: normalized.notice }).catch((error) => log.debug?.('拍一拍处理失败：', error.message))
+        return
+      }
+      if (normalized?.kind === 'notice' && isReaction(normalized.notice)) {
+        state.services.pipeline.handleReaction?.({ notice: normalized.notice })
         return
       }
       if (normalized?.kind === 'message') state.services.aggregator.ingest(normalized)

@@ -373,3 +373,95 @@ test('M2-a：连续未点名接话达到上限后暂停主动接话，点名仍�
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('M2-b：合并转发展开进入轮次文本与记忆', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-forward-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  let forwardCalls = 0
+  const gateway = {
+    actions: {
+      sendMessage: async (payload) => { sent.push(payload); return { message_id: 811 } },
+      getForwardMsg: async (id) => {
+        forwardCalls += 1
+        assert.equal(id, 'f1')
+        return { messages: [{ sender: { nickname: '转发者' }, content: [{ type: 'text', data: { text: '转发正文：今天下午三点开会' } }] }] }
+      },
+    },
+  }
+  const cog = makeCog({ dir, gateway, scheduler })
+  try {
+    cog.observe({
+      seq: 1, kind: 'message', selfId: '999', time: Math.floor(Date.now() / 1000),
+      message: {
+        id: 1, chatType: 'private', chatId: '10001', sender: { userId: '10001', nickname: '小明' },
+        text: '看看这个', segments: [{ type: 'text', data: { text: '看看这个' } }, { type: 'forward', data: { id: 'f1' } }],
+        mentions: [], images: [], forwards: [{ id: 'f1' }], replyId: '',
+      },
+    }, { accepted: true })
+    scheduler.advance(4000)
+    await flush(80)
+    assert.equal(forwardCalls, 1, '应展开一次合并转发')
+    assert.equal(sent.length, 1)
+    const rows = cog.services.memory.list({ limit: 20 })
+    assert.ok(rows.some((item) => String(item.content || item.memory?.content || '').includes('转发正文')), '展开文本应进入记忆/轮次')
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('M2-b：拍一拍回应、冷却与只回应拍机器人', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-poke-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 901 } } } }
+  const cog = makeCog({ dir, gateway, scheduler })
+  try {
+    const base = { seq: 2, kind: 'notice', time: Math.floor(Date.now() / 1000) }
+    cog.observe({ ...base, notice: { type: 'notify', subType: 'poke', userId: '10001', targetId: '999', groupId: 'g1' } }, { accepted: true })
+    await flush(40)
+    assert.equal(sent.length, 1)
+    assert.ok(sent[0].message.some((segment) => segment.type === 'text' && segment.data.text.length > 0))
+    assert.equal(cog.snapshot().pipeline.pokes, 1)
+    assert.equal(cog.snapshot().pipeline.pokeReplies, 1)
+
+    cog.observe({ ...base, notice: { type: 'notify', subType: 'poke', userId: '10001', targetId: '999', groupId: 'g1' } }, { accepted: true })
+    await flush(40)
+    assert.equal(sent.length, 1, '冷却内不重复回应')
+
+    cog.observe({ ...base, notice: { type: 'notify', subType: 'poke', userId: '10001', targetId: '888', groupId: 'g1' } }, { accepted: true })
+    await flush(40)
+    assert.equal(sent.length, 1, '不是拍机器人不回应')
+    assert.equal(cog.snapshot().pipeline.pokes, 3)
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('M2-b：表情回应把机器人消息标记为正向 outcome', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-reaction-'))
+  const scheduler = createFakeScheduler()
+  const sent = []
+  const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 777 } } } }
+  const cog = makeCog({ dir, gateway, scheduler })
+  try {
+    cog.observe(privateEvent(1, '你好'), { accepted: true })
+    scheduler.advance(1500)
+    await flush(60)
+    assert.equal(sent.length, 1)
+    cog.observe({
+      seq: 2, kind: 'notice', time: Math.floor(Date.now() / 1000),
+      notice: { type: 'group_msg_emoji_like', subType: 'emoji_like', userId: '10001', groupId: 'g1', messageId: '777' },
+    }, { accepted: true })
+    await flush(20)
+    assert.equal(cog.snapshot().pipeline.reactions, 1)
+    const latest = cog.services.policy.history({ limit: 1 })[0]
+    assert.equal(latest.status, 'observed')
+    assert.ok(latest.reward > 0)
+  } finally {
+    cog.dispose()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

@@ -138,6 +138,7 @@ function normalizeMessage(raw) {
   const mentions = []
   const images = []
   const texts = []
+  const forwards = []
   let replyId = ''
   for (const segment of segments) {
     const data = segment.data || {}
@@ -147,6 +148,8 @@ function normalizeMessage(raw) {
       images.push({ url: str(data.url), file: str(data.file), summary: str(data.summary) })
     } else if (segment.type === 'reply') {
       replyId = str(data.id)
+    } else if (segment.type === 'forward') {
+      forwards.push({ id: str(data.id), title: str(data.title), summary: str(data.content) })
     }
   }
 
@@ -165,6 +168,7 @@ function normalizeMessage(raw) {
     segments,
     mentions,
     images,
+    forwards,
     replyId,
     rawMessage: raw.message ?? '',
     messageFormat,

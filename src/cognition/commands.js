@@ -5,7 +5,7 @@
 
 import { isOwner } from '../core/access.js'
 
-const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget']
+const COMMANDS = ['help', 'status', 'quiet', 'active', 'model', 'remember', 'forget', 'like', 'poke', 'groupinfo', 'memberinfo']
 
 export function parseCommand(text) {
   const raw = String(text || '').trim()
@@ -30,6 +30,10 @@ const HELP_TEXT = [
   '/model clear — 清除当前会话模型',
   '/remember 文本 — 写入一条记忆',
   '/forget 关键词 — 遗忘匹配的记忆',
+  '/like [次数] — 给当前聊天对象点赞（1-10）',
+  '/poke — 戳一戳当前聊天对象',
+  '/groupinfo — 当前群信息（仅群聊）',
+  '/memberinfo [QQ] — 群成员信息（仅群聊）',
   '/help — 本帮助',
 ].join('\n')
 
@@ -42,9 +46,10 @@ const HELP_TEXT = [
  * @param {object} [o.llm] 认知 LLM 客户端（currentRoute）
  * @param {object} [o.memory] 记忆服务（remember/forgetMatching）
  * @param {object} [o.runtime] createAgentRuntime()
+ * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
 
   function currentConfig() {
@@ -202,6 +207,42 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     }
 
     if (parsed.name === 'model') return send(turn, await handleModel(turn, parsed.args))
+
+    if (parsed.name === 'like') {
+      if (!qqActions?.like) return send(turn, 'QQ 动作服务不可用。')
+      const times = parsed.args ? Number.parseInt(parsed.args, 10) : 1
+      const target = turn.chatType === 'private' ? turn.chatId : turn.senderId
+      const result = await qqActions.like({
+        operatorId: turn.senderId,
+        chatType: turn.chatType,
+        chatId: turn.chatId,
+        userId: target,
+        times: Number.isFinite(times) ? times : 1,
+      })
+      return send(turn, result.ok ? `已点赞 ${result.times} 次。` : `点赞失败：${result.error}`)
+    }
+
+    if (parsed.name === 'poke') {
+      if (!qqActions?.poke) return send(turn, 'QQ 动作服务不可用。')
+      const target = turn.chatType === 'private' ? turn.chatId : turn.senderId
+      const result = await qqActions.poke({ operatorId: turn.senderId, chatType: turn.chatType, chatId: turn.chatId, userId: target })
+      return send(turn, result.ok ? '已拍回去。' : `拍一拍失败：${result.error}`)
+    }
+
+    if (parsed.name === 'groupinfo') {
+      if (!qqActions?.groupInfo) return send(turn, 'QQ 动作服务不可用。')
+      const result = await qqActions.groupInfo({ operatorId: turn.senderId, chatType: turn.chatType, chatId: turn.chatId })
+      if (!result.ok) return send(turn, result.error === 'GROUP_ONLY' ? '这个命令只能在群里用。' : `查询失败：${result.error}`)
+      return send(turn, `群：${result.groupName || result.groupId} · ${result.memberCount}/${result.maxMemberCount || '?'} 人 · 群主 ${result.ownerId || '?'}`)
+    }
+
+    if (parsed.name === 'memberinfo') {
+      if (!qqActions?.memberInfo) return send(turn, 'QQ 动作服务不可用。')
+      const target = parsed.args || turn.senderId
+      const result = await qqActions.memberInfo({ operatorId: turn.senderId, chatType: turn.chatType, chatId: turn.chatId, userId: target })
+      if (!result.ok) return send(turn, result.error === 'GROUP_ONLY' ? '这个命令只能在群里用。' : `查询失败：${result.error}`)
+      return send(turn, `成员：${result.card || result.nickname || result.userId}（${result.userId}）· 角色 ${result.role || '?'}`)
+    }
 
     if (parsed.name === 'remember') {
       if (!parsed.args) return send(turn, '用法：/remember 要记住的内容')

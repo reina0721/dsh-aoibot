@@ -50,7 +50,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 1 | OneBot v11 正向 WS + HTTP | 有 | 有；三种鉴权、握手超时、重连退避、账号核验缓冲 | **有** | — |
 | 2 | SnowLuma 检测/读取 | 检测、启停、只注入机器人号 | 只读 `detectInstall`/`readOneBotEndpoint` | 部分（受限是许可要求） | — |
 | 3 | QQ 事件面 | 撤回/禁言/进退群/管理员/精华/名片/头衔/群名/加好友/拍一拍/表态/请求 | message/notice/request/meta 基础 + 撤回 | 部分 | M2 |
-| 4 | 消息段与富媒体解析 | 合并转发展开、临时会话、群文件、待办、相册、骰子/猜拳、位置/名片、分享/音乐 | 文本/图片/表情/引用元数据；无下载/展开 | 部分 | M2/M4 |
+| 4 | 消息段与富媒体解析 | 合并转发展开、临时会话、群文件、待办、相册、骰子/猜拳、位置/名片、分享/音乐 | 文本/图片/表情/引用/forward 元数据；合并转发可展开；其余未解析 | 部分（M2-b） | M4 |
 | 5 | 原始事件落盘与脱敏 | 有 | 有（JSONL + SQLite + redact） | **有** | — |
 
 ### 3.2 会话运行时
@@ -70,7 +70,7 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 |---|---|---|---|---|---|
 | 12 | 主人/私聊白名单/群白名单 | `ownerQQ` + `allow.private/groups` | `access.mode=open/allowlist`、主人 + 私聊/群白名单、入口闸门、审计/计数 | 部分（M1-a） | M1 剩余：工具级权限 |
 | 13 | 权限档位 | full / social / chat；preset 按档位 | 无 | 无 | M1 |
-| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | 无 | 无 | M2 |
+| 14 | 逐项权限 | 改资料/文件/群管/点歌/生图/抖音/小黑盒；执行前复核 | 当前仅主人 + 当前会话约束；无逐项 action 权限矩阵 | 部分（M2-b） | M2 剩余/M5 |
 | 15 | 审批/危险确认/leak guard | `security/approval`、`danger`、`leak-guard` | 无 | 无 | M2 |
 | 16 | 本机-only/CSRF/可信反代/远端访问 | 默认只许回环 + CSRF + 反代配置 | 依赖 DSH 本机服务，无显式防护 | 部分 | M6 |
 | 17 | dryRun/试运行 | 有 | 有（`cognition.dryRun`） | **有** | 统一到 outbound |
@@ -83,8 +83,8 @@ Aurabot 领先的是**产品外壳 + DSH 原生运行时**；dsh-bot 领先的�
 | 19 | 轮次聚合/防抖/硬截止 | 有 | 有（完整度、软/硬截止、命令快路径） | **有** | — |
 | 20 | 群 admission | 点名必回、话题相关度、概率插话、防刷屏、连续发言自知 | addressed/probability/all + 冷却/分钟上限 + 连续未点名接话上限 | 部分（M2-a） | M2-b：话题相关度/接梗 |
 | 21 | 分条回复/引用/@/表情 | 有 | 分条 + 引用 + 群聊 @ 可配；表情/语音未接 | 部分（M2-a） | M2-b/M4 |
-| 22 | 合并转发展开/拍一拍/表情回应/通知 | 有 | 无 | 无 | M2-b |
-| 23 | QQ 动作工具 | 改资料/群管/文件/点赞/撤回/精华等 | 无 | 无 | M2 |
+| 22 | 合并转发展开/拍一拍/表情回应/通知 | 有 | 合并转发展开、拍一拍回应、表情表态归因；其他通知类型未处理 | 部分（M2-b） | M2 剩余 |
+| 23 | QQ 动作工具 | 改资料/群管/文件/点赞/撤回/精华等 | `/like` `/poke` `/groupinfo` `/memberinfo` 命令；非 agent 工具 | 部分（M2-b） | M2 剩余/M5 |
 
 ### 3.5 人格与情绪
 
@@ -267,6 +267,13 @@ QQ → 网关 → events → access（主人/白名单/档位）
 - 命令在 pipeline 的分析/策略前处理；`/quiet` `/active` 写回群聊参与/主动开关；`/remember` `/forget` 使用记忆服务。
 - 测试：`test/commands.test.js`、`test/model-llm.test.js` 的按聊天覆盖用例。
 - 边界：仅认知 LLM；agent Session 模型、`/sing` 等媒体命令留到后续。
+
+**M2-b（合并转发/拍一拍/表态/QQ 动作）**
+- `gateway/forward.js` + `actions.getForwardMsg`：兼容 `id`/`message_id`，节点压平成 `发送者：内容`；pipeline 展开进 `turn.text` 并标记不可信。
+- 拍一拍：只回应 `target_id==botQQ` 的 notify/poke，按用户冷却，走 outbound；表情回应按 messageId 归因为正向 outcome。
+- `cognition/qq-actions.js`：点赞/拍回去/群信息/成员信息；`/like` `/poke` `/groupinfo` `/memberinfo` 仅主人、仅当前会话。
+- 测试：`test/forward.test.js`、`test/qq-actions.test.js` + cognition 集成（展开进记忆、拍一拍冷却、表态 outcome）。
+- 边界：改资料/群管/文件/精华/撤回等动作、agent 工具化仍未做。
 
 **M2-a（回复分条/引用/@/防刷屏）**
 - `src/cognition/reply-split.js` + `pipeline.sendDecision`：长回复按段落/句末切分，最多 `maxParts` 条，剩余内容并入最后一条；每条走 outbound，支持分条间隔。

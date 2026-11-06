@@ -217,6 +217,7 @@ export function createTurnAggregator({ getConfig, clock, scheduler, store, log, 
       segments: message.segments || [],
       mentions: message.mentions || [],
       images: message.images || [],
+      forwards: message.forwards || [],
       replyId: message.replyId || '',
       rawSeq: record.seq || 0,
     })

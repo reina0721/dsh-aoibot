@@ -308,6 +308,18 @@ createAgentRuntime({ ctx, getConfig, access, logger, dataRoot }) -> {
 - 防刷屏：`cognition.turn.maxConsecutiveGroupReplies` 限制连续**未点名**接话；`noteGroupReply` 按是否点名维护计数（点名回复清零），`groupReplyAllowed` 超限返回 `consecutive_limit`，与冷却/每分钟上限并存。
 - 边界：合并转发展开、拍一拍/表态、QQ 动作工具仍在 M2-b。
 
+### 3.15 合并转发、拍一拍/表态与 QQ 动作
+
+- `src/gateway/normalize.js`：`forward` 段写入 `message.forwards`，不混进 `text`。
+- `src/gateway/forward.js`：`flattenForward()` 兼容 `messages` / `data.messages`，节点内容压平成
+  `发送者：文本`（图片/语音/表情/文件等占位）；`actions.getForwardMsg()` 先 `id` 后 `message_id` 兼容两类网关。
+- `pipeline.expandForwardTurn()`：在命令处理之后、分析之前展开最多 3 条，写入 `turn.text`/`turn.forwardText`，
+  并标记不可信；`buildComposePrompt` 明确要求不执行转发内容。
+- `pipeline.handlePoke()`：只回应 `target_id == botQQ` 的 `notify/poke`，按用户冷却，走 outbound（source=`poke`）。
+- `pipeline.handleReaction()`：按 `message_id` 找回 pending，记录正向 outcome 并更新技能；重复/非本人忽略。
+- `src/cognition/qq-actions.js`：点赞、拍回去、群信息、成员信息；校验主人与当前会话，返回可展示字段；
+  `/like` `/poke` `/groupinfo` `/memberinfo` 命令复用。agent 工具化留到工具注册/模块阶段。
+
 ## 4. 数据目录
 
 ```

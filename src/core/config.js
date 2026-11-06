@@ -141,6 +141,10 @@ export const DEFAULTS = {
       quote: true,
       atSender: false,
     },
+    notice: {
+      patReply: true,
+      patCooldownMs: 60000,
+    },
     llm: {
       mode: 'auto', // auto | dsh | fixed | direct | chain
       fallbackToDsh: true,
@@ -596,6 +600,8 @@ export const CONFIG_GROUPS = [
       { path: 'cognition.reply.delayMs', label: '分条间隔', type: 'number', default: 600, min: 0, max: 5000, step: 100, unit: 'ms' },
       { path: 'cognition.reply.quote', label: '回复时引用原消息', type: 'switch', default: true },
       { path: 'cognition.reply.atSender', label: '群聊回复时 @ 对方', type: 'switch', default: false, help: '默认关闭，避免每条回复都带 @；与引用同时开启时可能显得重叠。' },
+      { path: 'cognition.notice.patReply', label: '被拍一拍时回应', type: 'switch', default: true, help: '别人拍机器人时回一句短话；每个用户有冷却。' },
+      { path: 'cognition.notice.patCooldownMs', label: '拍一拍回应冷却', type: 'number', default: 60000, min: 0, max: 600000, step: 1000, unit: 'ms' },
     ],
   },
   {
@@ -1012,6 +1018,10 @@ function normalizeCognition(raw, rawCognition = {}) {
       delayMs: pickNumber(src.reply?.delayMs, d.reply.delayMs, { min: 0, max: 5000, integer: true }),
       quote: pickBool(src.reply?.quote, d.reply.quote),
       atSender: pickBool(src.reply?.atSender, d.reply.atSender),
+    },
+    notice: {
+      patReply: pickBool(src.notice?.patReply, d.notice.patReply),
+      patCooldownMs: pickNumber(src.notice?.patCooldownMs, d.notice.patCooldownMs, { min: 0, max: 600000, integer: true }),
     },
     llm: {
       mode: pickEnum(src.llm?.mode, d.llm.mode, ['auto', 'dsh', 'fixed', 'direct', 'chain']),

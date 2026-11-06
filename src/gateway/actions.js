@@ -101,6 +101,10 @@ export function createActions({ call }) {
     getGroupList(opts = {}) {
       return call('get_group_list', {}, opts)
     },
+    /** 群信息 */
+    getGroupInfo(groupId, { noCache = true, ...opts } = {}) {
+      return call('get_group_info', { group_id: idParam(requireText(groupId, '群号')), no_cache: noCache !== false }, opts)
+    },
     /** 群成员信息 */
     getGroupMemberInfo(groupId, userId, { noCache = true, ...opts } = {}) {
       return call('get_group_member_info', {
@@ -116,6 +120,34 @@ export function createActions({ call }) {
     /** 查询消息 */
     getMsg(messageId, opts = {}) {
       return call('get_msg', { message_id: idParam(requireText(messageId, '消息 ID')) }, opts)
+    },
+    /**
+     * 合并转发内容。不同网关参数名不同：go-cqhttp 用 id，NapCat/Lagrange 用 message_id。
+     * 先按 id 试，失败再按 message_id 试；两次都失败抛第二次错误。
+     */
+    async getForwardMsg(id, opts = {}) {
+      const value = requireText(id, '合并转发 id')
+      try {
+        return await call('get_forward_msg', { id: value }, opts)
+      } catch (firstError) {
+        return call('get_forward_msg', { message_id: idParam(value) }, opts)
+      }
+    },
+    /** 群戳一戳 */
+    groupPoke(groupId, userId, opts = {}) {
+      return call('group_poke', { group_id: idParam(requireText(groupId, '群号')), user_id: idParam(requireText(userId, 'QQ 号')) }, opts)
+    },
+    /** 好友戳一戳 */
+    friendPoke(userId, opts = {}) {
+      return call('friend_poke', { user_id: idParam(requireText(userId, 'QQ 号')) }, opts)
+    },
+    /** 点赞 */
+    sendLike(userId, times = 1, opts = {}) {
+      return call('send_like', { user_id: idParam(requireText(userId, 'QQ 号')), times: Math.max(1, Math.min(10, Number(times) || 1)) }, opts)
+    },
+    /** 消息表态 */
+    setMsgEmojiLike(messageId, emojiId = '128077', opts = {}) {
+      return call('set_msg_emoji_like', { message_id: idParam(requireText(messageId, '消息 ID')), emoji_id: String(emojiId || '128077') }, opts)
     },
     /** 网关状态（在线账号等） */
     getStatus(opts = {}) {

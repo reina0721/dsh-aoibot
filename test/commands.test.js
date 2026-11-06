@@ -37,6 +37,12 @@ function harness(overrides = {}) {
     },
   }
   const runtime = { summary: () => ({ active: true, sessions: 2 }) }
+  const qqActions = {
+    async like(args) { return { ok: true, target: args.userId, times: args.times || 1 } },
+    async poke() { return { ok: true } },
+    async groupInfo(args) { if (args.chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }; return { ok: true, groupId: 'g1', groupName: '测试群', memberCount: 3, maxMemberCount: 200, ownerId: '10001' } },
+    async memberInfo(args) { if (args.chatType !== 'group') return { ok: false, error: 'GROUP_ONLY' }; return { ok: true, userId: args.userId || '10001', nickname: '小明', card: '小明卡', role: 'owner' } },
+  }
   const access = {
     isOwner: (cfg, id) => String(id) === '10001',
     summary: () => ({ mode: 'allowlist' }),
@@ -53,6 +59,7 @@ function harness(overrides = {}) {
     llm,
     memory,
     runtime,
+    qqActions,
     logger: null,
   })
   return { service, sent, memory, getConfig: () => config, setConfig }
@@ -162,4 +169,25 @@ test('commands：未知命令给提示，非命令交给认知管线', async () 
   assert.equal(sent.length, 1)
   const normal = await service.handle(turn('你好'))
   assert.deepEqual(normal, { handled: false })
+})
+
+
+test('commands：/like /poke /groupinfo /memberinfo 走 QQ 动作服务', async () => {
+  const { service, sent } = harness()
+  const like = await service.handle(turn('/like 3'))
+  assert.match(like.reply, /已点赞 3 次/)
+
+  const poke = await service.handle(turn('/poke', { chatType: 'group', chatId: '20001', senderId: '10001' }))
+  assert.match(poke.reply, /已拍回去/)
+
+  const info = await service.handle(turn('/groupinfo', { chatType: 'group', chatId: '20001', senderId: '10001' }))
+  assert.match(info.reply, /测试群/)
+  assert.match(info.reply, /3\/200 人/)
+
+  const member = await service.handle(turn('/memberinfo 20002', { chatType: 'group', chatId: '20001', senderId: '10001' }))
+  assert.match(member.reply, /成员：小明卡（20002）/)
+  assert.equal(sent.length, 4)
+
+  const privateInfo = await service.handle(turn('/groupinfo'))
+  assert.match(privateInfo.reply, /只能在群里用/)
 })
