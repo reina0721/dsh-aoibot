@@ -46,5 +46,10 @@
     "real B站/GitHub"
   ],
   "installedFrom": "local dist/dsh-bot.tgz (0.11.0); GitHub release v0.11.0 published after smoke",
-  "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository."
+  "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
+  "ownerCommand": {
+    "requestMessageId": "348124655",
+    "observed": false,
+    "note": "ownerQQ set to the active private chat; no command reply was observed during the acceptance window; no claim of owner command verification."
+  }
 }

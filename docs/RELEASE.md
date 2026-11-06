@@ -63,7 +63,7 @@ git diff --check
 - 真实私聊入站消息与助手回复出现在 `/events`；通过 `/send` 实际发出消息，message_id `535556004`；
 - 通过 `/backup/create` 创建本地快照 `20261106T153925024Z-f43f618a`。
 
-**这不等于全量实机验收**：主人命令往返、媒体 provider、文件发送、请求审批、typing、提醒投递、B站/GitHub 等仍未覆盖。脱敏证据见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。验收文档只记录实际观察，不把 API 200 或一条消息当成全量能力证据。
+**这不等于全量实机验收**：主人命令往返仍未观察到（已发验收请求 message_id `348124655`）；媒体 provider、文件发送、请求审批、typing、提醒投递、B站/GitHub 等仍未覆盖。脱敏证据见 [live-acceptance-2026-11-06.json](assets/live-acceptance-2026-11-06.json)。验收文档只记录实际观察，不把 API 200 或一条消息当成全量能力证据。
 
 ## 7. 版本与发布状态
 
