@@ -1,0 +1,74 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "一条 QQ 消息在 dsh-bot 里的生命周期（目标态 M1）",
+    "locale": "zh-CN",
+    "output": "docs/visuals/message-lifecycle.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "qq", "label": "QQ 侧" },
+    { "id": "host", "label": "dsh-bot host" },
+    { "id": "model", "label": "模型与安全" }
+  ],
+  "phases": [
+    { "id": "intake", "label": "入站", "fromCol": 0, "toCol": 1 },
+    { "id": "decide", "label": "聚合与决策", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "deliver", "label": "执行与出站", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "gate", "label": "访问闸门", "lane": "host", "fromCol": 2, "toCol": 2, "variant": "security" },
+    { "id": "reply", "label": "统一出站", "lane": "host", "fromCol": 5, "toCol": 5, "variant": "emphasis" }
+  ],
+  "mainPath": ["msg", "event", "access", "turn", "session", "llm", "outbound", "reply"],
+  "nodes": [
+    { "id": "msg", "lane": "qq", "col": 0, "type": "external", "label": "QQ 消息", "sublabel": "私聊 / 群聊", "width": 132 },
+    { "id": "event", "lane": "qq", "col": 1, "type": "external", "label": "OneBot 事件", "sublabel": "WS + HTTP", "width": 132 },
+    { "id": "access", "lane": "host", "col": 2, "type": "security", "label": "访问闸门", "sublabel": "owner / 白名单", "tag": "M1 新增", "width": 140 },
+    { "id": "turn", "lane": "host", "col": 3, "type": "backend", "label": "轮次聚合", "sublabel": "防抖 / 硬截止", "width": 132 },
+    { "id": "session", "lane": "host", "col": 4, "type": "backend", "label": "DSH Session", "sublabel": "preset + 工具", "tag": "M1 新增", "width": 140 },
+    { "id": "llm", "lane": "model", "col": 4, "type": "cloud", "label": "模型", "sublabel": "分析 / 生成 / 工具调用", "width": 150 },
+    { "id": "outbound", "lane": "host", "col": 5, "type": "backend", "label": "出站闸门", "sublabel": "清洗 / 分条 / 限频", "width": 140 },
+    { "id": "reply", "lane": "qq", "col": 5, "type": "external", "label": "QQ 回复", "sublabel": "文本 / 语音 / 图", "width": 132 },
+    { "id": "blocked", "lane": "model", "col": 2, "type": "security", "label": "拒绝", "sublabel": "审计 + 不落库", "width": 132 },
+    { "id": "degraded", "lane": "model", "col": 5, "type": "security", "label": "降级", "sublabel": "沉默 / 告警", "width": 132 }
+  ],
+  "edges": [
+    { "id": "msg-event", "from": "msg", "to": "event", "label": "OneBot v11", "variant": "emphasis" },
+    { "id": "event-access", "from": "event", "to": "access", "label": "normalize", "role": "main" },
+    { "id": "access-turn", "from": "access", "to": "turn", "label": "允许", "role": "main", "variant": "emphasis" },
+    { "id": "turn-session", "from": "turn", "to": "session", "label": "prompt", "role": "main" },
+    { "id": "session-llm", "from": "session", "to": "llm", "label": "生成 / 工具", "role": "main" },
+    { "id": "llm-outbound", "from": "llm", "to": "outbound", "label": "reply", "role": "main" },
+    { "id": "outbound-reply", "from": "outbound", "to": "reply", "label": "send", "role": "return", "variant": "emphasis" },
+    { "id": "access-blocked", "from": "access", "to": "blocked", "label": "拒绝", "role": "error", "variant": "security" },
+    { "id": "llm-degraded", "from": "llm", "to": "degraded", "label": "失败", "role": "error", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "入站原则",
+      "items": [
+        "被访问闸门拒绝的消息不落 raw、不聚合、不回复，只记审计元数据",
+        "轮次聚合保留现有防抖/硬截止；命令走快路径"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "运行时分界",
+      "items": [
+        "有 sessionController 时走 DSH Session：preset + 按档位挂工具",
+        "没有宿主会话服务时回退到现有一次性 LLM 路径"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "出站约束",
+      "items": [
+        "回复/撤回/主动行为统一经过 outbound：访问 → 限频 → dryRun → 发送",
+        "清洗工具标记与提示词泄漏；失败不自动重发"
+      ]
+    }
+  ]
+}

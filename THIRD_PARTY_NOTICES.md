@@ -15,8 +15,9 @@ record its origin where code was adapted.
 - License: MIT, Copyright (c) 2026 Aurabot contributors
 - Why reused: Aurabot is a mature DSH plugin that already ships a working SnowLuma / OneBot v11
   connection layer, a data-persisting host, and a full-page web panel. This package reuses its proven
-  structure instead of reinventing those wheels; only the OneBot v11 connectivity layer is kept and
-  the AI-chat/persona features are intentionally out of scope (they belong to later cognitive plugins).
+  structure instead of reinventing those wheels; the reused surface is the OneBot v11 connectivity,
+  data directory, redaction, logger and panel-registration shape. The cognition kernel, model gateway
+  and persona workbench are original work and are not derived from Aurabot.
 
 Reused/adapted files:
 
@@ -80,6 +81,18 @@ SOFTWARE.
 - Console-web's reference checkout contains no `LICENSE` file at the time of use; it is the user's own
   project and was used with the user's explicit request/permission. This package's own license remains
   MIT (see `LICENSE`).
+
+
+## Archify (visual baseline, not bundled)
+
+- Upstream: <https://github.com/tt-a1i/archify>
+- Installed in the current DSH `web` profile as the community Skill-only bundle
+  `@tt-a1i/archify-dsh@1.0.0` (MIT), which bundles Archify 3.0.1 (MIT; 3.2.0+ is Apache-2.0).
+- What was used: authored diagram sources in `docs/visuals/src/` and generated standalone HTML
+  under `docs/visuals/` (architecture, workflow, lifecycle, roadmap). Archify is an authoring tool,
+  not a runtime dependency: no Archify code is bundled into this package and `src/**` does not import it.
+- The DSH integration adapter is MIT-licensed; the bundled Skill retains its own LICENSE/NOTICE inside
+  the installed profile package. See `docs/ARCHIFY.md` for the exact version, verification and rollback.
 
 ## DeepSeek Harness
 

@@ -62,7 +62,7 @@ sh install.sh --profile desktop --version 0.10.0
 
 ## 文档与开发
 
-[文档首页](docs/README.md) · [用户手册](docs/USER-MANUAL.md) · [配置参考](docs/CONFIG.md) · [模型网关](docs/MODEL-GATEWAY.md) · [故障排查](docs/TROUBLESHOOTING.md) · [贡献指南](CONTRIBUTING.md) · [变更记录](CHANGELOG.md)
+[文档首页](docs/README.md) · [用户手册](docs/USER-MANUAL.md) · [配置参考](docs/CONFIG.md) · [模型网关](docs/MODEL-GATEWAY.md) · [Aurabot 对标](docs/research/GAP-AURABOT.md) · [视觉基线](docs/visuals/README.md) · [故障排查](docs/TROUBLESHOOTING.md) · [贡献指南](CONTRIBUTING.md) · [变更记录](CHANGELOG.md)
 
 ```sh
 npm test

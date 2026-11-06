@@ -1,0 +1,73 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "dsh-bot 全量对标 Aurabot 的里程碑",
+    "locale": "zh-CN",
+    "output": "docs/visuals/parity-roadmap.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "ms", "label": "里程碑" },
+    { "id": "gate", "label": "验收门" }
+  ],
+  "phases": [
+    { "id": "foundation", "label": "地基", "fromCol": 0, "toCol": 1 },
+    { "id": "experience", "label": "体验", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "ecosystem", "label": "生态与收口", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": ["m0", "m1", "m2", "m3", "m4", "m5"],
+  "nodes": [
+    { "id": "m0", "lane": "ms", "col": 0, "type": "frontend", "label": "M0 视觉与矩阵", "sublabel": "Archify + parity matrix", "width": 150 },
+    { "id": "m1", "lane": "ms", "col": 1, "type": "security", "label": "M1 运行时 + 权限", "sublabel": "Session / preset / access", "width": 160 },
+    { "id": "m2", "lane": "ms", "col": 2, "type": "backend", "label": "M2 群聊交互", "sublabel": "分条 / 引用 / 防刷屏", "width": 150 },
+    { "id": "m3", "lane": "ms", "col": 3, "type": "backend", "label": "M3 记忆/心情/目的", "sublabel": "整理 / 档案 / 主动", "width": 160 },
+    { "id": "m4", "lane": "ms", "col": 4, "type": "cloud", "label": "M4 媒体", "sublabel": "TTS / 表情 / 图", "width": 140 },
+    { "id": "m5", "lane": "ms", "col": 5, "type": "messagebus", "label": "M5–M7 生态与收口", "sublabel": "模块 / 运维 / 审计", "width": 160 },
+    { "id": "g0", "lane": "gate", "col": 0, "type": "database", "label": "视觉 + 矩阵", "sublabel": "可复查的基线", "width": 132 },
+    { "id": "g1", "lane": "gate", "col": 1, "type": "security", "label": "白名单 / 回退", "sublabel": "owner 与群聊", "width": 132 },
+    { "id": "g2", "lane": "gate", "col": 2, "type": "database", "label": "场景套件", "sublabel": "群聊全绿", "width": 132 },
+    { "id": "g3", "lane": "gate", "col": 3, "type": "database", "label": "30 天模拟", "sublabel": "长期状态", "width": 132 },
+    { "id": "g4", "lane": "gate", "col": 4, "type": "database", "label": "真机媒体", "sublabel": "语音/图/表情", "width": 132 },
+    { "id": "g5", "lane": "gate", "col": 5, "type": "security", "label": "parity 全绿", "sublabel": "发布", "width": 132 }
+  ],
+  "edges": [
+    { "id": "m0-m1", "from": "m0", "to": "m1", "variant": "emphasis" },
+    { "id": "m1-m2", "from": "m1", "to": "m2" },
+    { "id": "m2-m3", "from": "m2", "to": "m3" },
+    { "id": "m3-m4", "from": "m3", "to": "m4" },
+    { "id": "m4-m5", "from": "m4", "to": "m5" },
+    { "id": "m0-g0", "from": "m0", "to": "g0", "label": "验收", "role": "branch" },
+    { "id": "m1-g1", "from": "m1", "to": "g1", "label": "验收", "role": "branch" },
+    { "id": "m2-g2", "from": "m2", "to": "g2", "label": "验收", "role": "branch" },
+    { "id": "m3-g3", "from": "m3", "to": "g3", "label": "验收", "role": "branch" },
+    { "id": "m4-g4", "from": "m4", "to": "g4", "label": "验收", "role": "branch" },
+    { "id": "m5-g5", "from": "m5", "to": "g5", "label": "验收", "role": "branch" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "完成定义",
+      "items": [
+        "parity matrix 的每一行都有等价实现，或经用户确认豁免",
+        "每行至少有一个自动化测试或受控真机 smoke 证据"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "推进方式",
+      "items": [
+        "每个里程碑独立发布、可回退；runtime.engine 保留 oneshot 回退",
+        "视觉产物在每个里程碑结束时用 Archify 更新一次"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "风险闸门",
+      "items": [
+        "M1 前不覆盖现有 web profile 的 dsh-bot 0.10.0；真机 smoke 用临时 profile",
+        "安全/权限先于工具；默认关闭，dryRun 可用于演练"
+      ]
+    }
+  ]
+}

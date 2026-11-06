@@ -1,10 +1,10 @@
-# 实现状态（功能基线 v0.9.0）
+# 实现状态（功能基线 v0.10.0）
 
-0.10.0 调整命名、仓库及发布体系；以下功能基线和历史测试数字来自 v0.9.0，当前验证以 CI 为准。
+0.10.0 调整命名、仓库及发布体系；以下功能基线以 v0.10.0 代码与测试为准。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 
 > 本文按「真实代码 + 真实测试」核对，不用设计文档冒充完成。
 > 状态：**I** 已实现、**T** 有自动化测试、**V** 真实 DSH/浏览器验证、**L** 受限实现、**N** 尚未实现。
-> 基线：`dsh-bot@0.9.0`，146 个测试（4 项 live 需 key）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检；真实 DSH 探针 + 认知/模型/人格 UI 证据见
+> 基线：`dsh-bot@0.10.0`，157 个测试（153 通过、4 项 live 需 key）；认知 + 模型协议 + 人格工作台/群聊参与 + 多人格库 + 人格级认知数据 + 人格导入/模型自检；真实 DSH 探针 + 认知/模型/人格 UI 证据见
 > [历史验证报告](https://github.com/reina0721/dsh-bot/blob/main/docs/archive/VERIFICATION.md) §4.2/§4.3/§4.4/§4.5/§4.6/§4.7。
 
 | 领域 | 状态 | 实际模块 | 已做到 | 边界/未覆盖 |
@@ -26,6 +26,7 @@
 | 技能 | I/T/V | `skills.js` | 13 项初始技能；成功/失败/不用/压力/迁移；有效熟练度独立于人格/情绪/关系 | 技能参数是手工先验，未从长期真实成功数据拟合 |
 | 元认知 | I/T | `meta.js` | 决策/结果/校准 Brier/沉默率/能力缺口/有限 insight | 反思只记录 bounded insight，不自动改代码/权限；无完整自我模型 |
 | 主动行为 | I/T/L | `proactivity.js` | 默认关闭；安静时段、日预算、关系门槛、退避、dryRun、决策记录 | 真实 LLM/发送路径未在带凭据的探针上验证；群主动默认关闭 |
+| 访问控制/统一出站 | N | — | 已有 `cognition.dryRun` 与事件层 `ignoreUsers/ignoreGroups` | 无主人/白名单/权限档位；pipeline 与 proactivity 各自发送，主动行为绕过 dryRun 闸门 | M1：`access` + `outbound` |
 | 隐私/删除 | I/T/V | `memory.js`、`person.js`、`index.deletePerson` | 私聊/群聊作用域隔离；secret 不进 LLM（平台层）；导出；删除人物级联画像/关系/记忆；原始事件镜像可关 | 没有多用户权限模型；DSH 本地单用户认证 |
 | 存储 | I/T/V | `store.js` | `node:sqlite` WAL + FTS5 + 事务/回滚/备份；JSON fallback；schema version；原始 JSONL；WAL checkpoint | 迁移只有 v1；跨大版本升级需补迁移脚本 |
 | 模型协议 | I/T/V | `src/model/**` | OpenAI Chat/Responses、Anthropic、Gemini、Ollama 统一适配；OpenCode Go/Command Code/OpenRouter 预设；自定义 base/header/auth；流式/发现/重试/安全；真实 OpenCode OpenAI+Anthropic 通过；真实认知直连 analysis+compose 成功 | 工具调用/多模态未实现；Azure/Bedrock/Vertex/OAuth 未纳入；Command Code/OpenRouter 无 live chat key；Gemini/Ollama 仅 mock |

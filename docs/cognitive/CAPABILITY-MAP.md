@@ -2,6 +2,8 @@
 
 > 状态：**D** 设计中、**I** 已实现、**T** 已测试、**V** 已验证、**L** 受限、**R** 待研究。  
 > 本表随实现/测试/真实验证更新；没有测试证据不得从 D 升到 I/T。
+>
+> 注：表中 `attention.js` / `identity.js` / `groups.js` / `unknown.js` / `capabilities.js` / `privacy.js` 等是目标态命名；当前实现落在 `turn.js` / `person.js` / `relationships.js` / `policy.js`，以 [IMPLEMENTATION-STATUS](IMPLEMENTATION-STATUS.md) 为准。
 
 | 能力域 | 子能力 | 模块 | v0.4 目标状态 | 后续 |
 |---|---|---|---|---|

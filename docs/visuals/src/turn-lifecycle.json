@@ -1,0 +1,207 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "一次对话轮次的状态机",
+    "locale": "zh-CN",
+    "output": "docs/visuals/turn-lifecycle.html",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "对话轮次"
+    },
+    {
+      "id": "wait",
+      "label": "等待与冷却"
+    },
+    {
+      "id": "terminal",
+      "label": "终止"
+    }
+  ],
+  "states": [
+    {
+      "id": "idle",
+      "type": "start",
+      "label": "空闲",
+      "sublabel": "等待新消息",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "idle"
+    },
+    {
+      "id": "collecting",
+      "type": "active",
+      "label": "聚合中",
+      "sublabel": "防抖窗口",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "open"
+    },
+    {
+      "id": "deciding",
+      "type": "decision",
+      "label": "决策",
+      "sublabel": "回复 / 沉默",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "gate"
+    },
+    {
+      "id": "composing",
+      "type": "active",
+      "label": "生成",
+      "sublabel": "模型 / 工具",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "busy"
+    },
+    {
+      "id": "sent",
+      "type": "success",
+      "label": "已发送",
+      "sublabel": "出站成功",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "done"
+    },
+    {
+      "id": "waiting",
+      "type": "waiting",
+      "label": "等待更多",
+      "sublabel": "未说完",
+      "lane": "wait",
+      "col": 1,
+      "tag": "soft deadline"
+    },
+    {
+      "id": "cooldown",
+      "type": "success",
+      "label": "冷却",
+      "sublabel": "本轮结束",
+      "lane": "wait",
+      "col": 4,
+      "tag": "rate limit"
+    },
+    {
+      "id": "silent",
+      "type": "success",
+      "label": "沉默",
+      "sublabel": "一等动作",
+      "lane": "terminal",
+      "col": 2,
+      "tag": "terminal"
+    },
+    {
+      "id": "denied",
+      "type": "failure",
+      "label": "访问拒绝",
+      "sublabel": "白名单 / 主人",
+      "lane": "terminal",
+      "col": 0,
+      "tag": "terminal"
+    },
+    {
+      "id": "degraded",
+      "type": "failure",
+      "label": "降级",
+      "sublabel": "无模型 / 解析失败",
+      "lane": "terminal",
+      "col": 3,
+      "tag": "terminal"
+    }
+  ],
+  "transitions": [
+    {
+      "from": "idle",
+      "to": "collecting",
+      "label": "新消息"
+    },
+    {
+      "from": "collecting",
+      "to": "waiting",
+      "label": "未完整",
+      "variant": "dashed"
+    },
+    {
+      "from": "waiting",
+      "to": "collecting",
+      "label": "继续说",
+      "variant": "dashed"
+    },
+    {
+      "from": "collecting",
+      "to": "deciding",
+      "label": "软/硬截止",
+      "variant": "emphasis"
+    },
+    {
+      "from": "deciding",
+      "to": "composing",
+      "label": "回复",
+      "variant": "emphasis"
+    },
+    {
+      "from": "deciding",
+      "to": "silent",
+      "label": "不回复",
+      "variant": "dashed"
+    },
+    {
+      "from": "composing",
+      "to": "sent",
+      "label": "出站成功",
+      "variant": "emphasis"
+    },
+    {
+      "from": "composing",
+      "to": "degraded",
+      "label": "失败",
+      "variant": "security"
+    },
+    {
+      "from": "sent",
+      "to": "cooldown",
+      "variant": "dashed"
+    },
+    {
+      "from": "idle",
+      "to": "denied",
+      "label": "访问拒绝",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "轮次语义",
+      "items": [
+        "消息不等于发言：同一聊天在窗口内聚合，软截止可延长、硬截止必发",
+        "沉默与等待是一等动作，不是失败；决策有候选效用与限频"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "失败边界",
+      "items": [
+        "模型不可用 → degraded，不伪造回复；解析失败 → 沉默或降级",
+        "访问拒绝在入站即终止，不进入认知与记忆"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "M1 变化",
+      "items": [
+        "composing 从一次性调用切换为 DSH Session（可回退）",
+        "出站统一经过 outbound：清洗 / 分条 / dryRun / 限频"
+      ]
+    }
+  ]
+}

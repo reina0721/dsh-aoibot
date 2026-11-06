@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b6898677-5af8-463a-8b5d-6c65094cfeb7",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/workspace/dsh-bot/docs/visuals/src/turn-lifecycle.json",
+  "output": "/workspace/dsh-bot/docs/visuals/turn-lifecycle.html",
+  "specification": {
+    "sha256": "7644d31ff865ac32c9eca5e52e5262b96abd0bdfafea99741574744c6ddc5e2d",
+    "bytes": 4343
+  },
+  "artifact": {
+    "sha256": "dbc9f45d3007447e3c2fb58f2567fe91b300b2c5b514ed7a4d9c119608ea1be8",
+    "bytes": 765058
+  }
+}

@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dsh-bot 目标架构（M1–M3）",
+    "locale": "zh-CN",
+    "output": "docs/visuals/target-architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "label": "QQ 用户",
+      "sublabel": "私聊 / 群聊",
+      "pos": [
+        40,
+        330
+      ],
+      "size": [
+        120,
+        64
+      ]
+    },
+    {
+      "id": "gateway",
+      "type": "external",
+      "label": "OneBot 网关",
+      "sublabel": "NapCat / SnowLuma 等",
+      "pos": [
+        240,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "events",
+      "type": "backend",
+      "label": "事件层",
+      "sublabel": "normalize + 缓冲",
+      "pos": [
+        470,
+        330
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "访问控制",
+      "sublabel": "owner / 白名单 / 档位",
+      "pos": [
+        680,
+        330
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "会话运行时",
+      "sublabel": "DSH Session + preset",
+      "pos": [
+        910,
+        330
+      ],
+      "size": [
+        160,
+        72
+      ]
+    },
+    {
+      "id": "agent",
+      "type": "cloud",
+      "label": "Agent 循环",
+      "sublabel": "模型 + 工具调用",
+      "pos": [
+        1140,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "external",
+      "label": "模型服务",
+      "sublabel": "HTTPS",
+      "pos": [
+        1360,
+        330
+      ],
+      "size": [
+        120,
+        64
+      ]
+    },
+    {
+      "id": "panel",
+      "type": "frontend",
+      "label": "DSH 面板",
+      "sublabel": "访问 / 会话 / 记忆",
+      "pos": [
+        470,
+        140
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "REST API",
+      "sublabel": "/onebot-qq/api",
+      "pos": [
+        680,
+        140
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "工具注册表",
+      "sublabel": "QQ / 记忆 / Web / 文件",
+      "pos": [
+        910,
+        180
+      ],
+      "size": [
+        160,
+        64
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "cloud",
+      "label": "定时 / 后台任务",
+      "sublabel": "schedule + jobs",
+      "pos": [
+        1140,
+        180
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "cognition",
+      "type": "backend",
+      "label": "认知状态层",
+      "sublabel": "人格 / 情绪 / 关系 / 策略",
+      "pos": [
+        910,
+        520
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "记忆存储",
+      "sublabel": "SQLite + FTS5",
+      "pos": [
+        1150,
+        520
+      ],
+      "size": [
+        160,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "DSH web profile",
+      "wraps": [
+        "panel",
+        "api",
+        "events",
+        "access",
+        "runtime",
+        "agent",
+        "tools",
+        "scheduler",
+        "cognition",
+        "memory"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "users-gateway",
+      "from": "users",
+      "to": "gateway",
+      "label": "OneBot v11",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gateway-events",
+      "from": "gateway",
+      "to": "events",
+      "label": "WS 事件"
+    },
+    {
+      "id": "events-access",
+      "from": "events",
+      "to": "access",
+      "label": "turns"
+    },
+    {
+      "id": "access-runtime",
+      "from": "access",
+      "to": "runtime",
+      "label": "allow",
+      "variant": "emphasis"
+    },
+    {
+      "id": "runtime-agent",
+      "from": "runtime",
+      "to": "agent",
+      "label": "prompt",
+      "variant": "emphasis"
+    },
+    {
+      "id": "agent-providers",
+      "from": "agent",
+      "to": "providers",
+      "label": "HTTPS",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "panel-api",
+      "from": "panel",
+      "to": "api",
+      "label": "REST"
+    },
+    {
+      "id": "api-access",
+      "from": "api",
+      "to": "access",
+      "label": "config",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "runtime-tools",
+      "from": "runtime",
+      "to": "tools",
+      "label": "tools",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "runtime-cognition",
+      "from": "runtime",
+      "to": "cognition",
+      "label": "context",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "cognition-memory",
+      "from": "cognition",
+      "to": "memory",
+      "label": "recall",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "scheduler-runtime",
+      "from": "scheduler",
+      "to": "runtime",
+      "label": "wake",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "运行时",
+      "items": [
+        "每个 QQ 会话一个 DSH Session；preset 决定工具清单",
+        "主人私聊 full、群聊与他人私聊 social；无宿主会话服务时回退 oneshot"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "认知内核",
+      "items": [
+        "回合前注入人格/情绪/关系/记忆；回合后做结果归因与长期状态更新",
+        "不做重复的 compose 调用，避免 token 翻倍"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "安全边界",
+      "items": [
+        "入站访问闸门 + 出站统一闸门；工具按档位与逐项权限再校验",
+        "dryRun 与审计贯穿回复、撤回、主动行为"
+      ]
+    }
+  ]
+}

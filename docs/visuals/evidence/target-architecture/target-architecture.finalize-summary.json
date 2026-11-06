@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/workspace/dsh-bot/docs/visuals/src/target-architecture.json",
+    "sha256": "837ddc01179f48714c3b7951265e8cd4963c753adb0224d33420c693d74e54f0",
+    "bytes": 6113
+  },
+  "artifact": {
+    "path": "/workspace/dsh-bot/docs/visuals/target-architecture.html",
+    "sha256": "54ab12385be797c7ae01028df55a2d13227360ea8e42d00ad39c62366ccd71f1",
+    "bytes": 769801
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize.json",
+    "summaryReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/workspace/dsh-bot/docs/visuals/evidence/target-architecture/target-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "update_available",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.2.0",
+    "releaseNotes": "https://github.com/tt-a1i/archify/releases/tag/v3.2.0",
+    "severity": "normal",
+    "checkedAt": "2026-11-06T05:37:00.359Z",
+    "source": "cache",
+    "noticeRequired": true,
+    "noticeText": "Archify update: 3.0.1 → 3.2.0. A previous check at 2026-11-06T05:37:00.359Z found a newer release. Release notes: https://github.com/tt-a1i/archify/releases/tag/v3.2.0. The installed Skill has not changed; ask to snooze or ignore this reminder.",
+    "eventKey": "archify@sha256:70e210265c59f24dcbdf2a502ff671104b5454e7ee7d3554aecd86bad32384f5"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 4239,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "routesOverSuggestedBends": 2
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [],
+      "detours": [
+        {
+          "relationship": {
+            "id": "api-access",
+            "from": "api",
+            "to": "access",
+            "label": "config",
+            "collectionIndex": 7,
+            "artifactIndex": 8
+          },
+          "bends": 4,
+          "stretch": 1.244
+        },
+        {
+          "relationship": {
+            "id": "runtime-cognition",
+            "from": "runtime",
+            "to": "cognition",
+            "label": "context",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 4,
+          "stretch": 1.26
+        }
+      ],
+      "truncated": false
+    },
+    "hints": [
+      "api → access needs 4 bends: move node api or access so they share a row or column with matching centers, or sit diagonally with a clear corner.",
+      "runtime → cognition needs 4 bends: move node runtime or cognition so they share a row or column with matching centers, or sit diagonally with a clear corner."
+    ],
+    "repair": "Trace these relationships at the desktop viewport. For Architecture, use references/architecture-layout-repair.md: reflow a blocked main path or tangled connected scene, and repair an isolated defect locally only when the surrounding composition is accepted. Preserve all semantic content and user-fixed geometry. Rerun finalize once after the edit."
+  }
+}

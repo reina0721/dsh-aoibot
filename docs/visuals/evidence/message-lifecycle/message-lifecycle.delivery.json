@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "3695b724-70ff-44ee-acfb-2be877c8a4e3",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/workspace/dsh-bot/docs/visuals/src/message-lifecycle.json",
+  "output": "/workspace/dsh-bot/docs/visuals/message-lifecycle.html",
+  "specification": {
+    "sha256": "5250814deb6c21f3ef16ba7f6ccffee1eeb9b85ff1fd6a1fff27fb7a7def4880",
+    "bytes": 4293
+  },
+  "artifact": {
+    "sha256": "7dfb4ec5eb1acc8ecd530752c472d8636a5d4d977ca6c156f0c4d5d6c576672c",
+    "bytes": 761887
+  }
+}
