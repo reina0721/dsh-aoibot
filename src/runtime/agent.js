@@ -317,7 +317,6 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
         state.stats.lastAt = Date.now()
         resolve({ ok: false, error: 'TIMEOUT', sessionId })
       }, timeoutMs)
-      pending.timer.unref?.()
       try {
         agent.followup(message)
       } catch (error) {
