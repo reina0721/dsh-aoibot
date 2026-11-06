@@ -1,6 +1,8 @@
 # 变更记录
 
-## 0.11.2（2026-11-06）
+## 0.11.2（2026-11-06，已发布；live 部分验收）
+
+- live `web` 已升级到 0.11.2，`connected`；0.11.1 的主人 `/status` 与私聊 typing 证据保留，0.11.2 未重跑；`/approvals` 验收请求未观察到回复。
 
 - M7-t：新增主人 `/purpose plan ID`，仅活跃 goal 且标题/描述非空时调用现有 JSON LLM；去控制字符，严格校验 1–8 条非空唯一、每条最多 200 UTF-16 单元的步骤，仅更新 steps 并回复当前聊天。无效 JSON/步骤、缺服务和目标在等待期间变化均安全失败；完整 ID/唯一前缀、owner/禁用/访问闸门。`/purpose step ID N [done|undo]`（1–20，默认 done）只改指定步骤完成标记，`/purpose steps ID` 查看步骤/进度；沿用目的服务进度与完成规则，undo 不自动 resume。无新配置/依赖或默认行为变化，未使用 plan 无新增 LLM 调用；没有自主执行器、动作绑定或审批集成。离线 fake LLM/目的服务测试，真实模型/QQ 未验证、未部署；#38 仍 partial，矩阵 6 has / 39 partial / 1 none / 1 limited / 6 leading / 8 exempt，remaining 47。
 

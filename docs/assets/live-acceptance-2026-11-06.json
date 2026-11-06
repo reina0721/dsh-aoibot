@@ -1,9 +1,9 @@
 {
-  "at": "2026-11-06T17:12:00Z",
-  "scope": "dsh-bot 0.11.1 live web profile — partial real smoke, not full M7 acceptance",
+  "at": "2026-11-06T17:35:00Z",
+  "scope": "dsh-bot 0.11.2 live web profile — partial real smoke, not full M7 acceptance",
   "live": {
     "ok": true,
-    "version": "0.11.1",
+    "version": "0.11.2",
     "apiVersion": 1,
     "state": "connected",
     "uptimeMsAtCheck": 44272370
@@ -37,13 +37,13 @@
     "files": 5
   },
   "notCovered": [
+    "approval queue round-trip",
     "media provider",
     "file/media send",
-    "request approval",
     "reminder delivery",
     "B站登录/WBI/字幕/发布评论"
   ],
-  "installedFrom": "local dist/dsh-bot.tgz (0.11.1); GitHub release v0.11.1 published",
+  "installedFrom": "local dist/dsh-bot.tgz (0.11.2); GitHub release v0.11.2 published",
   "note": "Read-only/API actions plus one outbound message; no tokens/config secrets recorded. Live data backup exists outside repository.",
   "ownerCommand": {
     "observed": true,
@@ -52,14 +52,14 @@
     "replyMessageId": "890788338",
     "commandAt": "2026-11-06T17:10:12Z",
     "replyAt": "2026-11-06T17:10:14Z",
-    "note": "Real private /status from the configured owner; dsh-bot replied with live status."
+    "note": "Real private /status from owner verified on 0.11.1 (message ids preserved); 0.11.2 was not re-tested with an owner command in this window."
   },
   "typing": {
     "enabled": true,
     "inboundObserved": true,
     "visualConfirmation": true,
     "confirmedBy": "owner",
-    "note": "Owner confirmed seeing the private-chat typing/input status after sending /status; no group typing claimed."
+    "note": "Private typing was confirmed by the owner on 0.11.1; 0.11.2 carries the same code but was not re-observed."
   },
   "upgradeCheck": {
     "enabled": true,
@@ -74,5 +74,10 @@
     "hot": "-352 (login/risk control)",
     "share": "offline URL generated",
     "note": "Real network attempt; no Cookie/WBI/login. Public search/hot unusable from this host; share is offline."
+  },
+  "approvalQueue": {
+    "requestMessageId": "1390383076",
+    "observed": false,
+    "note": "0.11.2 live; /approvals acceptance requested from owner but no reply observed."
   }
 }
