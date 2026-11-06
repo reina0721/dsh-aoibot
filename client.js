@@ -5613,6 +5613,49 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function CogPersonFacet(props) {
+      const { facet, personId, reload } = props
+      const [draft, setDraft] = useState(null)
+      const [saving, setSaving] = useState(false)
+      const inFlight = useRef(false)
+      const save = async () => {
+        if (!draft || inFlight.current) return
+        const length = Array.from(draft.value).length
+        const confidence = Number(draft.confidence)
+        if (length < 1 || length > 2000) { props.toast('画像内容须为 1–2000 个 Unicode 字符', 'err'); return }
+        if (draft.confidence.trim() === '' || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) { props.toast('置信度须为 0–1 的数字', 'err'); return }
+        inFlight.current = true
+        setSaving(true)
+        try {
+          const patch = { value: draft.value, confidence, actor: 'ui' }
+          if (draft.status) patch.status = draft.status
+          const result = await cogPost(props, '/cognition/person/correct-facet', { personId, facetId: facet.id, patch })
+          if (result) { props.toast('画像项已更新', 'ok'); await reload(); setDraft(null) }
+        } finally { inFlight.current = false; setSaving(false) }
+      }
+      return h('div', { className: 'ob-cog-facet' },
+        h('div', { className: 'ob-row' }, h(CogTag, { tone: facet.evidenceKind === 'fact' ? 'ok' : facet.status === 'disputed' ? 'warn' : 'muted' }, facet.evidenceKind || facet.status), h(CogTag, { tone: 'muted' }, facet.facet), h('span', { className: 'ob-small ob-muted' }, facet.scopeType + (facet.scopeId ? ':' + facet.scopeId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(facet.confidence || 0).toFixed(2))),
+        h('p', { className: 'ob-small' }, String(facet.value || '')),
+        draft ? h('div', { className: 'ob-stack', style: { gap: '8px' } },
+          h('label', { className: 'ob-stack' }, '画像内容（1–2000 个 Unicode 字符）', h('textarea', { className: 'ob-textarea', rows: 4, 'aria-label': '画像内容', value: draft.value, disabled: saving, onChange: (event) => setDraft({ ...draft, value: event.target.value }) })),
+          h('label', { className: 'ob-stack' }, '置信度（0–1）', h('input', { className: 'ob-input', type: 'number', min: 0, max: 1, step: 'any', 'aria-label': '画像置信度', value: draft.confidence, disabled: saving, onChange: (event) => setDraft({ ...draft, confidence: event.target.value }) })),
+          h('label', { className: 'ob-stack' }, '状态', h('select', { className: 'ob-select', 'aria-label': '画像状态', value: draft.status, disabled: saving, onChange: (event) => setDraft({ ...draft, status: event.target.value }) },
+            h('option', { value: '' }, '保留原状态（' + String(facet.status || 'active') + '）'), h('option', { value: 'active' }, 'active · 有效'), h('option', { value: 'disputed' }, 'disputed · 有争议'),
+          )),
+          h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'primary', busy: saving, onClick: save }, '保存'), h(Btn, { small: true, kind: 'ghost', disabled: saving, onClick: () => setDraft(null) }, '取消')),
+        ) : h(Btn, { small: true, kind: 'ghost', disabled: saving, onClick: () => setDraft({ value: String(facet.value || ''), confidence: String(facet.confidence ?? 0), status: ['active', 'disputed'].includes(facet.status) ? facet.status : '' }) }, '编辑'),
+        h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'trash', disabled: saving, onClick: async () => {
+          if (inFlight.current) return
+          inFlight.current = true
+          setSaving(true)
+          try {
+            const result = await cogPost(props, '/cognition/person/delete-facet', { personId, facetId: facet.id })
+            if (result) { props.toast('画像项已删除', 'ok'); await reload() }
+          } finally { inFlight.current = false; setSaving(false) }
+        } }, '删除此项')),
+      )
+    }
+
     function CogPersons(props) {
       const [query, setQuery] = useState('')
       const [selected, setSelected] = useState('')
@@ -5642,23 +5685,53 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         ),
         selected ? h(Panel, {
           title: '人物详情',
-          description: '事实/自述/观察/推断/假设分开；可删除单条画像或整个人物数据。',
+          description: '事实/自述/观察/推断/假设分开；可编辑当前人格的单条画像（含群印象），保留原作用域。',
           actions: h('div', { className: 'ob-row' },
             h(Btn, { small: true, kind: 'ghost', icon: 'copy', onClick: async () => { const parsed = parseApiResponse(await get('/cognition/export/person?personId=' + encodeURIComponent(selected))); if (!parsed.ok) { props.toast(parsed.message, 'err'); return } const blob = new Blob([JSON.stringify(parsed.data.data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'cognition-person.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } }, '导出'),
             h(Btn, { small: true, kind: 'danger', icon: 'trash', onClick: async () => { if (!window.confirm('删除该人物的画像/关系/记忆？此操作不可撤销。')) return; const result = await cogPost(props, '/cognition/person/delete', { personId: selected }); if (result) { props.toast('人物数据已删除', 'ok'); setSelected(''); list.reload() } } }, '删除'),
           ),
         },
-          detail.loading ? h(CogLoading) : detail.data ? h('div', { className: 'ob-stack', style: { gap: '12px' } },
+          detail.loading ? h(CogLoading) : detail.data?.person?.id === selected ? h('div', { className: 'ob-stack', style: { gap: '12px' } },
             h(KV, { rows: [['名称', String(detail.data.person?.displayName || '')], ['首次出现', String(new Date(detail.data.person?.firstSeen || Date.now()).toLocaleString())], ['身份数', String(safeArray(detail.data.identities).length)], ['画像项', String(safeArray(detail.data.facets).length)]] }),
             h('div', { className: 'ob-stack', style: { gap: '6px' } }, safeArray(detail.data.identities).map((identity, index) => h('div', { key: index, className: 'ob-cog-line' }, h(CogTag, { tone: 'muted' }, String(identity.platform || 'onebot')), h('span', null, String(identity.nickname || identity.platformUserId || '')), h('span', { className: 'ob-muted ob-small' }, 'confidence ' + Number(identity.confidence || 0).toFixed(2))))),
             h('div', { className: 'ob-cog-divider' }),
-            safeArray(detail.data.facets).length ? safeArray(detail.data.facets).map((facet) => h('div', { key: facet.id, className: 'ob-cog-facet' },
-              h('div', { className: 'ob-row' }, h(CogTag, { tone: facet.evidenceKind === 'fact' ? 'ok' : facet.status === 'disputed' ? 'warn' : 'muted' }, facet.evidenceKind || facet.status), h(CogTag, { tone: 'muted' }, facet.facet), h('span', { className: 'ob-small ob-muted' }, facet.scopeType + (facet.scopeId ? ':' + facet.scopeId : '')), h('span', { className: 'ob-small ob-muted' }, '置信 ' + Number(facet.confidence || 0).toFixed(2))),
-              h('p', { className: 'ob-small' }, String(facet.value || '')),
-              h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'ghost', icon: 'trash', onClick: async () => { const result = await cogPost(props, '/cognition/person/delete-facet', { personId: selected, facetId: facet.id }); if (result) { props.toast('画像项已删除', 'ok'); detail.reload() } } }, '删除此项')),
-            )) : h(CogEmpty, { compact: true, title: '暂无画像项', description: '只有完整轮次才会更新长期画像。' }),
+            safeArray(detail.data.facets).length ? safeArray(detail.data.facets).map((facet) => h(CogPersonFacet, { key: selected + ':' + facet.id, facet, personId: selected, toast: props.toast, reload: detail.reload })) : h(CogEmpty, { compact: true, title: '暂无画像项', description: '只有完整轮次才会更新长期画像。' }),
           ) : h(Banner, { tone: 'err', message: detail.error || '人物不存在' }),
         ) : h(CogEmpty, { title: '选择一个人物', description: '左侧列表来自认知库；私聊/群聊作用域不会互相泄漏。', icon: 'users' }),
+      )
+    }
+
+    const COG_RELATIONSHIP_LABELS = { affinity: '好感', trust: '信任', respect: '尊重', comfort: '舒适', initiative: '主动', familiarity: '熟悉', intimacy: '亲密', conflict: '冲突', wariness: '戒备', stability: '稳定' }
+
+    function CogRelationshipCard(props) {
+      const { item, reload } = props
+      const [draft, setDraft] = useState(null)
+      const [saving, setSaving] = useState(false)
+      const inFlight = useRef(false)
+      const dimensions = Object.entries(safeObject(item.dimensions)).filter(([, value]) => typeof value === 'number' && Number.isFinite(value))
+      const changed = draft ? Object.entries(draft.values).filter(([key, value]) => value !== draft.original[key]) : []
+      const save = async () => {
+        if (!changed.length || inFlight.current) return
+        if (changed.some(([, value]) => !Number.isFinite(value) || value < -1 || value > 1)) { props.toast('关系维度须为 -1–1 的数字', 'err'); return }
+        inFlight.current = true
+        setSaving(true)
+        try {
+          const patch = { scopeType: item.scopeType, scopeId: item.scopeId, ...Object.fromEntries(changed) }
+          const result = await cogPost(props, '/cognition/relationship/adjust', { personId: item.personId, patch })
+          if (result) { props.toast('关系已调整，历史已记录', 'ok'); await reload(); setDraft(null) }
+        } finally { inFlight.current = false; setSaving(false) }
+      }
+      return h('div', { className: 'ob-cog-card' },
+        h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h('span', { className: 'ob-small' }, '人物 ' + String(item.personId)), h(CogTag, { tone: 'brand' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')), safeArray(item.summary).map((tag, index) => h(CogTag, { key: index, tone: 'muted' }, tag))), h('span', { className: 'ob-small ob-muted' }, '交互 ' + String(item.interactions || 0))),
+        h('div', { className: 'ob-cog-bars' }, dimensions.map(([key, value]) => h(CogBar, { key, label: COG_RELATIONSHIP_LABELS[key] || key, value: (value + 1) / 2, text: value.toFixed(2) }))),
+        draft ? h('div', { className: 'ob-stack', style: { gap: '8px', marginTop: '10px' } },
+          h('p', { className: 'ob-field-help' }, '手动调整以 source=ui 保存并记录历史；只修改当前人物的此作用域，点击保存后生效。'),
+          h('div', { className: 'ob-cog-sliders' }, dimensions.map(([key]) => h('label', { key, className: 'ob-cog-slider' },
+            h('span', { className: 'ob-cog-slider-head' }, h('span', null, COG_RELATIONSHIP_LABELS[key] || key), h('span', { className: 'ob-muted' }, Number(draft.values[key]).toFixed(2))),
+            h('input', { type: 'range', min: -1, max: 1, step: 0.01, 'aria-label': '调整关系 ' + key, value: draft.values[key], disabled: saving, onChange: (event) => setDraft({ ...draft, values: { ...draft.values, [key]: Number(event.target.value) } }) }),
+          ))),
+          h('div', { className: 'ob-row' }, h(Btn, { small: true, kind: 'primary', busy: saving, disabled: !changed.length, onClick: save }, '保存'), h(Btn, { small: true, kind: 'ghost', disabled: saving, onClick: () => setDraft(null) }, '取消')),
+        ) : h(Btn, { small: true, kind: 'ghost', onClick: () => { const values = Object.fromEntries(dimensions); setDraft({ original: values, values: { ...values } }) } }, '调整'),
       )
     }
 
@@ -5670,12 +5743,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         { className: 'ob-stack', style: { gap: '14px' } },
         h(Panel, { title: '社会关系', description: '多维、有向、情境化；不是单一好感度。历史可追溯。', actions: h(Btn, { small: true, kind: 'ghost', icon: 'refresh', onClick: rel.reload }, '刷新') },
           rel.error ? h(Banner, { tone: 'err', message: rel.error }) : null,
-          rel.loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '10px' } }, items.map((item) =>
-            h('div', { key: item.id, className: 'ob-cog-card' },
-              h('div', { className: 'ob-spread' }, h('div', { className: 'ob-row' }, h(CogTag, { tone: 'brand' }, String(item.scopeType || 'global') + (item.scopeId ? ':' + item.scopeId : '')), safeArray(item.summary).map((tag, index) => h(CogTag, { key: index, tone: 'muted' }, tag))), h('span', { className: 'ob-small ob-muted' }, '交互 ' + String(item.interactions || 0))),
-              h('div', { className: 'ob-cog-bars' }, [['affinity', '好感'], ['trust', '信任'], ['familiarity', '熟悉'], ['intimacy', '亲密'], ['conflict', '冲突'], ['wariness', '戒备']].map(([key, label]) => h(CogBar, { key, label, value: (Number(item.dimensions?.[key] || 0) + 1) / 2, text: Number(item.dimensions?.[key] || 0).toFixed(2) }))),
-            ),
-          )) : h(CogEmpty, { title: '还没有关系', description: '人物第一次互动后创建全局+当前场景关系。', icon: 'link' }),
+          rel.loading ? h(CogLoading) : items.length ? h('div', { className: 'ob-stack', style: { gap: '10px' } }, items.map((item) => h(CogRelationshipCard, { key: item.id, item, toast: props.toast, reload: rel.reload }))) : h(CogEmpty, { title: '还没有关系', description: '人物第一次互动后创建全局+当前场景关系。', icon: 'link' }),
         ),
       )
     }
@@ -7725,6 +7793,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.SettingsShell = SettingsShell
     exports.ModelTab = ModelTab
     exports.CognitionTab = CognitionTab
+    exports.CogPersons = CogPersons
+    exports.CogRelationships = CogRelationships
     exports.CogMemories = CogMemories
     exports.PersonaTab = PersonaTab
     exports.COG_SECTIONS = COG_SECTIONS

@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- M7-g：仅 UI 使用既有 API，人物页可内联编辑当前人格 facet 内容/置信度/active 或 disputed（含 group-scope 群印象，保留原作用域与删除）；关系页保留只读条，逐卡调整 API 返回的 10 维（-1–1），仅显式保存变化项，由后端记录 source=ui 历史。支持取消、保存期间禁用、防重复提交、失败 toast/草稿保留与刷新；新增 6 项 mock 面板测试。无后端/API/Agent 工具/自动审批变更，无新依赖、不发送 QQ；既有后端 UTF-16 截断仍保留。#29 仍 partial：无独立人物说话方式编辑器、无 Aurabot 专用人物/群档案导入，未做本轮真实浏览器验证。
+
 - M7-f：新增默认关闭的 OpenAI 兼容 embeddings 与异步记忆重排；配置 Base URL/模型/密钥环境变量/0–1 权重，32 条批次、4000 字符、8–4096 维校验、超时/禁重定向及 2000 项内存 LRU。pipeline/主动任务 await，保留同步词法检索，失败词法回退且不重复强化。无新依赖、默认零 embedding 网络；离线 fake 测试，不含本地模型/独立 reranker/向量数据库或全库向量召回，真实 provider 未验证，#31 仍 partial。
 
 - M7-e：更新 current-architecture / parity-roadmap 视觉（Archify 3.0.1，四门通过；不声称人工感知评审），新增发布检查表、回滚与声明边界。仍不宣称全量 parity。

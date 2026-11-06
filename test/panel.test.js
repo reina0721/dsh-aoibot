@@ -5,6 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { DIMENSIONS } from '../src/cognition/relationships.js'
 
 let captured = null
 globalThis.window = {
@@ -16,15 +17,64 @@ globalThis.window = {
 }
 
 let stateOverrides = null
+let hookSession = null
+
+function shimState(initial) {
+  if (!hookSession) return [stateOverrides?.length ? stateOverrides.shift() : typeof initial === 'function' ? initial() : initial, () => {}]
+  const session = hookSession, index = session.index++
+  if (!(index in session.values)) session.values[index] = typeof initial === 'function' ? initial() : initial
+  return [session.values[index], (next) => { session.values[index] = typeof next === 'function' ? next(session.values[index]) : next }]
+}
+
+// Keep editor state/ref values across explicit renders without a browser or React dependency.
+function mountNode(node) {
+  const session = { values: [], index: 0 }
+  return () => {
+    session.index = 0
+    hookSession = session
+    try { return node.type(node.props) } finally { hookSession = null }
+  }
+}
+
+const treeNodes = (tree) => !tree || typeof tree !== 'object' ? [] : Array.isArray(tree) ? tree.flatMap(treeNodes) : [tree, ...treeNodes(tree.children)]
+const control = (tree, text) => {
+  const node = treeNodes(tree).find((node) => node.children?.includes(text) && typeof node.props?.onClick === 'function')
+  assert.ok(node, 'missing control: ' + text)
+  return node
+}
+const field = (tree, label) => {
+  const node = treeNodes(tree).find((node) => node.props?.['aria-label'] === label)
+  assert.ok(node, 'missing field: ' + label)
+  return node
+}
+function renderPersons(detail, toast = () => {}, selected = detail.person.id) {
+  stateOverrides = ['', selected, { items: [detail.person] }, '', false, detail, '', false]
+  try { return panel.CogPersons({ toast }) } finally { stateOverrides = null }
+}
+function renderRelationships(items, toast = () => {}) {
+  stateOverrides = [{ items }, '', false]
+  try { return panel.CogRelationships({ toast }) } finally { stateOverrides = null }
+}
+const facetFixture = (scopeType = 'group') => ({ id: 'facet-1', personId: 'person-1', facet: 'impression', value: '原印象', confidence: 0.8, status: 'active', evidenceKind: 'observation', scopeType, scopeId: scopeType === 'group' ? '123' : '456' })
+const relationshipFixture = (scopeType = 'group') => ({ id: 'person-1:' + scopeType + ':123', personId: 'person-1', scopeType, scopeId: scopeType === 'global' ? '' : '123', dimensions: Object.fromEntries(DIMENSIONS.map((key, index) => [key, index / 10])), summary: ['初识'], interactions: 1 })
+function mockCognitionApi(calls, response = { ok: true }) {
+  const original = globalThis.fetch
+  globalThis.fetch = async (path, init) => {
+    assert.ok(path.startsWith(panel.API_PREFIX + '/cognition/'), 'only local cognition API is allowed')
+    calls.push({ path, method: init.method, body: init.body ? JSON.parse(init.body) : undefined })
+    return { ok: true, json: async () => response }
+  }
+  return () => { globalThis.fetch = original }
+}
 
 const reactShim = {
   createElement: (type, props, ...children) => ({ type, props: props || null, children }),
   createContext: (defaultValue) => ({ Provider: 'Provider', Consumer: 'Consumer', _default: defaultValue }),
   useContext: () => ({ mode: 'full', systemReduced: false, categories: { screen: true, async: true, reveal: true, swap: true, feedback: true, media: true } }),
-  useState: (initial) => [stateOverrides?.length ? stateOverrides.shift() : typeof initial === 'function' ? initial() : initial, () => {}],
+  useState: shimState,
   useEffect: () => {},
   useLayoutEffect: () => {},
-  useRef: (initial) => ({ current: initial === undefined ? null : initial }),
+  useRef: (initial) => hookSession ? shimState(() => ({ current: initial === undefined ? null : initial }))[0] : ({ current: initial === undefined ? null : initial }),
   useCallback: (fn) => fn,
   useMemo: (fn) => fn(),
   Fragment: Symbol('Fragment'),
@@ -87,6 +137,169 @@ test('CogMemories: import panel scopes, file size gate, payload, counts/error an
     assert.match(JSON.stringify(render({ result: { imported: 3, skipped: 2, invalid: 1, bytes: 100 } })), /导入 3 · 跳过 2 · 无效 1 · 字节 100/)
     assert.match(JSON.stringify(render({ error: '导入旧档案已禁用' })), /导入旧档案已禁用/)
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('CogPersons: group/private facet editors save Unicode content and refresh the same person without scope edits', async () => {
+  const calls = [], restore = mockCognitionApi(calls)
+  try {
+    for (const scopeType of ['group', 'private']) {
+      const facet = facetFixture(scopeType), detail = { person: { id: facet.personId, displayName: '测试人物' }, identities: [], facets: [facet] }
+      const parent = renderPersons(detail)
+      const editorNode = treeNodes(parent).find((node) => node.type?.name === 'CogPersonFacet')
+      assert.ok(editorNode)
+      assert.equal(editorNode.props.personId, facet.personId)
+      const render = mountNode(editorNode)
+      let tree = render()
+      assert.match(JSON.stringify(tree), new RegExp(scopeType + ':' + facet.scopeId))
+      assert.ok(control(tree, '删除此项'))
+      control(tree, '编辑').props.onClick()
+      tree = render()
+      assert.equal(field(tree, '画像内容').props.value, '原印象')
+      assert.equal(field(tree, '画像置信度').props.min, 0)
+      assert.equal(field(tree, '画像置信度').props.max, 1)
+      assert.deepEqual(treeNodes(field(tree, '画像状态')).filter((node) => node.type === 'option').map((node) => node.props.value), ['', 'active', 'disputed'])
+      assert.equal(treeNodes(tree).filter((node) => ['input', 'textarea', 'select'].includes(node.type)).length, 3)
+      const previous = calls.length, value = '😀'.repeat(2000)
+      field(tree, '画像内容').props.onChange({ target: { value } })
+      field(render(), '画像置信度').props.onChange({ target: { value: scopeType === 'group' ? '0' : '1' } })
+      field(render(), '画像状态').props.onChange({ target: { value: 'disputed' } })
+      assert.equal(calls.length, previous, 'editing must not auto-save')
+      await control(render(), '保存').props.onClick()
+      assert.deepEqual(calls[previous], { path: panel.API_PREFIX + '/cognition/person/correct-facet', method: 'POST', body: { personId: facet.personId, facetId: facet.id, patch: { value, confidence: scopeType === 'group' ? 0 : 1, status: 'disputed', actor: 'ui' } } })
+      assert.deepEqual(calls[previous + 1], { path: panel.API_PREFIX + '/cognition/person?personId=person-1', method: 'GET', body: undefined })
+      assert.ok(control(render(), '编辑'))
+    }
+    const stale = renderPersons({ person: { id: 'old-person' }, facets: [facetFixture()] }, () => {}, 'new-person')
+    assert.equal(treeNodes(stale).some((node) => node.type?.name === 'CogPersonFacet'), false, 'stale detail cannot be edited under another person')
+  } finally { restore() }
+})
+
+test('CogPersons: facet validation, cancel, optional status and existing deletion use mocked APIs', async () => {
+  const calls = [], toasts = [], restore = mockCognitionApi(calls)
+  try {
+    const facet = { ...facetFixture(), status: 'outdated' }, detail = { person: { id: facet.personId }, facets: [facet] }
+    const render = mountNode(treeNodes(renderPersons(detail, (...args) => toasts.push(args))).find((node) => node.type?.name === 'CogPersonFacet'))
+    control(render(), '编辑').props.onClick()
+    for (const value of ['', '😀'.repeat(2001)]) {
+      field(render(), '画像内容').props.onChange({ target: { value } })
+      await control(render(), '保存').props.onClick()
+    }
+    field(render(), '画像内容').props.onChange({ target: { value: '修正印象' } })
+    for (const value of ['', '-0.1', '1.1', 'NaN']) {
+      field(render(), '画像置信度').props.onChange({ target: { value } })
+      await control(render(), '保存').props.onClick()
+    }
+    assert.equal(calls.length, 0)
+    assert.equal(toasts.length, 6)
+    assert.ok(toasts.every(([, tone]) => tone === 'err'))
+    control(render(), '取消').props.onClick()
+    control(render(), '编辑').props.onClick()
+    assert.equal(field(render(), '画像内容').props.value, facet.value)
+    assert.equal(field(render(), '画像状态').props.value, '')
+    await control(render(), '保存').props.onClick()
+    assert.equal(Object.hasOwn(calls[0].body.patch, 'status'), false, 'outdated status is preserved unless explicitly changed')
+    await control(render(), '删除此项').props.onClick()
+    assert.deepEqual(calls[2].body, { personId: facet.personId, facetId: facet.id })
+    assert.equal(calls[2].path, panel.API_PREFIX + '/cognition/person/delete-facet')
+    assert.equal(calls[3].method, 'GET')
+  } finally { restore() }
+})
+
+test('CogPersons: pending save disables editor/delete controls, prevents duplicates and retains draft on API errors', async () => {
+  const original = globalThis.fetch, calls = [], toasts = []
+  let release
+  globalThis.fetch = (path) => { calls.push(path); return new Promise((resolve) => { release = resolve }) }
+  try {
+    const facet = facetFixture(), detail = { person: { id: facet.personId }, facets: [facet] }
+    const render = mountNode(treeNodes(renderPersons(detail, (...args) => toasts.push(args))).find((node) => node.type?.name === 'CogPersonFacet'))
+    control(render(), '编辑').props.onClick()
+    field(render(), '画像内容').props.onChange({ target: { value: '保留草稿' } })
+    const save = control(render(), '保存').props.onClick, pending = save()
+    await save()
+    assert.equal(calls.length, 1)
+    for (const node of treeNodes(render()).filter((node) => ['input', 'select', 'textarea'].includes(node.type) || node.type?.name === 'Btn')) assert.ok(node.props.disabled || node.props.busy)
+    release({ ok: true, json: async () => ({ ok: false, message: '修正失败' }) })
+    await pending
+    assert.equal(calls.length, 1, 'failed save does not refresh')
+    assert.equal(field(render(), '画像内容').props.value, '保留草稿')
+    assert.match(toasts.at(-1)[0], /修正失败/)
+    assert.equal(control(render(), '保存').props.busy, false)
+  } finally { globalThis.fetch = original }
+})
+
+test('CogRelationships: all API dimensions have manual sliders; only changed dimensions save within the original scope', async () => {
+  const calls = [], restore = mockCognitionApi(calls)
+  try {
+    const items = ['global', 'group', 'private'].map(relationshipFixture)
+    const cards = treeNodes(renderRelationships(items)).filter((node) => node.type?.name === 'CogRelationshipCard')
+    assert.equal(cards.length, 3)
+    for (const card of cards) {
+      const render = mountNode(card), previous = calls.length
+      assert.equal(treeNodes(render()).filter((node) => node.type?.name === 'CogBar').length, DIMENSIONS.length)
+      control(render(), '调整').props.onClick()
+      const tree = render(), sliders = treeNodes(tree).filter((node) => node.props?.type === 'range')
+      assert.deepEqual(sliders.map((node) => node.props['aria-label'].replace('调整关系 ', '')), DIMENSIONS)
+      for (const slider of sliders) {
+        assert.equal(slider.props.min, -1); assert.equal(slider.props.max, 1)
+        assert.equal(slider.props.value, card.props.item.dimensions[slider.props['aria-label'].replace('调整关系 ', '')])
+      }
+      assert.equal(treeNodes(tree).filter((node) => ['input', 'select', 'textarea'].includes(node.type)).length, DIMENSIONS.length)
+      assert.match(JSON.stringify(tree), /source=ui/)
+      assert.match(JSON.stringify(tree), /记录历史/)
+      assert.equal(control(tree, '保存').props.disabled, true)
+      await control(tree, '保存').props.onClick()
+      field(tree, '调整关系 affinity').props.onChange({ target: { value: '-1' } })
+      field(render(), '调整关系 trust').props.onChange({ target: { value: '1' } })
+      field(render(), '调整关系 respect').props.onChange({ target: { value: '-0.8' } })
+      field(render(), '调整关系 respect').props.onChange({ target: { value: String(card.props.item.dimensions.respect) } })
+      assert.equal(calls.length, previous, 'sliders and unchanged save must not apply changes')
+      await control(render(), '保存').props.onClick()
+      assert.deepEqual(calls[previous], { path: panel.API_PREFIX + '/cognition/relationship/adjust', method: 'POST', body: { personId: card.props.item.personId, patch: { scopeType: card.props.item.scopeType, scopeId: card.props.item.scopeId, affinity: -1, trust: 1 } } })
+      assert.deepEqual(calls[previous + 1], { path: panel.API_PREFIX + '/cognition/relationships', method: 'GET', body: undefined })
+      assert.ok(control(render(), '调整'))
+    }
+  } finally { restore() }
+})
+
+test('CogRelationships: cancel discards draft and invalid dimensions never reach the API', async () => {
+  const calls = [], toasts = [], restore = mockCognitionApi(calls)
+  try {
+    const item = relationshipFixture()
+    const render = mountNode(treeNodes(renderRelationships([item], (...args) => toasts.push(args))).find((node) => node.type?.name === 'CogRelationshipCard'))
+    control(render(), '调整').props.onClick()
+    for (const value of ['NaN', '-1.1', '1.1']) {
+      field(render(), '调整关系 affinity').props.onChange({ target: { value } })
+      await control(render(), '保存').props.onClick()
+    }
+    assert.equal(calls.length, 0)
+    assert.equal(toasts.length, 3)
+    control(render(), '取消').props.onClick()
+    control(render(), '调整').props.onClick()
+    assert.equal(field(render(), '调整关系 affinity').props.value, item.dimensions.affinity)
+    assert.equal(control(render(), '保存').props.disabled, true)
+    assert.equal(calls.length, 0)
+  } finally { restore() }
+})
+
+test('CogRelationships: pending save disables controls, prevents duplicates and shows network failure without losing draft', async () => {
+  const original = globalThis.fetch, calls = [], toasts = []
+  let rejectFetch
+  globalThis.fetch = (path) => { calls.push(path); return new Promise((resolve, reject) => { rejectFetch = reject }) }
+  try {
+    const render = mountNode(treeNodes(renderRelationships([relationshipFixture()], (...args) => toasts.push(args))).find((node) => node.type?.name === 'CogRelationshipCard'))
+    control(render(), '调整').props.onClick()
+    field(render(), '调整关系 affinity').props.onChange({ target: { value: '0.75' } })
+    const save = control(render(), '保存').props.onClick, pending = save()
+    await save()
+    for (const node of treeNodes(render()).filter((node) => node.props?.type === 'range' || node.type?.name === 'Btn')) assert.ok(node.props.disabled || node.props.busy)
+    rejectFetch(new Error('offline'))
+    await pending
+    assert.equal(calls.length, 1)
+    assert.equal(field(render(), '调整关系 affinity').props.value, 0.75)
+    assert.match(toasts.at(-1)[0], /offline/)
+    assert.equal(toasts.at(-1)[1], 'err')
+    assert.equal(control(render(), '保存').props.busy, false)
+  } finally { globalThis.fetch = original }
 })
 
 test('module loader：id 与 factory 形状正确', () => {

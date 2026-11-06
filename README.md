@@ -28,6 +28,7 @@
 - 目的系统（目标/计划/意图，面板与 `/purpose` 管理）；每日记忆整理与按作用域反思；时间轴只读回忆日志。
 - 可选语义检索（M7-f）：默认关闭的 OpenAI 兼容 embeddings 重排词法候选，出错回退词法；仅 fake provider 离线测试，真实 provider 未验证。无本地模型、独立 reranker 或向量数据库，见[配置](docs/CONFIG.md#可选语义检索cognitionmemoryembeddingm7-f)。
 - 多人格管理，按人格隔离记忆、人物、关系、情绪及策略数据。
+- 人物/群印象与关系编辑（M7-g）：当前人格 facet 内容/置信度/状态、原作用域内的关系维度手动调整，显式保存并记录人工来源；见[认知面板用法与边界](docs/USER-MANUAL.md#认知)。
 - 旧档案导入：认知记忆页/API 将通用 JSON/JSONL 导入当前人格，默认最多 5 MiB/5000 项，按作用域/人物/正文幂等去重，本地处理。
 - OpenAI Chat/Responses、Anthropic、Gemini、Ollama 等模型协议与路由配置。
 - 连接、消息、人格、模型、认知、日志及系统设置面板。
