@@ -1,5 +1,7 @@
 # dsh-bot
 
+认知设置的 `cog-llm` 组提供今日 LLM 预算卡片和确认重置，只作用于当前人格的 UTC 当日计数；[使用说明](docs/USER-MANUAL.md#33-按聊天选模型与-qq-命令主人只读操作员)。
+
 ![dsh-bot 宣传插画：会话、人格与记忆的连接](https://raw.githubusercontent.com/reina0721/dsh-bot/main/docs/assets/promo/dsh-bot-hero.png)
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 QQ 接入、人格与认知服务的插件。通过 OneBot v11 连接 NapCat、SnowLuma、Lagrange.OneBot 或 LLOneBot，提供网页管理面板和本地持久化。

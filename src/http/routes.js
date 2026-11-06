@@ -445,6 +445,12 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
       const body = await readBody(req)
       return cognition.importPersona(body || {})
     })
+    route('GET', '/cognition/llm/usage', async () => ({ ok: true, ...cognition.llmUsage() }))
+    route('POST', '/cognition/llm/usage/reset', async (req) => {
+      const body = await readBody(req)
+      if (body?.confirm !== true) throw new Error('重置今日 LLM 用量需要 confirm: true')
+      return { ok: true, ...cognition.resetLlmUsage() }
+    })
     route('POST', '/cognition/llm/test', async (req) => {
       const body = await readBody(req)
       return cognition.testLlm(body || {})

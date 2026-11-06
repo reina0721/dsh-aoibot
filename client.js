@@ -6107,6 +6107,58 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       )
     }
 
+    function CogBudgetCard(props) {
+      const api = useCogApi(props, '/cognition/llm/usage')
+      const [resetting, setResetting] = useState(false)
+      const resetLock = useRef(false)
+      const data = api.data || {}
+      const usage = Math.max(0, Number(data.usageToday) || 0)
+      const budget = Math.max(0, Number(data.budget) || 0)
+      const progress = budget > 0 ? Math.min(1, usage / budget) : 1
+      const exhausted = budget <= 0 || usage >= budget
+      const busy = api.loading || resetting
+      const reset = async () => {
+        if (busy || api.error || !api.data || usage <= 0 || resetLock.current) return
+        if (!window.confirm('重置今日已用 token？不会修改预算、人格或配置。')) return
+        resetLock.current = true
+        setResetting(true)
+        try {
+          const result = await cogPost(props, '/cognition/llm/usage/reset', { confirm: true })
+          if (result) {
+            props.toast('已重置今日 LLM 用量', 'ok')
+            await api.reload()
+          }
+        } finally {
+          resetLock.current = false
+          setResetting(false)
+        }
+      }
+      return h(Panel, {
+        title: '今日 LLM 预算',
+        description: '分析（analysis）与回复（reply）共享此预算；学习预算单独在 cog-learning 配置。',
+        actions: h('div', { className: 'ob-row' },
+          h(Btn, { small: true, kind: 'ghost', icon: 'refresh', disabled: busy, onClick: api.reload }, '刷新'),
+          h(Btn, { small: true, kind: 'secondary', busy: resetting, disabled: busy || !!api.error || !api.data || usage <= 0, onClick: reset }, '重置今日用量'),
+        ),
+      },
+        h('div', { className: 'ob-stack', 'aria-busy': busy, 'aria-live': 'polite', style: { gap: '12px' } },
+          api.loading ? h('p', { className: 'ob-muted', role: 'status' }, '正在加载今日 LLM 用量…')
+            : api.error ? h(Banner, { tone: 'err', message: api.error, actions: h(Btn, { small: true, kind: 'secondary', disabled: resetting, onClick: api.reload }, '重试') })
+            : api.data ? h('div', { className: 'ob-stack', style: { gap: '12px' } },
+              h('div', { className: 'ob-row' }, h(CogTag, null, String(data.date || '—') + ' UTC'), h(CogTag, null, '仅当前人格')),
+              h('div', { className: 'ob-stat-grid' },
+                h(StatTile, { label: '今日已用 token', value: formatCount(usage) }),
+                h(StatTile, { label: '每日预算 token', value: formatCount(budget) }),
+                h(StatTile, { label: '剩余 token', value: formatCount(Math.max(0, Number(data.budgetLeft) || 0)) }),
+              ),
+              h(CogBar, { label: '今日预算使用率', value: progress }),
+              exhausted ? h(Banner, { tone: 'warn', message: '今日 LLM 预算已耗尽；预算检查会阻止后续分析与回复模型调用。' })
+                : progress >= 0.8 ? h('p', { className: 'ob-small ob-muted', role: 'status' }, '今日预算已使用至少 80%，接近上限；仍可继续使用。') : null,
+            ) : h('p', { className: 'ob-muted' }, '暂无今日用量数据，请刷新。'),
+        ),
+      )
+    }
+
     function CogSettings(props) {
       const groups = useMemo(() => safeArray(props.configInfo && props.configInfo.groups).filter((group) => String(group.id).startsWith('cog-')), [props.configInfo])
       const [active, setActive] = useState(groups[0] ? groups[0].id : 'cog-core')
@@ -6119,6 +6171,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
         onSelect: setActive,
         footer: props.prefStatus ? h(PreferenceSaveStatus, { status: props.prefStatus }) : null,
       },
+        current.id === 'cog-llm' ? h(CogBudgetCard, props) : null,
         h(Panel, { title: current.title, description: current.description }, safeArray(current.fields).map((field) =>
           h(FieldRow, {
             key: field.path,
@@ -7964,6 +8017,8 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
     exports.SettingsShell = SettingsShell
     exports.ModelTab = ModelTab
     exports.CognitionTab = CognitionTab
+    exports.CogBudgetCard = CogBudgetCard
+    exports.CogSettings = CogSettings
     exports.CogPersons = CogPersons
     exports.CogRelationships = CogRelationships
     exports.CogMemories = CogMemories

@@ -19,6 +19,7 @@ import { createArchiveImportService } from './archive-import.js'
 import {
   createPersonaScopedStore,
   migrateLegacyPersonaData,
+  migrateLlmUsage,
   personaDataCounts,
   copyPersonaData as copyPersonaDataService,
   dropPersonaData,
@@ -102,6 +103,7 @@ export function createCognition({
       const migrationTarget = state.services.persona.getById('self') ? 'self' : activePersona.id
       const migration = migrateLegacyPersonaData({ base: state.store, targetId: migrationTarget, clock })
       if (migration.migrated) log.info?.(`认知数据已迁移到人格 ${migrationTarget}：${migration.migrated} 条`)
+      migrateLlmUsage({ base: state.store, targetId: activePersona.id, clock })
       state.scopedStore = createPersonaScopedStore({
         base: state.store,
         getPersonaId: () => state.services.persona?.activeId?.() || migrationTarget,
@@ -514,6 +516,14 @@ export function createCognition({
     if (!persona) return null
     return { ...personaDataCounts({ base: state.store, personaId: id }), persona }
   }
+  function llmUsage() {
+    const usage = state.services.llm?.usage?.()
+    return usage ? { ...usage, personaId: activePersonaId() } : null
+  }
+  function resetLlmUsage() {
+    if (typeof state.services.llm?.resetUsage !== 'function') throw new Error('LLM 用量服务不可用')
+    return { ...state.services.llm.resetUsage(), personaId: activePersonaId() }
+  }
   function testLlm(payload = {}) { return state.services.llm?.test?.(payload) || { ok: false, error: 'LLM_UNAVAILABLE', message: 'LLM 服务不可用' } }
   function personaDataAll() {
     return personaList().map((item) => ({
@@ -669,6 +679,8 @@ export function createCognition({
     personaDataAll,
     copyPersonaData,
     testLlm,
+    llmUsage,
+    resetLlmUsage,
     editPersona,
     resetPersona,
     decisions,

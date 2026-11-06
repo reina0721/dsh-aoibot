@@ -1,5 +1,7 @@
 # 实现状态（v0.11.5 发布后，M7-v 工作区）
 
+M7 预算可视化/重置（未发布，I/T）：`cog-llm` 卡片显示当前人格的 UTC 当日已用/预算/剩余，80% 提醒、耗尽、加载和错误状态；用量 GET 与 `confirm:true` 重置 POST 仅访问本地计数，不改配置。LLM 用量改为人格隔离，旧全局计数幂等迁至升级启动时当前人格；预算仍由既有字段编辑。仅离线测试，未做 live/真实浏览器验收；见[设计](../design/llm-budget-card.md)。
+
 0.11.3 已发布并 live，M7-v 为尚未发布的工作区改动；以下功能基线以当前工作区代码与测试为准，真实 QQ 验收另记，不代表全量验收。与 Aurabot 的全量差距与里程碑见 [GAP-AURABOT](../research/GAP-AURABOT.md)。
 
 > M7-b：2026-11-06 用户批准 #16（仅远端 API 鉴权）、#47 QQ空间、#52 模块市场/远程安装、#55 25 页级面板、#59 迁移/离峰为发布门槛豁免；保留本机-only/CSRF 行为。豁免是明确用户决定，不是实现证据；#42/#44/#49/#50 及其他差距不豁免。精确范围见 [GAP §8.1](../research/GAP-AURABOT.md#81-用户批准豁免)。
@@ -20,7 +22,7 @@
 | 感知与轮次 | I/T/V | `src/cognition/turn.js` | 每 `(chatType,chatId,senderId)` 聚合；完整度评分；软/硬截止；命令/超时快路径；撤回通知；跨重启恢复；消息去重；`selfId` 防循环 | 多用户同时插话的「注意力分配」只做了点名/回复门控，没有独立打分模块；编辑事件未完整接入 |
 | 注意力 | L/T | `turn.js` + `pipeline` | 群聊仅点名/回复/唤醒词/命令；群 ambient 默认不决策；回复/情绪/关系/记忆参与候选效用 | 没有独立 `attention.js` 的 salience 评分、话题切换/多人优先级队列；后续版本目标 |
 | 人格编辑/群聊参与/多人格 | I/T/V | `persona.js`、`analysis.js`、`pipeline.js`、`77-persona.js` | 多份独立 persona 记录 + activeId；create/duplicate/switch/delete；文本 profile 与数值人格同源持久化并注入 prompt；顶层人格库 + Prompt 预览；群聊 addressed/probability/all；冷却/分钟上限；lastTurn/groupSkipped 诊断；名字唤醒 | 当前是全局 active 人格，未做按群绑定；群聊 all 的 token 成本随群活跃度增长；文本人设不能覆盖安全硬边界；未做关键词/欢迎/管理命令插件 |
-| 人格级认知数据 | I/T/V | `persona-scope.js`、`cognition/index.js`、`77-persona.js` | 非全局 kind 存到 `persona_<id>:` 命名空间；旧数据迁移到 self；人格页查看 11 组条数（含时间轴事件、请求与提醒）；按组单向复制到当前人格；删除人格清理数据 | 复制是覆盖式、非实时共享；全局 setting/turn/raw_event/LLM 用量不隔离；跨人格合并需要逐组复制 |
+| 人格级认知数据 | I/T/V | `persona-scope.js`、`cognition/index.js`、`77-persona.js` | 非全局 kind 存到 `persona_<id>:` 命名空间；旧数据迁移到 self；人格页查看 11 组条数（含时间轴事件、请求与提醒）；按组单向复制到当前人格；删除人格清理数据 | 复制是覆盖式、非实时共享；全局 setting/turn/raw_event 不隔离；LLM 用量按人格隔离但不参与数据组复制；跨人格合并需要逐组复制 |
 | 人格导入/模型自检 | I/T/V | `persona.js`、`llm.js`、`routes.js`、`scripts/import-aoi-persona.mjs` | `persona-import@1` JSON 一次性导入并激活；Aoi 转换脚本；DSH 一次性调用修复；`/cognition/llm/test` 返回真实 route/错误/延迟；真实 probe 私聊+群聊各一条 Aoi 回复 | 未移植 Aoi 的完整五层 CRDE/brain 适配器；外部包无 LICENSE，不转载原文；DSH route 需宿主有对应 API key |
 | 工作记忆 | I/T | `memory.workingSet` | 每个 chat 的当前 turn/人物/意图/决策 | 容量与时间淘汰是简单裁剪，不是完整 Baddeley 模型 |
 | 人格 | I/T/V | `persona.js`、`pipeline.maybeEvolvePersona` | 12 维特质 + 表达风格 + 价值边界；锁定项；单次/短期证据不剧变；24h 门控慢演化（≥5 结果样本、受每日上限） | 演化证据仍较粗（平均结果/未知量），未做完整长期模拟 |

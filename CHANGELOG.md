@@ -1,5 +1,10 @@
 # 变更记录
 
+## 未发布
+
+- 补齐 LLM 日预算可视化配置与重置：`cog-llm` 既有字段上方显示今日已用/预算/剩余、UTC 日期、80% 提示与耗尽警告，支持刷新、加载/错误重试及确认重置。新增只读用量和需 `confirm:true` 的当日重置 API；不修改预算/配置，不调用模型。预算沿用配置，源码默认 `300000`。
+- LLM 用量按人格隔离，旧全局计数幂等迁到升级启动时的当前人格；重置仅影响当前人格的 UTC 当天，其他日期/人格保留。补充离线服务/API/React shim 测试及[设计说明](docs/design/llm-budget-card.md)。未部署，未做真实浏览器或 live 验证。
+
 ## 0.11.5（2026-11-06，修复 Agent preset）
 
 - 修复 `dsh-bot-private` 预设 compaction 组缺少 `compaction`/`toolResultPruner` isolate realm，导致真实 Agent 生成失败 `Preset services require isolate realms`；补上与 DSH 标准预设一致的 isolate 映射。

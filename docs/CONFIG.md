@@ -303,6 +303,18 @@ M7-o 主人 `/steer 文本` 沿用上述 `runtime.engine=agent` 和已有 Sessio
 | `cog-privacy` | `privacy.privateIsolation` / `retentionDays` / `redactSecrets` / `deleteCascade` | `true` / `–` / `true` / `true` | 私聊隔离、保留期、密钥脱敏、删除人物级联清理画像/关系/记忆 |
 | `cog-proactivity` | `proactivity.enabled` / `maxPrivatePerDay` / `quietStart` / `quietEnd` / `backoffHours` / `minFamiliarity` | `false` / `1` / `23` / `8` / `24` / `0.5` | 主动私聊；默认关闭，开启后仍受安静时段、日预算、关系门槛、退避限制 |
 
+### LLM 每日预算与今日用量
+
+`cognition.llm.dailyTokenBudget` 的源码默认值为 `300000` token；实际预算读取已保存配置，仍在「认知 → 设置 → 模型路由与预算（cog-llm）」的既有字段编辑。分析（analysis）与回复（reply/compose）共享此预算；学习预算独立配置于 `cog-learning`（`cognition.learning.dailyTokenBudget`）。预算为 0 表示耗尽，不表示无限制。
+
+「今日 LLM 预算」卡片显示当前人格的今日已用、每日预算、剩余 token、UTC 日期和使用进度。达到 80% 提醒但不阻止调用，达到预算时既有预算检查返回 `BUDGET_EXHAUSTED`；超额用量保留真实数值，进度最多 100%，剩余最少 0。刷新读取最新已保存配置和计数，不调用模型。
+
+- `GET /onebot-qq/api/cognition/llm/usage` 返回 `{ok,date,budget,usageToday,budgetLeft,exhausted,personaScoped:true,personaId}`。
+- `POST /onebot-qq/api/cognition/llm/usage/reset` 必须携带 `{confirm:true}`，只删除当前人格、当前 UTC 日期的 `llm_usage`；不接受客户端选择日期、人格或 token 数。返回 `{ok,reset:true,removed,...用量状态}`，重复重置安全。
+- 重置不修改预算、人格、配置、其他日期或其他人格的记录，也不调用模型/外部网络。卡片需二次确认，取消不发请求；重置计数不撤销 provider 已产生的用量或费用。执行中的请求稍后仍可能写入实际用量，并记入该请求开始时的人格。
+
+LLM 用量从旧版全局计数改为按人格隔离。首次升级将旧 `llm_usage` 归入启动时当前人格，保留计数，使用 `setting.persona.llmUsageMigration.v1` 标记确保幂等；之后切换人格读取各自计数。删除人格会清除其用量，用量不参与人格页数据组复制。配置预算仍为全局配置。布局与状态见[卡片设计](design/llm-budget-card.md)。
+
 ### 私聊输入状态（M7-q）
 
 `cognition.typing` 默认 `{enabled:false}`，`enabled` 仅接受布尔值；关闭时零输入状态调用，保持原行为。在「认知 → 设置 → 轮次与防抖」（`cog-turn`）打开「私聊输入状态」，仅对私聊/C2C 生效，不依赖 agent 运行时，群聊不发送。
@@ -383,7 +395,7 @@ M7-h 新增 `kind=timeline`：JSON 数组、`events/timeline/items/data/records`
 切换后下一轮消息生效；旧 `self` 自动成为默认人格。文本 profile 优先于数值 style，但不能覆盖安全/隐私边界。
 
 **人格级认知数据**：存储层会用 `persona_<id>:` 前缀隔离记忆/人物/关系/情绪/策略/学习/技能/诊断记录；
-`setting/persona/state/raw_event/turn/llm_usage/audit_log` 保持全局。旧数据在启动时迁移到默认人格，
+`setting/persona/state/raw_event/turn/audit_log` 保持全局；LLM 用量按人格隔离（迁移说明见上文）。旧数据在启动时迁移到默认人格，
 迁移标记为 `setting.persona.dataMigration.v08`；人格页的「复制数据」调用 `POST /cognition/persona/data/copy`，
 按数据组单向替换目标人格。
 
