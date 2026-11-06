@@ -10,6 +10,7 @@ import {
   createPersonaScopedStore,
   dropPersonaData,
   migrateLegacyPersonaData,
+  migrateLlmUsage,
   personaDataCounts,
   scopedPersonaKind,
 } from '../src/cognition/persona-scope.js'
@@ -95,4 +96,23 @@ test('人格数据复制：同人格/未知组拒绝，drop 清空指定人格',
   const removed = dropPersonaData({ base, personaId: a.id })
   assert.ok(removed >= 1)
   assert.equal(base.get(scopedPersonaKind(a.id, 'memory'), 'm1'), null)
+})
+
+test('LLM usage migration preserves legacy counts on the active persona and runs once', () => {
+  const { base, persona, scoped } = setup()
+  const active = persona.create({ name: 'Active' }).persona
+  base.put('llm_usage', '2026-11-06', { tokens: 450 })
+  base.put('llm_usage', '2026-11-05', { tokens: 150 })
+  migrateLlmUsage({ base, targetId: active.id, clock })
+  assert.equal(base.get('llm_usage', '2026-11-06'), null)
+  assert.equal(scoped.get('llm_usage', '2026-11-06').tokens, 450)
+  assert.equal(scoped.get('llm_usage', '2026-11-05').tokens, 150)
+  scoped.put('llm_usage', '2026-11-06', { tokens: 500 })
+  migrateLlmUsage({ base, targetId: 'self', clock })
+  assert.equal(scoped.get('llm_usage', '2026-11-06').tokens, 500)
+  persona.activate('self')
+  assert.equal(scoped.get('llm_usage', '2026-11-06'), null)
+  dropPersonaData({ base, personaId: active.id })
+  persona.activate(active.id)
+  assert.equal(scoped.get('llm_usage', '2026-11-06'), null)
 })

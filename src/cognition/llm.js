@@ -163,16 +163,34 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return Number(store?.get('llm_usage', key)?.tokens || 0)
   }
 
-  function recordUsage(tokens) {
-    if (!store) return
+  function usageStatus() {
+    const date = dayKey(clock.now())
+    const budget = Math.max(0, Number(cfg().llm?.dailyTokenBudget) || 0)
+    const usageToday = Math.max(0, todayUsage() || 0)
+    return { date, budget, usageToday, budgetLeft: Math.max(0, budget - usageToday), exhausted: usageToday >= budget, personaScoped: true }
+  }
+
+  function resetUsage() {
+    const date = dayKey(clock.now())
+    let removed = false
+    if (typeof store?.remove === 'function') {
+      removed = Boolean(store.get('llm_usage', date))
+      store.remove('llm_usage', date)
+    } else {
+      store.put('llm_usage', date, { tokens: 0, updatedAt: clock.now() })
+    }
+    return { reset: true, removed, ...usageStatus() }
+  }
+
+  function recordUsage(tokens, usageStore, usageKind) {
+    if (!usageStore) return
     const key = dayKey(clock.now())
-    const prev = Number(store.get('llm_usage', key)?.tokens || 0)
-    store.put('llm_usage', key, { tokens: prev + Math.max(0, Number(tokens) || 0), updatedAt: clock.now() })
+    const prev = Number(usageStore.get(usageKind, key)?.tokens || 0)
+    usageStore.put(usageKind, key, { tokens: prev + Math.max(0, Number(tokens) || 0), updatedAt: clock.now() })
   }
 
   function budgetLeft() {
-    const c = cfg().llm || {}
-    return Math.max(0, Number(c.dailyTokenBudget || 0) - todayUsage())
+    return usageStatus().budgetLeft
   }
 
   async function callDsh(route, { system, user, maxTokens, temperature, timeoutMs, purpose }) {
@@ -283,6 +301,9 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     const tokensLeft = budgetLeft()
     if (tokensLeft <= 0) return { ok: false, error: 'BUDGET_EXHAUSTED', message: '今日 LLM token 预算已用完', degraded: true }
     const budget = Math.max(64, Math.min(Number(maxTokens || (purpose === 'compose' ? c.composeMaxTokens : c.analysisMaxTokens) || 700), tokensLeft))
+    // 固定本次调用的记账人格；等待模型期间切换人格不能把用量记到新人格。
+    const usageKind = store?.scopedKind?.('llm_usage') || 'llm_usage'
+    const usageStore = store?.base || store
     const attempts = await buildAttempts(chat)
     if (!attempts.length) {
       return {
@@ -305,7 +326,7 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
       }
       const tokens = Number(result.tokens || result.usage?.total || 0)
         || estimateTokens(system) + estimateTokens(user) + estimateTokens(result.text || '')
-      if (tokens) recordUsage(tokens)
+      if (tokens) recordUsage(tokens, usageStore, usageKind)
       if (result.ok && String(result.text || '').trim()) {
         lastFailure = null
         return result
@@ -386,5 +407,5 @@ export function createLlmClient({ ctx, models = null, getConfig, store, clock, l
     return attempts[0] || null
   }
 
-  return { complete, completeJson, test, resolveRoute, currentRoute, status, budgetLeft, todayUsage, buildAttempts }
+  return { complete, completeJson, test, resolveRoute, currentRoute, status, usage: usageStatus, usageStatus, resetUsage, budgetLeft, todayUsage, buildAttempts }
 }

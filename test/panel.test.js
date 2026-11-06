@@ -1596,3 +1596,96 @@ test('ContentPage：空评论、服务关闭/风控与网络失败明确展示�
     assert.doesNotMatch(JSON.stringify(render()), /本地请求失败/)
   } finally { globalThis.fetch = originalFetch }
 })
+
+const budgetControl = (tree, text) => control([tree, tree.props.actions, ...treeNodes(tree).map((node) => node.props?.actions)], text)
+
+function renderBudget({ usageToday = 120, budget = 500, loading = false, error = '', resetting = false, toast = () => {} } = {}) {
+  stateOverrides = [{ date: '2026-11-06', usageToday, budget, budgetLeft: Math.max(0, budget - usageToday), personaScoped: true, personaId: 'self' }, error, loading, resetting]
+  try { return panel.CogBudgetCard({ toast }) } finally { stateOverrides = null }
+}
+
+test('CogBudgetCard: normal/near/exhausted/zero states, UTC scope, shared budget and clamped progress', () => {
+  const normal = renderBudget(), json = JSON.stringify(normal)
+  assert.equal(normal.props.title, '今日 LLM 预算')
+  assert.match(json, /2026-11-06 UTC/)
+  assert.match(json, /仅当前人格/)
+  assert.match(json, /analysis.*reply.*cog-learning/)
+  const stats = treeNodes(normal).filter((node) => node.type?.name === 'StatTile')
+  assert.deepEqual(stats.map((node) => node.props.value), ['120', '500', '380'])
+  assert.equal(treeNodes(normal).find((node) => node.type?.name === 'CogBar').props.value, 0.24)
+  assert.doesNotMatch(json, /已耗尽|接近上限/)
+  assert.match(JSON.stringify(renderBudget({ usageToday: 400 })), /接近上限；仍可继续使用/)
+  for (const options of [{ usageToday: 500 }, { usageToday: 750 }, { usageToday: 0, budget: 0 }]) {
+    const tree = renderBudget(options)
+    assert.match(JSON.stringify(tree), /今日 LLM 预算已耗尽/)
+    const bar = treeNodes(tree).find((node) => node.type?.name === 'CogBar')
+    assert.equal(bar.props.value, 1)
+    assert.match(JSON.stringify(bar.type(bar.props)), /100.0%/)
+  }
+  assert.equal(budgetControl(renderBudget({ usageToday: 0 }), '重置今日用量').props.disabled, true)
+})
+
+test('CogBudgetCard: loading, errors/retry and reset busy state disable unsafe actions', async () => {
+  const loading = renderBudget({ loading: true })
+  assert.match(JSON.stringify(loading), /正在加载今日 LLM 用量/)
+  assert.equal(budgetControl(loading, '重置今日用量').props.disabled, true)
+  assert.equal(budgetControl(loading, '刷新').props.disabled, true)
+  assert.equal(treeNodes(loading).some((node) => node.type?.name === 'StatTile'), false)
+  const calls = [], restore = mockCognitionApi(calls)
+  try {
+    const error = renderBudget({ error: '读取用量失败' })
+    assert.match(JSON.stringify(error), /读取用量失败/)
+    assert.equal(budgetControl(error, '重置今日用量').props.disabled, true)
+    await budgetControl(error, '重试').props.onClick()
+    await budgetControl(renderBudget(), '刷新').props.onClick()
+    assert.equal(calls.length, 2)
+    assert.ok(calls.every((call) => call.method === 'GET' && call.path === panel.API_PREFIX + '/cognition/llm/usage'))
+    const resetting = renderBudget({ resetting: true })
+    assert.equal(budgetControl(resetting, '重置今日用量').props.busy, true)
+    assert.equal(budgetControl(resetting, '刷新').props.disabled, true)
+  } finally { restore() }
+})
+
+test('CogBudgetCard: cancel makes no request; confirmation POSTs only confirm then reloads', async () => {
+  const calls = [], toasts = [], restore = mockCognitionApi(calls), originalConfirm = window.confirm
+  const prompts = []
+  try {
+    window.confirm = (message) => { prompts.push(message); return false }
+    await budgetControl(renderBudget(), '重置今日用量').props.onClick()
+    assert.deepEqual(calls, [])
+    assert.deepEqual(prompts, ['重置今日已用 token？不会修改预算、人格或配置。'])
+    window.confirm = () => true
+    await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置今日用量').props.onClick()
+    assert.deepEqual(calls, [
+      { path: panel.API_PREFIX + '/cognition/llm/usage/reset', method: 'POST', body: { confirm: true } },
+      { path: panel.API_PREFIX + '/cognition/llm/usage', method: 'GET', body: undefined },
+    ])
+    assert.deepEqual(toasts, [['已重置今日 LLM 用量', 'ok']])
+  } finally { restore(); window.confirm = originalConfirm }
+})
+
+test('CogBudgetCard: failed reset shows error toast without success or reload', async () => {
+  const calls = [], toasts = [], restore = mockCognitionApi(calls, { ok: false, message: '重置失败' }), originalConfirm = window.confirm
+  try {
+    window.confirm = () => true
+    await budgetControl(renderBudget({ toast: (...args) => toasts.push(args) }), '重置今日用量').props.onClick()
+    assert.equal(calls.length, 1)
+    assert.deepEqual(toasts, [['重置失败', 'err']])
+  } finally { restore(); window.confirm = originalConfirm }
+})
+
+test('CogSettings: budget card appears only above cog-llm fields and keeps config editor', () => {
+  const groups = [{ id: 'cog-core', title: '核心', fields: [] }, { id: 'cog-llm', title: '模型路由与预算', fields: [{ path: 'cognition.llm.dailyTokenBudget' }] }]
+  for (const active of ['cog-core', 'cog-llm']) {
+    stateOverrides = [active]
+    let tree
+    try { tree = panel.CogSettings({ configInfo: { groups }, draft: {}, saveUiPatch() {} }) } finally { stateOverrides = null }
+    const nodes = treeNodes(tree), cards = nodes.filter((node) => node.type === panel.CogBudgetCard)
+    assert.equal(cards.length, active === 'cog-llm' ? 1 : 0)
+    if (cards.length) {
+      const editor = nodes.find((node) => node.type?.name === 'FieldRow')
+      assert.equal(editor.props.spec.path, 'cognition.llm.dailyTokenBudget')
+      assert.ok(nodes.indexOf(cards[0]) < nodes.indexOf(editor))
+    }
+  }
+})

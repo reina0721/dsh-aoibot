@@ -3,12 +3,14 @@ import assert from 'node:assert/strict'
 
 import { createLlmClient } from '../src/cognition/llm.js'
 import { dayKey } from '../src/cognition/util.js'
+import { createPersonaScopedStore } from '../src/cognition/persona-scope.js'
 
 function fakeStore() {
   const map = new Map()
   return {
     get(kind, id) { return map.get(kind + ':' + id) || null },
     put(kind, id, value) { map.set(kind + ':' + id, value) },
+    remove(kind, id) { return map.delete(kind + ':' + id) },
   }
 }
 
@@ -154,4 +156,70 @@ test('llm 按聊天覆盖：优先当前会话 provider/model，不影响其他�
   const other = await llm.complete({ system: 's', user: 'u', chat: { chatType: 'private', chatId: '10002' } })
   assert.equal(other.ok, true)
   assert.deepEqual(calls[1], { provider: 'p', model: 'm' })
+})
+
+for (const [budget, used, left, exhausted] of [[500, 120, 380, false], [500, 700, 0, true], [0, 0, 0, true], [-5, -10, 0, true], ['450', '50', 400, false], [undefined, 'invalid', 0, true]]) {
+  test(`llm usageStatus: budget=${budget}, used=${used}`, () => {
+    const store = fakeStore(), clock = { now: () => Date.parse('2026-11-06T23:59:59Z') }
+    store.put('llm_usage', '2026-11-06', { tokens: used })
+    const llm = createLlmClient({ getConfig: () => config({ dailyTokenBudget: budget }), store, clock })
+    assert.deepEqual(llm.usageStatus(), { date: '2026-11-06', budget: Math.max(0, Number(budget) || 0), usageToday: Math.max(0, Number(used) || 0), budgetLeft: left, exhausted, personaScoped: true })
+    assert.deepEqual(llm.usage(), llm.usageStatus())
+    clock.now = () => Date.parse('2026-11-07T00:00:00Z')
+    assert.equal(llm.usageStatus().usageToday, 0)
+    assert.equal(llm.usageStatus().date, '2026-11-07')
+  })
+}
+
+test('llm resetUsage: removes today only, is idempotent, preserves config and unblocks complete', async () => {
+  const store = fakeStore(), clock = { now: () => Date.parse('2026-11-06T12:00:00Z') }, calls = []
+  const cfg = config({ dailyTokenBudget: 500 }), before = structuredClone(cfg)
+  store.put('llm_usage', '2026-11-06', { tokens: 700 })
+  store.put('llm_usage', '2026-11-05', { tokens: 200 })
+  const llm = createLlmClient({ ctx: fakeCtx({ calls }), models: modelStub('ok', { calls }), getConfig: () => cfg, store, clock })
+  assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
+  assert.deepEqual(llm.resetUsage(), { reset: true, removed: true, date: '2026-11-06', budget: 500, usageToday: 0, budgetLeft: 500, exhausted: false, personaScoped: true })
+  assert.equal(store.get('llm_usage', '2026-11-06'), null)
+  assert.equal(store.get('llm_usage', '2026-11-05').tokens, 200)
+  assert.equal(llm.resetUsage().removed, false)
+  assert.deepEqual(calls, [], 'status/reset must not resolve a model or call a network')
+  assert.deepEqual(cfg, before)
+  assert.equal((await llm.complete()).ok, true)
+  assert.equal(llm.usageStatus().usageToday, 3)
+})
+
+test('llm resetUsage: store without remove writes zero and zero budget stays exhausted', async () => {
+  const store = fakeStore(), clock = { now: () => 1000 }
+  delete store.remove
+  store.put('llm_usage', dayKey(clock.now()), { tokens: 15 })
+  const llm = createLlmClient({ getConfig: () => config({ dailyTokenBudget: 0 }), store, clock })
+  for (let i = 0; i < 2; i++) {
+    const result = llm.resetUsage()
+    assert.equal(result.reset, true)
+    assert.equal(result.removed, false)
+    assert.equal(result.usageToday, 0)
+    assert.equal(result.exhausted, true)
+    assert.deepEqual(store.get('llm_usage', dayKey(clock.now())), { tokens: 0, updatedAt: 1000 })
+  }
+  assert.equal((await llm.complete()).error, 'BUDGET_EXHAUSTED')
+})
+
+test('llm usage: a pending completion stays charged to its starting persona after a switch', async () => {
+  const base = fakeStore(), clock = { now: () => 1000 }
+  let active = 'a', release, started
+  const ready = new Promise((resolve) => { started = resolve })
+  const pending = new Promise((resolve) => { release = resolve })
+  const store = createPersonaScopedStore({ base, getPersonaId: () => active })
+  const models = { ...modelStub(), complete: async () => { started(); await pending; return { text: 'ok', usage: { total: 3 } } } }
+  const llm = createLlmClient({ models, getConfig: () => config(), store, clock })
+  const completion = llm.complete()
+  await ready
+  active = 'b'
+  store.put('llm_usage', dayKey(clock.now()), { tokens: 20 })
+  release()
+  assert.equal((await completion).ok, true)
+  assert.equal(llm.usageStatus().usageToday, 20)
+  llm.resetUsage()
+  active = 'a'
+  assert.equal(llm.usageStatus().usageToday, 3)
 })
