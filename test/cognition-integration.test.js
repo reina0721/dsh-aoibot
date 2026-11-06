@@ -811,7 +811,8 @@ test('M7-s integration: persisted owner approvals survive restart/persona change
 
 test('M7-v: cognition wires an empty manual registry into owner commands; links survive restart/persona switch', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-identity-wiring-'))
-  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  let cognition
+  t.after(() => { try { cognition?.dispose() } catch {} rmSync(dir, { recursive: true, force: true }) })
   const config = normalizeConfig({ access: { mode: 'allowlist', ownerQQ: '10001' } }).config
   const sent = []
   const create = () => createCognition({
@@ -819,8 +820,7 @@ test('M7-v: cognition wires an empty manual registry into owner commands; links 
     access: createAccess({ getConfig: () => config }),
     gateway: { actions: { sendMessage: async (...args) => { sent.push(args); return { ok: true, message_id: 'm1' } } } },
   })
-  let cognition = create()
-  t.after(() => cognition.dispose())
+  cognition = create()
   assert.equal(cognition.services.identities.counts().total, 0)
   const personBefore = cognition.services.person.listPersons()
   const ownerTurn = { chatType: 'private', chatId: '10001', senderId: '10001', text: '/identity link telegram alice p_manual label' }

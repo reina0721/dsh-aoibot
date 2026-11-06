@@ -148,15 +148,15 @@ test('identities: isolated from person creation/lookup, persona migration, switc
 
 test('identities: persistent across store reopen, with fixed log messages containing only IDs', (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-identities-'))
-  t.after(() => rmSync(dir, { recursive: true, force: true }))
   const file = join(dir, 'cognition.sqlite')
-  let store = createStore({ file })
+  let store
+  t.after(() => { try { store?.close() } catch {} rmSync(dir, { recursive: true, force: true }) })
+  store = createStore({ file })
   const logs = []
   const logger = { debug: (...args) => logs.push(args) }
   const row = createIdentityService({ store, logger }).link({ ...input, label: 'private label' })
   store.close()
   store = createStore({ file })
-  t.after(() => store.close())
   const service = createIdentityService({ store, logger })
   assert.equal(service.resolve(input).id, row.id)
   service.unlink(input)
