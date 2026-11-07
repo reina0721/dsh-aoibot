@@ -29,6 +29,7 @@ import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
+import { createDeliveryRegistry } from './delivery/registry.js'
 import { builtinRegistry } from './modules/registry.js'
 import { personaProfileText } from './cognition/persona.js'
 
@@ -82,7 +83,9 @@ export function apply(ctx, rowConfig) {
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
   const bilibili = createBilibiliService({ getConfig, logger })
+  const deliveryRegistry = createDeliveryRegistry()
   const cognition = createCognition({
+    deliveryRegistry,
     ctx,
     getConfig,
     models,
@@ -96,6 +99,7 @@ export function apply(ctx, rowConfig) {
     bilibili,
   })
   const modules = createModuleKernel({
+    deliveryRegistry,
     dataDir: dataDir('modules'),
     registry: builtinRegistry,
     getConfig,

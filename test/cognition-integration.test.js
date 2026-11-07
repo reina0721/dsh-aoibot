@@ -7,6 +7,8 @@ import { join } from 'node:path'
 
 import { createAccess } from '../src/core/access.js'
 import { normalizeConfig } from '../src/core/config.js'
+import { createDeliveryRegistry } from '../src/delivery/registry.js'
+import { setup as setupReplyDelivery } from '../src/modules/builtin/reply-delivery.js'
 import { createCognition } from '../src/cognition/index.js'
 import { createFakeScheduler, createClock, createRng } from '../src/cognition/util.js'
 
@@ -45,7 +47,9 @@ function makeCog({ dir, gateway, scheduler, configOverride = {}, llm = fakeLlm()
     },
     emit() {},
   }
-  return createCognition({ ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir, media, logger })
+  const deliveryRegistry = createDeliveryRegistry()
+  if (configOverride.delivery?.engine === 'planner') setupReplyDelivery({ delivery: { registerPlanner: deliveryRegistry.register } })
+  return createCognition({ deliveryRegistry, ctx, getConfig: () => cfg, gateway, scheduler, clock: createClock(), rng: createRng(1), dataRoot: dir, media, logger })
 }
 
 function privateEvent(id, text, userId = '10001') {

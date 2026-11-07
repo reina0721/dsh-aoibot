@@ -67,7 +67,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null, registry = builtinRegistry } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null, registry = builtinRegistry, deliveryRegistry = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -267,6 +267,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       dir: record.moduleDir,
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
+      delivery: Object.freeze({
+        registerPlanner(descriptor) {
+          requireActive(runtime)
+          requirePermission(record, 'delivery:plan')
+          if (!record.builtin) throw new Error('交付规划仅允许内置模块注册')
+          if (!deliveryRegistry?.register) throw new Error('交付规划服务不可用')
+          const dispose = deliveryRegistry.register(descriptor)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
       on(eventName, handler) {
         requireActive(runtime)
         requirePermission(record, 'events')

@@ -7,7 +7,7 @@
 | 内置（builtin） | 随 dsh-bot 发布的静态受信任注册表，不扫描包内目录 | 可以 | 不可以 | `<数据目录>/modules/.builtin/<id>/` |
 | 外部（external） | 操作员安装到 `<数据目录>/modules/<id>/` 的本地 JS | 清单允许时可以 | 可以 | 模块目录 |
 
-内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。没有核心功能迁移，也没有远程安装、上传、marketplace 或网络下载模块代码。
+内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。Phase 4 已把回复交付规划迁入内置模块；没有远程安装、上传、marketplace 或网络下载模块代码。
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
@@ -44,6 +44,8 @@
 
 随包提供 `builtin-sample`（内置示例，1.0.0），`permissions: ["commands","storage"]`、`requires: []`。默认关闭且不调用 import/setup，没有默认消息行为。启用后仅主人可用 `/module-sample`，读取 `api.config.get().message` 回复，默认「内置示例模块已启用。」；示例申请 storage 权限，但不主动写入 data.json。内置模块不能直接重载；依赖协调可以用缓存代码重新运行 setup，生命周期内不再次调用 lazy import。
 
+另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。新安装 `/modules` 有两个内置模块：回复交付 loaded，示例 disabled。
+
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
 ```json
@@ -75,9 +77,37 @@ export async function setup(api) {
 | `cognition:read` | `api.cognition` | 只读暴露 `snapshot`、`overview`、`memories`、`personDetail`、`relationshipsList`、`timeline` |
 | `knowledge` | `api.registerKnowledgeSource(source)` | 注册认知知识源，重载/停用时自动移除 |
 | `capabilities` | `api.registerCapability(name, impl)` | 注册认知 capability，重载/停用时自动移除 |
+| `delivery:plan` | `api.delivery.registerPlanner(descriptor)` | 仅内置模块；注册唯一 format 规划器，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
+
+## 回复交付规划（Phase 4）
+
+`delivery:plan` 是已知权限，但稳定 API 仅允许加载器标记为 builtin 的模块注册。外部模块即使声明该权限或在 manifest 伪造 source/builtin，调用也会抛错；setup 中调用则进入 error。权限不是 Node.js 沙箱。
+
+```js
+api.delivery.registerPlanner({
+  id: 'builtin-reply-delivery', stage: 'format', order: 0,
+  plan({ text, turn, replyCfg, replyTo, source, decisionId }) {
+    // 同步返回 DeliveryPlan，核心负责校验和执行。
+  },
+})
+```
+
+内部 `createDeliveryRegistry()` 提供 register/resolve/remove/list；描述符 id 必须非空且唯一，stage 仅允许 format，最多一个注册项，order 为有限数（省略为 0）。当前没有多阶段排序或外部规划器。register 返回幂等 disposer，内核保存并在停用、dispose、setup 失败、事件隔离或依赖重载清理时移除；已停止的 API 不能重新注册。内置模块本身不直接重载，依赖重载会清理后用缓存代码重新 setup。
+
+核心只传入 `{text,turn,replyCfg,replyTo,source,decisionId}`；replyCfg 是现有 `cognition.reply` 的副本，noReplySegment 已映射为 quote:false，不提供全局配置访问。规划器不发送消息，返回 Phase 1 DeliveryPlan（target、parts 中的 segments/delayAfterMs、source、decisionId、meta），所有发送仍经过 executor 和 outbound 的访问控制、频率上限及 leak guard。
+
+内部开关 `cognition.delivery.engine` 接受 auto/core/planner，默认 auto，不增加全局配置 UI 字段：
+
+| engine | 有 format planner | 无 planner（含模块停用/初始化失败） |
+|---|---|---|
+| auto | 使用模块规划 | 使用 core 兼容布局，保留分条/引用/@/等待 |
+| core | 始终使用 core 兼容布局 | 同左 |
+| planner | 使用模块规划 | 单条纯文本回退 |
+
+已选中的规划器抛错或返回无效计划时也回退为单条纯文本（无引用/@/等待），仅记录固定安全警告；回退仍过 outbound，不重试发送拒绝。空正文、纯空白处理、dryRun、部分成功、统计与归因保持既有语义。配置不迁移，不新增模块配置文件；停用后下一次发送重新解析 registry。详见 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。
 
 ## 内置模块声明式配置（Phase 3）
 

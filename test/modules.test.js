@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, open, readFile, readdir, rm, symlink, writeFile } from 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
+import { createDeliveryRegistry } from '../src/delivery/registry.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
 import { createCommandService } from '../src/cognition/commands.js'
 import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from '../src/modules/config.js'
@@ -18,6 +19,7 @@ async function moduleDir(root, id, manifest, source) {
 
 async function harness(registry = [], logger = null) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-modules-'))
+  const deliveryRegistry = createDeliveryRegistry()
   const sent = []
   const commandReplies = []
   const commands = createCommandService({
@@ -28,6 +30,7 @@ async function harness(registry = [], logger = null) {
   const kernel = createModuleKernel({
     dataDir: root,
     registry,
+    deliveryRegistry,
     logger,
     getConfig: () => ({}),
     commands,
@@ -39,7 +42,7 @@ async function harness(registry = [], logger = null) {
     },
   })
   const turn = (text, senderId = 'owner') => ({ text, senderId, chatType: 'private', chatId: senderId })
-  return { root, sent, commandReplies, commands, kernel, turn }
+  return { root, sent, commandReplies, commands, kernel, turn, deliveryRegistry }
 }
 
 test('modules：加载、稳定 API、存储、事件与命令可用，列表不泄露路径', async (t) => {
@@ -584,4 +587,82 @@ test('modules v2：清理排空存储写入后重新读取磁盘，修复内置�
   assert.equal(imports, 1)
   assert.equal(row(h.kernel, 'builtin-storage').status, 'loaded')
   assert.deepEqual(JSON.parse(await readFile(join(dir, 'data.json'), 'utf8')), { value: 'edited', a: 1, b: 2 })
+})
+
+test('delivery module API: builtin permission, duplicate rejection and setup-error cleanup', async (t) => {
+  let savedApi
+  const planner = { id: 'test-planner', stage: 'format', order: 0, plan: () => ({}) }
+  const h = await harness([
+    builtin('builtin-no-permission', () => ({ setup(api) { api.delivery.registerPlanner(planner) } }), {}, true),
+    builtin('builtin-first', () => ({ setup(api) { savedApi = api; api.delivery.registerPlanner(planner) } }), { permissions: ['delivery:plan'] }, true),
+    builtin('builtin-second', () => ({ setup(api) { api.delivery.registerPlanner({ ...planner, id: 'another' }) } }), { permissions: ['delivery:plan'] }, true),
+  ])
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  assert.match(row(h.kernel, 'builtin-no-permission').error, /permission: delivery:plan/)
+  assert.equal(row(h.kernel, 'builtin-first').status, 'loaded')
+  assert.match(row(h.kernel, 'builtin-second').error, /stage 已注册/)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.setEnabled('builtin-first', false)
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  assert.throws(() => savedApi.delivery.registerPlanner(planner), /模块已停止/)
+  // The previously failed module can register once its stage becomes available.
+  assert.equal((await h.kernel.setEnabled('builtin-second', true)).status, 'loaded')
+  await h.kernel.dispose()
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+
+  const failed = await harness([builtin('builtin-throws', () => ({ setup(api) {
+    api.delivery.registerPlanner(planner)
+    throw Error('setup failed')
+  } }), { permissions: ['delivery:plan'] }, true)])
+  t.after(() => failed.kernel.dispose())
+  await failed.kernel.start()
+  assert.equal(row(failed.kernel, 'builtin-throws').status, 'error')
+  assert.deepEqual(failed.deliveryRegistry.list(), [])
+})
+
+test('delivery module API: external cannot register even with permission and forged source', async (t) => {
+  const h = await harness()
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'external-planner', { permissions: ['delivery:plan'], source: 'builtin', builtin: true }, `
+    export function setup(api) {
+      api.delivery.registerPlanner({ id: 'external', stage: 'format', order: 0, plan() {} })
+    }
+  `)
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'external-planner').status, 'error')
+  assert.match(row(h.kernel, 'external-planner').error, /仅允许内置模块/)
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+  assert.equal((await h.kernel.reload('external-planner')).status, 'error')
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+})
+
+test('delivery module API: dependency reload/disable, builtin re-enable and dispose clean registration', async (t) => {
+  let setups = 0, imports = 0
+  const h = await harness([builtin('builtin-dependent-planner', () => {
+    imports++
+    return { setup(api) {
+      setups++
+      api.delivery.registerPlanner({ id: 'dependent', stage: 'format', plan() {} })
+    } }
+  }, { permissions: ['delivery:plan'], requires: ['dependency'] }, true)])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'dependency', {}, 'export function setup() {}')
+  await h.kernel.start()
+  assert.equal(h.deliveryRegistry.resolve().id, 'dependent')
+  await h.kernel.reload('dependency')
+  assert.equal(setups, 2)
+  assert.equal(imports, 1)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.setEnabled('dependency', false)
+  assert.equal(row(h.kernel, 'builtin-dependent-planner').status, 'blocked')
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  await h.kernel.setEnabled('dependency', true)
+  assert.equal(h.deliveryRegistry.resolve().id, 'dependent')
+  await h.kernel.setEnabled('builtin-dependent-planner', false)
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  await h.kernel.setEnabled('builtin-dependent-planner', true)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.dispose()
+  assert.equal(h.deliveryRegistry.resolve(), null)
 })

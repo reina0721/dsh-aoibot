@@ -50,7 +50,7 @@ dsh-bot/
 
 ## 3. 关键契约
 
-内部交付 seam（Phase 0 + Phase 1）：采用模块化单体，`src/delivery/plan.js` 纯函数负责回复布局，`src/delivery/executor.js` 负责顺序执行；outbound 继续持有访问/限频/leak guard，pipeline 继续维护统计与归因。内部 `cognition.delivery.engine` 默认 `core`，显式 `planner` 才启用新路径，可随时切回；`cognition.reply.*` 及默认行为保持不变。分条尚未迁入模块，该阶段未做 schema/ingress 改造、版本升级或部署，详见 [ADR-001](architecture/ADR-001-delivery-seam.md)。Phase 2 仅将宿主入站编排抽到 `src/ingress/coordinator.js`，公开事件与既有行为保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
+内部交付 seam（Phase 1 + Phase 4）：`src/delivery/registry.js` 是宿主在 cognition/modules 之前创建的共享 registry，模块在宿主 ready 前完成启动。默认启用的 `builtin-reply-delivery` 通过仅内置可用的 `delivery:plan` API 注册唯一 format 规划器，布局纯函数位于 `src/modules/builtin/reply-delivery-plan.js`；`src/delivery/plan.js` 保留兼容导出、校验和单条纯文本回退，`src/delivery/executor.js` 顺序执行。outbound 继续持有访问/限频/leak guard，pipeline 保留统计、pending、归因与轮次记录。内部 engine 默认 auto：有 planner 用模块，无 planner 用 core 兼容布局；core 始终绕过注册表，显式 planner 缺失或规划抛错/无效时单条纯文本回退。core 与模块复用纯布局函数和执行器，pipeline 不再构建消息段或计算分条/等待；所有 `cognition.reply.*` 保留。无配置迁移或模块配置 UI，详见 [ADR-001](architecture/ADR-001-delivery-seam.md) 与 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。Phase 2 的入站编排保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
 
 ### 3.1 配置（src/core/config.js）
 
@@ -333,8 +333,8 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 
 ### 3.14 回复分条、引用/@ 与群聊防刷屏
 
-- `src/cognition/reply-split.js`：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
-- `pipeline.sendDecision`：按 `cognition.reply` 配置分条；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
+- `src/delivery/text-split.js`（`src/cognition/reply-split.js` 兼容重导出）：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
+- `builtin-reply-delivery` 按核心传入的 `cognition.reply` 配置产生 DeliveryPlan，`pipeline.sendDecision` 选择模块或 core 兼容布局交给 executor；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
 - 失败语义：第一条失败 → 整轮失败；后续条失败 → 已发部分保留，记录 `SEND_FAILED`，不回滚、不重发。
 - 防刷屏：`cognition.turn.maxConsecutiveGroupReplies` 限制连续**未点名**接话；`noteGroupReply` 按是否点名维护计数（点名回复清零），`groupReplyAllowed` 超限返回 `consecutive_limit`，与冷却/每分钟上限并存。
 - 边界：合并转发展开、拍一拍/表态、QQ 动作工具仍在 M2-b。
@@ -382,6 +382,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - `modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}` 与缺失/损坏状态。外部 `manifestEnabled && !disabled`，清单 false 不能 API/UI 启用；内置 disabled 优先，再 enabled，再 defaultEnabled。先成功写状态再改变 live，失败保持原状。
 - 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。发送仍走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
 - 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后提供主人 `/module-sample`，从 api.config.get().message 读取回复（默认「内置示例模块已启用。」）。
+- Phase 4：`delivery:plan` 仅内置模块可调用 `api.delivery.registerPlanner`，外部声明权限也不能注册；注册项随停用、setup 失败、依赖重载和 dispose 清理。生产 registry 包含默认关闭可配置的 builtin-sample、默认启用无配置的 builtin-reply-delivery。只有单一 format 阶段，没有外部 planner API。
 - Phase 3：仅内置 registry 描述符可声明 `config:{version:1,fields}`；`config.js` 无依赖验证平面唯一键（最多 32）、label、默认值、switch/text/textarea/number/select/string-list/number-list 及边界，拒绝 secret 与未知 values 键，缺失字段填默认值。外部 manifest 和未声明的内置模块无配置 API/UI/runtime config。
 - 配置在发现阶段加载，先于 setup；`.builtin/<id>/config.json` 与 data.json 分离，最多 64 KiB、realpath containment、原子替换。缺失/损坏按默认值与 revision 0 安全警告，不阻止模块运行。`setModuleConfig` 与生命周期串行，revision 匹配后持久化递增（首次为 1），再更新内存/通知；过期为 MODULE_CONFIG_CONFLICT。`getModuleConfig` 深拷贝 schema/values/revision/source，不公开路径。
 - `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按 hasConfig/内置来源提供行内 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示，不改全局配置页、入站或交付路径。

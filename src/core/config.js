@@ -164,7 +164,7 @@ export const DEFAULTS = {
     locale: 'zh-CN',
     timezone: '',
     typing: { enabled: false },
-    delivery: { engine: 'core' }, // Internal rollback switch; not a panel field.
+    delivery: { engine: 'auto' }, // Internal rollback switch; not a panel field.
     turn: {
       privateBaseMs: 1800,
       privateMaxMs: 10000,
@@ -1303,7 +1303,7 @@ function normalizeCognition(raw, rawCognition = {}, issues = []) {
     locale: pickEnum(src.locale, d.locale, ['zh-CN']),
     timezone: pickString(src.timezone, '', { max: 64 }),
     typing: { enabled: pickBool(src.typing?.enabled, d.typing.enabled) },
-    delivery: { engine: pickEnum(src.delivery?.engine, d.delivery.engine, ['core', 'planner']) },
+    delivery: { engine: pickEnum(src.delivery?.engine, d.delivery.engine, ['auto', 'core', 'planner']) },
     notices: { enabled: pickBool(src.notices?.enabled, d.notices.enabled) },
     requests: { enabled: pickBool(src.requests?.enabled, d.requests.enabled) },
     permissions: {

@@ -58,6 +58,7 @@ export function createCognition({
   media = null,
   stickers = null,
   bilibili = null,
+  deliveryRegistry = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -179,6 +180,7 @@ export function createCognition({
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock, llm: state.services.llm, sources: state.services.sources, log })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
+        deliveryRegistry,
         store: personaStore,
         getConfig,
         clock,

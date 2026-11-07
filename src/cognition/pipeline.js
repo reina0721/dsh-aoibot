@@ -6,7 +6,6 @@
 import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
 import { analyzeTurn, composeReply } from './analysis.js'
 import { defaultScope, memoryText, relevanceScore } from './memory.js'
-import { splitReply } from './reply-split.js'
 import { buildReplyPlan } from '../delivery/plan.js'
 import { executeDeliveryPlan } from '../delivery/executor.js'
 import { flattenForward, forwardIdsOf } from '../gateway/forward.js'
@@ -16,7 +15,7 @@ export function createPipeline({
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
-  media = null,
+  media = null, deliveryRegistry = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -311,79 +310,15 @@ export function createPipeline({
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)))
   }
 
-  async function sendDecisionCore(decision, text, turn, opts = {}) {
-    if (!text) {
-      policy.markSent(decision.id, { dryRun: isDry() })
-      if (isDry()) stats.dryRun += 1
-      return { ok: true, dryRun: isDry(), messageId: '' }
-    }
-    const replyCfg = cfg().reply || {}
-    const parts = replyCfg.split === false
-      ? [String(text)]
-      : splitReply(text, { maxChars: replyCfg.maxChars, maxParts: replyCfg.maxParts })
-    const replyTo = turn.messages?.at(-1)?.messageId
-    const quote = !opts.noReplySegment && replyCfg.quote !== false
-    const atSender = turn.chatType === 'group' && replyCfg.atSender === true
-    const delayMs = Math.max(0, Number(replyCfg.delayMs) || 0)
-    let firstMessageId = ''
-    let sentParts = 0
-    let lastResult = null
-    for (let index = 0; index < parts.length; index += 1) {
-      const segments = []
-      if (index === 0 && quote && replyTo) segments.push({ type: 'reply', data: { id: replyTo } })
-      if (index === 0 && atSender && turn.senderId) segments.push({ type: 'at', data: { qq: String(turn.senderId) } })
-      segments.push({ type: 'text', data: { text: parts[index] } })
-      const delivered = outbound && typeof outbound.deliver === 'function'
-        ? await outbound.deliver({
-            chatType: turn.chatType,
-            chatId: turn.chatId,
-            segments,
-            decisionId: index === 0 ? decision.id : '',
-            source: 'pipeline',
-            dryRun: isDry() ? true : null,
-          })
-        : await sendDirect(decision, segments, turn, { mark: index === 0 })
-      if (!delivered?.ok) {
-        if (sentParts === 0) {
-          log.warn?.('发送认知回复失败：', delivered?.message || delivered?.error || 'unknown')
-          return { ok: false, error: delivered?.error || 'SEND_FAILED', blocked: Boolean(delivered?.blocked), reason: delivered?.reason || '' }
-        }
-        log.warn?.('认知回复分条中途失败：', delivered?.message || delivered?.error || 'unknown')
-        break
-      }
-      if (delivered.dryRun) {
-        if (index === 0) {
-          stats.dryRun += 1
-          return { ok: true, dryRun: true, messageId: '' }
-        }
-        break
-      }
-      const messageId = String(delivered.messageId || '')
-      if (!firstMessageId) firstMessageId = messageId
-      lastResult = delivered.result
-      sentParts += 1
-      turnAggregatorRef?.noteBotMessage?.(messageId)
-      try {
-        ctxEmit('onebot-qq/cognition-sent', {
-          decisionId: decision.id,
-          messageId,
-          chatType: turn.chatType,
-          chatId: turn.chatId,
-          action: decision.action,
-          part: index,
-          parts: parts.length,
-        })
-      } catch (error) {}
-      if (index < parts.length - 1 && delayMs) await sleep(delayMs)
-    }
-    if (!sentParts) return { ok: false, error: 'SEND_FAILED' }
-    stats.sent += sentParts
-    noteGroupReply(turn)
-    pending.set(chatKey(turn), { decisionId: decision.id, messageId: firstMessageId, sentAt: clock.now(), action: decision.action, text })
-    return { ok: true, messageId: firstMessageId, result: lastResult, parts: sentParts }
+  function sendDecisionCore(decision, text, turn, opts = {}) {
+    return sendDecisionPlan(decision, text, turn, opts, buildReplyPlan)
   }
 
-  async function sendDecisionPlanner(decision, text, turn, opts = {}) {
+  function sendDecisionPlanner(decision, text, turn, opts = {}) {
+    return sendDecisionPlan(decision, text, turn, opts, deliveryRegistry?.resolve('format')?.plan)
+  }
+
+  async function sendDecisionPlan(decision, text, turn, opts, planner) {
     if (!text) {
       policy.markSent(decision.id, { dryRun: isDry() })
       if (isDry()) stats.dryRun += 1
@@ -395,7 +330,11 @@ export function createPipeline({
     if (replyCfg.split !== false && !String(text).trim()) return { ok: false, error: 'SEND_FAILED' }
     let directPart = 0
     const sent = await executeDeliveryPlan({
-      plan: () => buildReplyPlan({ text, turn, decision, replyCfg: opts.noReplySegment ? { ...replyCfg, quote: false } : replyCfg }),
+      plan: () => planner?.({
+        text, turn, replyCfg: { ...replyCfg, ...(opts.noReplySegment ? { quote: false } : {}) },
+        replyTo: turn.messages?.at(-1)?.messageId || '', source: 'pipeline', decisionId: decision.id,
+      }),
+      onPlanFallback: () => log.warn?.('回复交付规划不可用，使用单条纯文本回退'),
       text, turn, decisionId: decision.id, source: 'pipeline', dryRun: () => isDry() ? true : null,
       deliver: outbound && typeof outbound.deliver === 'function' ? (payload) => outbound.deliver(payload) : null,
       fallbackDeliver: (payload) => sendDirect(decision, payload.segments, turn, { mark: directPart++ === 0 }),
@@ -423,7 +362,8 @@ export function createPipeline({
   }
 
   function sendDecision(decision, text, turn, opts = {}) {
-    return cfg().delivery?.engine === 'planner'
+    const engine = cfg().delivery?.engine || 'auto'
+    return engine === 'planner' || (engine !== 'core' && deliveryRegistry?.resolve('format'))
       ? sendDecisionPlanner(decision, text, turn, opts)
       : sendDecisionCore(decision, text, turn, opts)
   }

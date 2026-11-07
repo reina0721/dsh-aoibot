@@ -2,6 +2,16 @@
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
+      id: 'builtin-reply-delivery', name: '回复交付', version: '1.0.0',
+      description: '使用 cognition.reply 配置规划回复分条、引用、@ 与条间等待',
+      entry: 'builtin/reply-delivery.js', apiVersion: 1,
+      permissions: Object.freeze(['delivery:plan']), requires: Object.freeze([]),
+    }),
+    defaultEnabled: true,
+    load: () => import('./builtin/reply-delivery.js'),
+  }),
+  Object.freeze({
+    manifest: Object.freeze({
       id: 'builtin-sample', name: '内置示例', version: '1.0.0',
       description: '默认关闭的模块 API 示例', entry: 'builtin/sample.js', apiVersion: 1,
       permissions: Object.freeze(['commands', 'storage']), requires: Object.freeze([]),

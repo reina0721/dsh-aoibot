@@ -1,6 +1,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { createDeliveryRegistry } from '../src/delivery/registry.js'
+import { setup as setupReplyDelivery } from '../src/modules/builtin/reply-delivery.js'
 
 // Expose closure-local delivery functions only in this test module. Instrument the
 // existing no-op ctxEmit so payload parity is observable without changing the API.
@@ -17,11 +19,17 @@ const texts = ['字'.repeat(40), '字'.repeat(40), '字'.repeat(15)]
 const text = texts.join('')
 const segment = (value) => ({ type: 'text', data: { text: value } })
 
-function harness({ engine, reply = {}, dryRun = false, responses = [], direct = false, unavailable = false } = {}) {
+function registeredRegistry() {
+  const registry = createDeliveryRegistry()
+  setupReplyDelivery({ delivery: { registerPlanner: registry.register } })
+  return registry
+}
+
+function harness({ engine, deliveryRegistry = engine === 'planner' ? registeredRegistry() : null, reply = {}, dryRun = false, responses = [], direct = false, unavailable = false } = {}) {
   const calls = [], notes = [], marks = [], warnings = []
   const config = { cognition: { delivery: { engine }, dryRun, reply: { maxChars: 40, maxParts: 3, delayMs: 0, atSender: true, ...reply }, turn: { groupCooldownMs: 500 } } }
   const pipeline = createPipeline({
-    getConfig: () => config,
+    getConfig: () => config, deliveryRegistry,
     clock: { now: () => 1000 }, policy: { markSent: (...args) => marks.push(['sent', ...args]), markFailed: (...args) => marks.push(['failed', ...args]) },
     logger: { warn: (...args) => warnings.push(args) },
     turnAggregator: { noteBotMessage: (id) => notes.push(id) },
@@ -33,7 +41,7 @@ function harness({ engine, reply = {}, dryRun = false, responses = [], direct = 
 
 // Initially run against the unchanged core implementation; the same expectations
 // also characterize the opt-in planner after the seam is introduced.
-for (const engine of [undefined, 'core', 'planner']) {
+for (const engine of [undefined, 'auto', 'core', 'planner']) {
   test(`delivery ${engine || 'default'}: exact split, quote/@, attribution and side effects`, async () => {
     const h = harness({ engine })
     assert.deepEqual(await h.send(), { ok: true, messageId: 'm1', result: { n: 3 }, parts: 3 })
@@ -158,4 +166,65 @@ test('delivery planner: invalid plan uses guarded single text fallback; runtime 
   assert.equal((await h.send()).parts, 3)
   assert.deepEqual(h.calls[1].segments.map((part) => part.type), ['reply', 'at', 'text'])
   assert.equal(h.pipeline.stats().sent, 4)
+})
+
+test('delivery engines: registry absent/present matrix and core bypass', async () => {
+  for (const engine of [undefined, 'auto', 'core', 'planner']) {
+    for (const present of [false, true]) {
+      let planned = 0
+      const registry = registeredRegistry()
+      const original = registry.resolve().plan
+      registry.remove('builtin-reply-delivery')
+      registry.register({ id: 'observed', stage: 'format', plan: (ctx) => {
+        planned++
+        assert.deepEqual(Object.keys(ctx).sort(), ['text', 'turn', 'replyCfg', 'replyTo', 'source', 'decisionId'].sort())
+        assert.equal(ctx.decisionId, decision.id)
+        assert.equal(ctx.replyTo, 'latest')
+        return original(ctx)
+      } })
+      const h = harness({ engine, deliveryRegistry: present ? registry : null })
+      const sent = await h.send()
+      const fallback = engine === 'planner' && !present
+      assert.equal(sent.parts, fallback ? 1 : 3, `${engine}/${present}`)
+      assert.equal(planned, Number(present && engine !== 'core'))
+      assert.deepEqual(h.calls[0].segments.map(s => s.type), fallback ? ['text'] : ['reply', 'at', 'text'])
+      assert.equal(h.warnings.length, Number(fallback))
+    }
+  }
+})
+
+test('delivery planner: thrown/invalid plans fall back safely in auto and planner; outbound rejects without retry', async () => {
+  for (const engine of ['auto', 'planner']) for (const plan of [() => { throw Error('secret-marker') }, () => null, () => ({ parts: [] })]) {
+    const registry = createDeliveryRegistry()
+    registry.register({ id: 'bad', stage: 'format', plan })
+    const h = harness({ engine, deliveryRegistry: registry })
+    assert.equal((await h.send()).parts, 1)
+    assert.deepEqual(h.calls[0].segments, [segment(text)])
+    assert.equal(h.notes.length, 1)
+    assert.equal(h.pipeline.stats().sent, 1)
+    assert.equal(h.pipeline._pending.size, 1)
+    assert.equal(h.warnings.length, 1)
+    assert.doesNotMatch(JSON.stringify(h.warnings), /secret-marker/)
+    const blocked = harness({ engine, deliveryRegistry: registry, responses: [{ ok: false, error: 'ACCESS_DENIED', blocked: true }] })
+    assert.equal((await blocked.send()).error, 'ACCESS_DENIED')
+    assert.equal(blocked.calls.length, 1)
+    assert.equal(blocked.pipeline.stats().sent, 0)
+    const dry = harness({ engine, deliveryRegistry: registry, responses: [{ ok: true, dryRun: true }] })
+    assert.deepEqual(await dry.send(), { ok: true, dryRun: true, messageId: '' })
+    assert.equal(dry.pipeline.stats().dryRun, 1)
+    assert.equal(dry.pipeline._pending.size, 0)
+  }
+})
+
+test('delivery planner: resolves registration on each send after disable and re-enable', async () => {
+  const registry = registeredRegistry()
+  const h = harness({ engine: 'auto', deliveryRegistry: registry })
+  assert.equal((await h.send()).parts, 3)
+  registry.remove('builtin-reply-delivery')
+  assert.equal((await h.send()).parts, 3)
+  h.config.cognition.delivery.engine = 'planner'
+  assert.equal((await h.send()).parts, 1)
+  setupReplyDelivery({ delivery: { registerPlanner: registry.register } })
+  assert.equal((await h.send()).parts, 3)
+  assert.equal(h.pipeline.stats().sent, 10)
 })

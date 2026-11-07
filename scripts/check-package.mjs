@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['src/host.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/sample.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
+    for(const file of ['src/host.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist)$/.test(entry.name),file);
@@ -38,8 +38,10 @@ try {
       const { builtinRegistry } = await import(${JSON.stringify(pathToFileURL(join(base,'src/modules/registry.js')).href)});
       const { createModuleKernel } = await import(${JSON.stringify(pathToFileURL(join(base,'src/modules/kernel.js')).href)});
       const root = await mkdtemp(join(tmpdir(), 'dsh-pack-modules-'));
+      const { createDeliveryRegistry } = await import(${JSON.stringify(pathToFileURL(join(base,'src/delivery/registry.js')).href)});
+      const deliveryRegistry = createDeliveryRegistry();
       let calls = 0;
-      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, commands: {
+      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, deliveryRegistry, commands: {
         registerCommand(name, handler, options) {
           assert.equal(name, 'module-sample'); assert.equal(options.ownerOnly, true);
           assert.equal(handler(), '内置示例模块已启用。'); calls++; return () => {};
@@ -47,7 +49,12 @@ try {
       } });
       try {
         const items = await kernel.start();
-        assert.equal(items.length, 1); assert.equal(items[0].status, 'disabled'); assert.equal(calls, 0);
+        assert.equal(items.length, 2); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        const reply = items.find(item => item.id === 'builtin-reply-delivery');
+        assert.equal(reply.status, 'loaded'); assert.equal(reply.hasConfig, false);
+        assert.equal(deliveryRegistry.resolve('format').id, reply.id);
+        assert.equal((await kernel.setEnabled(reply.id, false)).status, 'disabled');
+        assert.equal(deliveryRegistry.resolve('format'), null);
         assert.equal((await kernel.setEnabled('builtin-sample', true)).status, 'loaded'); assert.equal(calls, 1);
       } finally { await kernel.dispose(); await rm(root, {recursive:true,force:true}); }
     `],{stdio:'pipe'});

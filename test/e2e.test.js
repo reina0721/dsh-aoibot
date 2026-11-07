@@ -411,9 +411,9 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 
   // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 1, external: 0 })
-  assert.equal(modules.items.length, 1)
-  const sample = modules.items[0]
+  assert.deepEqual(modules.summary, { builtin: 2, external: 0 })
+  assert.equal(modules.items.length, 2)
+  const sample = modules.items.find((item) => item.id === 'builtin-sample')
   assert.equal(sample.id, 'builtin-sample')
   assert.equal(sample.source, 'builtin'); assert.equal(sample.builtin, true)
   assert.equal(sample.status, 'disabled'); assert.equal(sample.enabled, false)
@@ -1115,7 +1115,7 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
   let catalog = await getJson(fake, '/modules')
   assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
-  assert.deepEqual(catalog.summary, { builtin: 1, external: 1 })
+  assert.deepEqual(catalog.summary, { builtin: 2, external: 1 })
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
   await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
@@ -1136,7 +1136,7 @@ test('e2e: built-in config GET/POST, revision conflict, validation and live samp
   assert.equal(initial.ok, true); assert.equal(initial.id, id); assert.equal(initial.revision, 0)
   assert.equal(initial.schema.version, 1)
   assert.deepEqual(initial.values, { message: '内置示例模块已启用。' })
-  assert.ok((await getJson(fake, '/modules')).items[0].hasConfig)
+  assert.ok((await getJson(fake, '/modules')).items.find((item) => item.id === id).hasConfig)
   const saved = await postJson(fake, '/modules/config', { id, values: { message: '配置后的回复' }, revision: initial.revision })
   assert.equal(saved.revision, 1)
   assert.deepEqual(saved, await getJson(fake, '/modules/config?id=' + id))
@@ -1181,4 +1181,58 @@ test('e2e: built-in config GET/POST, revision conflict, validation and live samp
   const unsupported = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'DELETE' })
   assert.equal(unsupported.status, 405)
   assert.equal(unsupported.json.code, 'MODULE_CONFIG_INVALID')
+})
+
+test('e2e: default reply module plans splits, disable changes planner fallback, external registration denied', async (t) => {
+  const { fake, handle, mock, dir } = await boot(t, { rowConfig: (mock) => endpointConfig(mock, {
+    cognition: { enabled: true, dryRun: false, reply: { maxChars: 100, maxParts: 2, delayMs: 0, quote: true } },
+  }) })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-reply-delivery'
+  const catalog = await getJson(fake, '/modules')
+  const reply = catalog.items.find(item => item.id === id)
+  assert.equal(reply.status, 'loaded')
+  assert.equal(reply.enabled, true)
+  assert.equal(reply.source, 'builtin')
+  assert.equal(reply.hasConfig, false)
+  assert.deepEqual(reply.permissions, ['delivery:plan'])
+  assert.equal(handle.getConfig().cognition.delivery.engine, 'auto')
+  const unavailable = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'GET' })
+  assert.equal(unavailable.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+
+  const longReply = '回复交付测试。'.repeat(40)
+  t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: longReply }))
+  t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
+  let turnIndex = 0
+  const send = async (parts, quoted) => {
+    const index = ++turnIndex
+    const before = mock.calls.filter(call => call.action === 'send_private_msg').length
+    const result = await handle.cognition.services.pipeline.handleTurn({
+      id: `delivery-${index}`, chatType: 'private', chatId: String(10000 + index), senderId: String(10000 + index),
+      selfId: MOCK_SELF_ID, text: '你好，请详细说说', addressed: true, completeness: 1,
+      messages: [{ messageId: String(index), text: '你好' }], messageIds: [String(index)],
+    })
+    assert.equal(result.ok, true)
+    const sent = mock.calls.filter(call => call.action === 'send_private_msg').slice(before)
+    assert.equal(sent.length, parts)
+    assert.equal(sent[0].params.message[0].type, quoted ? 'reply' : 'text')
+    assert.equal(sent.map(call => call.params.message.filter(s => s.type === 'text').map(s => s.data.text).join('')).join(''), longReply)
+    if (parts > 1) assert.equal(sent[1].params.message.length, 1)
+  }
+  await send(2, true)
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: false })).item.status, 'disabled')
+  await send(2, true) // auto retains core behavior when disabled
+  await patchConfig(fake, { cognition: { delivery: { engine: 'planner' } } })
+  await send(1, false)
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: true })).item.status, 'loaded')
+  await send(2, true)
+
+  const external = join(dir, 'modules', 'external-planner')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'external-planner', entry: 'index.mjs', permissions: ['delivery:plan'], builtin: true, source: 'builtin' }))
+  await writeFile(join(external, 'index.mjs'), `export function setup(api) { api.delivery.registerPlanner({ id: 'external', stage: 'format', plan() {} }) }`)
+  const reloaded = await postJson(fake, '/modules/reload', { id: 'external-planner' })
+  assert.equal(reloaded.item.status, 'error')
+  assert.match(reloaded.item.error, /仅允许内置模块/)
+  await send(2, true)
 })

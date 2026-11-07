@@ -10,7 +10,7 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
  * planned total; only real successful sends invoke onPartSent.
  */
 export async function executeDeliveryPlan({
-  plan, deliver, fallbackDeliver = null, sleep = defaultSleep, onPartSent, onPartFailed,
+  plan, deliver, fallbackDeliver = null, sleep = defaultSleep, onPartSent, onPartFailed, onPlanFallback,
   text = '', turn, source = 'pipeline', decisionId = '', dryRun = null,
 }) {
   let resolved
@@ -21,6 +21,7 @@ export async function executeDeliveryPlan({
     resolved = null
   }
   if (!resolved) {
+    onPlanFallback?.()
     resolved = buildFallbackPlan({ text, turn, source, decisionId })
     if (!validateDeliveryPlan(resolved)) return { ok: false, error: 'EMPTY_MESSAGE' }
   }
