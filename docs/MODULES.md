@@ -69,7 +69,7 @@ export async function setup(api) {
 
 ## 权限与 API
 
-所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。
+所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
 
 | 权限 | API | 行为 |
 |---|---|---|
@@ -82,6 +82,7 @@ export async function setup(api) {
 | `delivery:plan` | `api.delivery.registerPlanner(descriptor)` | 仅内置模块；注册唯一 format 规划器，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `turn:lifecycle` | `api.turn.register({id,onStart,onEnd})` | 仅内置模块；注册顺序开始、逆序结束，返回生命周期 disposer；外部、缺权限或已停止调用抛错 |
 | `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
+| `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
@@ -139,6 +140,28 @@ pipeline 仅传入 `{turn,settings:{typingEnabled:cfg().typing?.enabled===true}}
 
 注册项与模块命令/监听器一样，在停用、setup 失败、依赖清理或 dispose 时注销；停用后即使全局 typing 配置开启也不提示，不走旧内联回退。已经开始的异步 handler 不强制取消。仅旧 harness/调用者未注入 `turnHooks`（null）时保留原 pipeline 内联 typing；注入空 registry 也不会触发旧路径。详见 [ADR-005](architecture/ADR-005-typing-module.md)。
 
+## 内置模块生命周期调度器（Phase 8）
+
+`scheduler` 是已知权限；仅加载器认定为 builtin 且声明该权限的模块获得只读 `api.scheduler`。缺权限的内置模块和所有外部模块都没有这个属性；外部即使声明权限或伪造 source/builtin 也不能访问。此限制只针对稳定 API，permissions 不是 Node.js 沙箱。
+
+```js
+// 内置描述符 manifest.permissions 包含 'scheduler'，在 setup(api) 内使用：
+const timer = api.scheduler.setTimeout(async () => {
+  // 模块自己的工作；回调不接收上下文或聊天数据。
+}, 1000)
+api.scheduler.clearTimeout(timer.id) // 存在时取消并返回 true，否则 false
+timer.dispose() // 同一取消操作，幂等；已取消/触发/停止后返回 false
+```
+
+- `setTimeout(fn, delayMs)` 同步返回冻结的 `{id,dispose}`；fn 必须为函数，delayMs 必须为数字整数，范围 **0–2,592,000,000 ms（含两端，30 天）**，不做类型转换。0 也异步执行；定时器只保证不早于截止时间，事件循环繁忙时可以延迟。
+- 每个模块当前 runtime 最多 **64** 个活跃定时器；非法参数、超限或已停止 runtime 的注册同步抛错。回调开始前即移除注册、释放额度；已经开始但尚未完成的异步回调不占定时器额度。
+- id 是随机生成的不透明字符串，仅在创建它的模块/runtime 内有效，不是 Node 原生 timer handle，也不包含网关/用户/聊天 ID。把另一模块或旧 runtime 的 id 传给 clearTimeout 返回 false。dispose 与 clearTimeout 在停止后仍可调用并返回 false。
+- 定时器保存在 runtime Map 中，通过全局 setTimeout/clearTimeout 调度。超过 Node 单次安全上限（2,147,483,647 ms）时，按 performance.now() 单调截止时间分段等待，避免 30 天延迟溢出为 1 ms。
+- 停用、setup 失败、事件错误隔离、依赖重载/禁用和内核 dispose 都先标记 runtime 无效并清空原生 timer 与注册，再执行模块 cleanup。回调同时检查当前 runtime 身份和注册仍存在；已取消或旧 generation 的迟到回调不会执行用户函数，也不会重新调度。内置仍不能直接 reload，依赖重载后的 setup 创建新 runtime。
+- 同步抛错与异步拒绝都独立捕获，仅记录固定文案及模块 ID，不读取/输出异常、stack、聊天 ID 或 payload；logger 失败也隔离，不把模块置为 error。已开始的异步回调不会被强制取消或在停用时等待，模块须自行管理在途工作；停止后不能用旧 scheduler 注册新任务。
+
+本阶段只建立未来提醒/媒体工作的前置 API 契约，**不提取或迁移现有提醒/媒体功能**；没有 interval、cron、持久化、重启恢复、重试、发送保证或新增内置模块，生产目录仍为三个内置模块。没有配置、REST 或面板入口。详见 [ADR-007](architecture/ADR-007-module-scheduler.md)。
+
 ## 内置模块声明式配置（Phase 3）
 
 只有受信任的内置 registry 描述符可以声明可选的 `config`，不能写在共享 manifest 中。外部 manifest 即使声明同名属性，也没有配置 API、运行时 `api.config` 或面板配置入口。未声明配置的内置模块同样没有这些能力。不接受 `secret`，配置字段只适合非秘密值；不把令牌或密码放入配置。
@@ -187,7 +210,7 @@ config: {
 - 启动先发现并校验全部目录，再分析 requires 图，最后导入有效且启用的模块。就绪节点中内置优先，其次按 ID 稳定排序。
 - 缺失依赖或依赖环上的模块进入 `error`；下游进入 `blocked`。依赖被禁用、导入/setup/事件失败时，下游也会 blocked；无关模块继续工作。不会自动启用依赖，应先启用/修复依赖。
 - 清理时先清理下游，再清理其依赖。外部重载会停止目标与所有间接依赖它的模块，重新读取目标清单并导入，按图恢复允许运行的下游；内置下游使用缓存代码。
-- 停用清理 cleanup、命令、事件、turn hooks、配置监听、知识源和 capability；重新启用按图恢复。操作串行执行，旧 runtime 的迟到事件错误不会覆盖新的状态。
+- 停用清理 timer、cleanup、命令、事件、turn hooks、配置监听、知识源和 capability；重新启用按图恢复。操作串行执行，旧 runtime 的迟到事件错误不会覆盖新的状态。
 - 事件 handler 异步执行；异常被隔离并记录，不向 OneBot 事件循环抛出。
 
 ## REST 与面板

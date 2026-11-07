@@ -2,6 +2,7 @@
 // 模块是任意本地代码；这里的 permissions 约束稳定 API 的暴露面，不是进程沙箱。
 
 import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { access, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,6 +14,9 @@ import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from './
 const COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 const EVENT_NAMES = new Set(['message', 'notice', 'request', 'meta_event', 'any'])
 const MAX_STORAGE_BYTES = 1024 * 1024
+const MAX_SCHEDULER_DELAY_MS = 2_592_000_000
+const MAX_MODULE_TIMERS = 64
+const MAX_NATIVE_TIMEOUT_MS = 2_147_483_647
 
 function messageOf(error) {
   return String(error?.message || error || '未知错误').replace(/\s+/g, ' ').trim().slice(0, 500)
@@ -194,6 +198,8 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     if (!runtime) return
     runtime.active = false
     record.runtime = null
+    for (const timer of runtime.timers.values()) globalThis.clearTimeout(timer.native)
+    runtime.timers.clear()
     const disposers = [...runtime.disposers].reverse()
     runtime.disposers.length = 0
     for (const dispose of disposers) {
@@ -254,6 +260,49 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       },
       async all() { return clone(await values()) },
     }
+  }
+
+  function schedulerApi(record, runtime) {
+    const isCurrent = () => !disposed && runtime.active && record.runtime === runtime && records.get(record.id) === record
+    const warn = () => {
+      // 不读取回调异常：其中可能包含聊天 ID、正文或其它秘密。
+      try { log.warn?.(`模块 ${record.id} 调度回调失败`) } catch {}
+    }
+    function clearTimeout(id) {
+      const timer = runtime.timers.get(id)
+      if (!timer) return false
+      globalThis.clearTimeout(timer.native)
+      runtime.timers.delete(id)
+      return true
+    }
+    return Object.freeze({
+      setTimeout(fn, delayMs) {
+        requireActive(runtime)
+        requirePermission(record, 'scheduler')
+        if (!record.builtin || !isCurrent()) throw new Error('调度器仅允许当前运行的内置模块使用')
+        if (typeof fn !== 'function') throw new Error('调度回调必须是函数')
+        if (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > MAX_SCHEDULER_DELAY_MS) throw new Error('调度延迟必须是 0–2592000000 ms 的整数')
+        if (runtime.timers.size >= MAX_MODULE_TIMERS) throw new Error('模块最多允许 64 个活跃定时器')
+        const id = randomUUID()
+        const timer = { native: null, deadline: performance.now() + delayMs }
+        const run = () => {
+          // runtime 身份即本次 setup 的 generation；旧回调不能进入新生命周期。
+          if (!isCurrent() || runtime.timers.get(id) !== timer) return
+          const remaining = timer.deadline - performance.now()
+          if (remaining > 0) { schedule(remaining); return }
+          runtime.timers.delete(id)
+          try { Promise.resolve(fn()).catch(warn) } catch { warn() }
+        }
+        // Node 超过有符号 32 位毫秒会退化为 1 ms，按单调时钟分段等待。
+        const schedule = (remaining) => {
+          timer.native = globalThis.setTimeout(run, Math.min(MAX_NATIVE_TIMEOUT_MS, Math.ceil(remaining)))
+        }
+        schedule(delayMs)
+        runtime.timers.set(id, timer)
+        return Object.freeze({ id, dispose: () => clearTimeout(id) })
+      },
+      clearTimeout,
+    })
   }
 
   function apiFor(record, runtime) {
@@ -348,6 +397,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
     }
+    if (record.builtin && record.permissions.includes('scheduler')) api.scheduler = schedulerApi(record, runtime)
     if (record.builtin && record.configSchema) {
       api.config = Object.freeze({
         get: () => clone(record.configValues),
@@ -389,7 +439,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), disposers: [], storage: null }
+    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {
