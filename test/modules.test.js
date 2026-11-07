@@ -395,7 +395,11 @@ test('modules config：setup 前加载、clone、监听隔离/注销、revision�
   const oldFile = await open(file, 'r')
   try {
     const raced = await Promise.allSettled([h.kernel.setModuleConfig(first.id, {}, 1), h.kernel.setModuleConfig(first.id, {}, 1)])
-    assert.equal(raced[0].value.revision, 2); assert.equal(raced[1].reason.code, 'MODULE_CONFIG_CONFLICT')
+    assert.equal(raced.filter((result) => result.status === 'fulfilled').length, 1)
+    assert.equal(raced.filter((result) => result.status === 'rejected').length, 1)
+    const fulfilled = raced.find((result) => result.status === 'fulfilled')
+    const rejected = raced.find((result) => result.status === 'rejected')
+    assert.equal(fulfilled.value.revision, 2); assert.equal(rejected.reason.code, 'MODULE_CONFIG_CONFLICT')
     // 已打开的旧文件保持完整 revision 1；路径已原子替换为完整 revision 2。
     assert.equal(JSON.parse(await oldFile.readFile('utf8')).revision, 1)
     assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 2)
