@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 11（基础设施范围）：新增仅内置可用的 provider 注册表，固定白名单 reminders、单槽唯一注册、身份绑定幂等注销及纯元数据列表；模块 providers:register 权限随 runtime 清理，外部来源或缺权限拒绝。认知保留提醒服务构造/命令/存储/清理，移除 init 自动启动，改为幂等 startReminders；宿主等待 modulesReady 后选择 provider 或核心，provider 启动失败先尽力停止再核心回退，卸载先调用 provider.stop 并防迟到启动。默认没有生产 provider，仍只启动一次原核心提醒调度器，原业务开关与行为保持。新增注册表/权限/生命周期/宿主选择及卸载竞态测试，提醒集成测试显式激活，补充 ADR-010 与模块/架构文档；不提取提醒/媒体、不新增生产模块、配置/UI/REST/依赖或版本，仅本地校验，不推送/部署/发布。
+
 - 架构优化 Phase 10（有限范围）：新增 commands:override 权限与 api.registerCommand 的 overrideBuiltin:false 默认选项，仅同时声明 commands/commands:override 的受信任内置模块可显式覆盖受保护命令；外部伪造来源或缺权限在 setup 中失败。核心 allowProtected 严格 true 才放行，重复模块注册始终拒绝；覆盖优先分发，保留 ownerOnly/deniedCommands，handler 前检查会话访问，回复沿用统一 command 交付路径。身份绑定 disposer 与 runtime 清理在停用、setup/事件失败、依赖禁用/重载、dispose 后恢复原核心分支，旧 API 不可注册；执行/发送失败不重试核心。新增权限/访问/交付/重复/生命周期回归测试、模块/架构文档与 ADR-009；仅为提醒迁移前置 API，不提取提醒/媒体，生产内置仍三个，无新配置/UI/REST/依赖或版本，仅本地校验，不推送/部署/发布。
 
 - 架构优化 Phase 9（有限范围）：新增 persona:store 权限，仅内置模块获得同步 api.personaStore.get/put/remove/list/count；外部声明在导入前拒绝。安全 key、module:<id>:<key> 命名空间与当前人格 facade 隔离，JSON 值进出 structuredClone、每值 UTF-8 JSON 最多 64 KiB、每模块每人格最多 1000 条；事务检查额度、支持满额覆盖，无 raw kind/SQL/底层 store/跨人格参数。生命周期结束撤销旧 API 且保留数据，人格删除清理所有模块记录；复用 cognition SQLite/JSON，无独立持久层。新增仓库/生产接线/重启/清理测试、模块/架构文档与 ADR-008；不是通用 DB，不提取提醒/媒体，不新增生产模块、依赖、配置/UI/REST 或版本，仅本地校验，不推送/部署/发布。

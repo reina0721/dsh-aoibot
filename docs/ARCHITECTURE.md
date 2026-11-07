@@ -387,6 +387,18 @@ host 在 createCognition 前创建 registry，传入 cognition → pipeline，�
 
 生产注入 registry 后禁止内联 typing：模块关闭/注册失败/空 registry 都不提示。仅 `turnHooks=null` 的旧 harness/单测保留原内联逻辑；核心不导入 typing 模块。已开始的异步 handler 不强制取消，没有新超时/重试。详见 [ADR-005](architecture/ADR-005-typing-module.md)。
 
+### Provider 组合与提醒启动（Phase 11）
+
+`src/extensions/providers.js` 提供内部 `createProviderRegistry({logger})`，只依赖本地数据结构，不导入模块代码。固定槽位白名单目前只有 reminders；`register(name,provider,{moduleId,source='builtin'})` 要求内置来源、非空 moduleId、对象及 start/stop 函数，可选 status 必须为函数；同名/同模块重复均拒绝。get(name) 返回 provider 或 null，list() 仅返回新建的 name/moduleId/source 元数据，不包含函数或调用 status；remove(moduleId) 删除匹配注册。disposer 幂等并绑定注册身份，不会移除后续同名注册。注册/注销不自动调用服务方法。
+
+host 在模块内核前创建注册表并以 providerRegistry 注入；内核只开放 `providers:register` / `api.providers.register(name,provider)`，来源和 moduleId 从加载器记录取得。外部（包括伪造 manifest 来源）或缺权限均拒绝。注册 disposer 随 runtime 停用、失败、依赖清理及 dispose 注销，停止后的 API 不能再次注册。生产模块尚未注册 provider。
+
+createCognition 仍构造/初始化原提醒服务并负责 dispose，但 init 不调用 reminders.start；只有显式、幂等的 startReminders() 激活提醒，初始化失败/卸载后无操作。其它认知后台任务保持原顺序，构造阶段没有提醒定时器。独立使用 cognition 的调用者/测试需要显式激活。
+
+启动顺序为 modulesReady → 解析 reminders provider → await provider.start（没有 provider 则核心 startReminders）→ gateway.ready → 按 enabled 启停网关。provider 启动失败先尽力 await stop 清理部分资源，再一次性核心回退；错误日志固定，不含原始异常。ready Promise 仅执行一次；重复等待 ready、模块重复 start 不重复选择或启动提醒。默认无 provider，仍启动一次核心调度器，业务开关和出站规则完全沿用。
+
+宿主 dispose 保持同步、幂等，在 cognition 之前调用 provider.stop，捕获同步异常和 Promise rejection，不等待异步清理。卸载早于 modulesReady 则不启动提醒/网关；卸载中在途 start 完成后再 stop，防止迟到启动残留。停止异步工作仍依赖 provider 自身正确实现；stop 失败只能尽力清理，无法保证错误 provider 不遗留资源。运行期注册变化不触发重新组合、热切换或故障监控。本阶段没有提醒/媒体提取、新生产模块、配置/UI/REST/依赖或版本变化。详见 [ADR-010](architecture/ADR-010-provider-composition.md)。
+
 ### 3.18 统一模块内核（模块架构 v2）
 
 - Phase 10：新增已知权限 `commands:override`，`api.registerCommand(name,handler,{ownerOnly=true,overrideBuiltin=false})` 仅对加载器认定为 builtin 且同时声明 commands/commands:override 的模块开放严格 true 的覆盖选项。外部声明权限/伪造来源无效，外部或缺权限调用在 setup 中抛错进入 error；默认仍拒绝受保护名称，普通外部命令行为不变。内核验证后传 allowProtected:true，disposer 进入 runtime.disposers，在停用、setup/事件失败、依赖禁用/重载及 dispose 时注销；旧 API 不能重新注册，已开始的异步 handler 不强制取消。下一次命令无覆盖即回到核心；本阶段只是提醒迁移前置 API，不提取提醒/媒体，无新生产模块，目录仍为三个内置模块，无配置/UI/REST/依赖或版本变化。详见 [模块契约](MODULES.md) 和 [ADR-009](architecture/ADR-009-command-override.md)。

@@ -85,11 +85,22 @@ export async function setup(api) {
 | `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
 | `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
 | `persona:store` | `api.personaStore` | 仅内置模块；同步 `get/put/remove/list/count`，当前人格与模块命名空间隔离；外部清单声明即拒绝 |
+| `providers:register` | `api.providers.register(name, provider)` | 仅内置且运行中的模块；固定白名单目前只有 reminders，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
 
 生产 host 向模块内核注入 `cognition.services.delivery`，`api.sendText` 将文本交给单条 DeliveryPlan 执行，不拆分、不添加引用/@、不等待。权限、输入修整和返回语义保持，结果保留 outbound 字段并补充 `parts:1`。旧 harness 未注入 delivery 时仍可使用 outbound；DeliveryService 本身缺少 outbound 则安全失败，不直连 gateway，也不对拒绝回退或重试。面板人工 `/send` 保留独立 gateway 路径，媒体/文件和提醒留待后续阶段，详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
+
+## Provider 与提醒启动权（Phase 11）
+
+`api.providers.register('reminders', provider)` 要求 `providers:register` 权限和加载器确认的 builtin 来源。provider 必须是对象，有 `start()`、`stop()` 函数，允许可选 `status()` 函数。名称白名单固定为 reminders；同名或同 moduleId 重复注册均拒绝，不支持覆盖栈。moduleId/source 由内核填写，模块不能通过额外参数伪造；外部即使声明此已知权限，也不能调用注册 API。权限不是同进程 Node.js 沙箱。
+
+注册只登记对象，不调用 start/stop/status。返回的幂等 disposer 仅移除自身注册；停用、setup/事件失败、依赖清理和 dispose 自动注销，旧 runtime 不能重新注册。模块拿不到整个注册表、其它 provider 或底层认知服务。
+
+宿主等待 modulesReady 后只选择一次提醒所有者，再继续 gateway ready/start。存在 provider 就 await start，不启动核心提醒；不存在或 start 抛错/拒绝时启动核心 `cognition.startReminders()`，该入口幂等。启动失败时先尽力 await stop，日志不输出原始错误。卸载先调用选中 provider 的 stop，再关闭 cognition；同步 dispose 不等待异步 stop，吞掉同步/异步清理错误。若 start 在卸载后才结束，再次 stop，provider 应能安全重复停止并取消自身在途工作。
+
+当前没有生产 provider，默认安装仍只启动一次原核心提醒调度器，原默认关闭的 reminders.enabled、提醒命令、存储和出站规则不变。独立创建 cognition 不再自动启动提醒，需显式调用 startReminders。注册表移除和运行期启停不触发宿主重新选择或自动切换核心；未来迁移需定义热切换及在途停止约束。此阶段不提取提醒/媒体、不新增配置/UI/REST/依赖或版本。详见 [ADR-010](architecture/ADR-010-provider-composition.md)。
 
 ## 内置模块受保护命令覆盖（Phase 10）
 

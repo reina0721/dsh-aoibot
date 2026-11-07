@@ -77,6 +77,7 @@ export function createCognition({
   }
   const knowledgeSources = new Map()
   const capabilities = new Map()
+  let remindersStarted = false
   const cfg = () => {
     try { return getConfig()?.cognition || {} } catch (error) { return {} }
   }
@@ -240,13 +241,19 @@ export function createCognition({
       state.services.aggregator.restore()
       log.info?.(`认知存储就绪：${state.store.info().mode} ${dbFile}`)
       startBackgroundJobs()
-      state.services.reminders.start()
     } catch (error) {
       state.error = String(error?.message || error)
       state.ready = false
       log.warn?.(`认知初始化失败：${state.error}`)
     }
     return state.ready
+  }
+
+  // The host selects the reminder owner after modules have finished setup.
+  function startReminders() {
+    if (!state.ready || remindersStarted) return
+    state.services.reminders.start()
+    remindersStarted = true
   }
 
   function startBackgroundJobs() {
@@ -653,6 +660,7 @@ export function createCognition({
 
   return {
     get ready() { return Promise.resolve(state.ready) },
+    startReminders,
     get state() { return state },
     get store() { return state.store },
     get services() { return state.services },

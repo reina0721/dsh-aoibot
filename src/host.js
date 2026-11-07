@@ -30,6 +30,7 @@ import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
+import { createProviderRegistry } from './extensions/providers.js'
 import { createDeliveryRegistry } from './delivery/registry.js'
 import { builtinRegistry } from './modules/registry.js'
 import { personaProfileText } from './cognition/persona.js'
@@ -85,6 +86,7 @@ export function apply(ctx, rowConfig) {
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
   const bilibili = createBilibiliService({ getConfig, logger })
   const deliveryRegistry = createDeliveryRegistry()
+  const providerRegistry = createProviderRegistry({ logger: logger.child('providers') })
   const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
   const cognition = createCognition({
     turnHooks,
@@ -102,6 +104,7 @@ export function apply(ctx, rowConfig) {
     bilibili,
   })
   const modules = createModuleKernel({
+    providerRegistry,
     turnHooks,
     gateway: { get actions() { return gatewayRef?.actions || null } },
     deliveryRegistry,
@@ -288,10 +291,42 @@ export function apply(ctx, rowConfig) {
     dataDir: dataDir(),
   })
 
+  let disposed = false
+  let reminderProvider = null
+  function stopReminderProvider() {
+    if (!reminderProvider) return Promise.resolve()
+    try {
+      return Promise.resolve(reminderProvider.stop()).catch(() => {
+        log.warn('提醒 provider 停止失败')
+      })
+    } catch (error) {
+      log.warn('提醒 provider 停止失败')
+      return Promise.resolve()
+    }
+  }
+
   const ready = (async () => {
     try {
       await modulesReady
+      if (disposed) return
+      reminderProvider = providerRegistry.get('reminders')
+      if (reminderProvider) {
+        try {
+          await reminderProvider.start()
+        } catch (error) {
+          log.warn('提醒 provider 启动失败，回退核心提醒')
+          // A failed start may already have allocated a timer.
+          await stopReminderProvider()
+          if (!disposed) {
+            reminderProvider = null
+            cognition.startReminders()
+          }
+        }
+        // dispose is synchronous; a late start must also be stopped.
+        if (disposed) { await stopReminderProvider(); return }
+      } else cognition.startReminders()
       await gateway.ready
+      if (disposed) return
       if (configState.current.enabled) await gateway.start()
       else gateway.stop()
     } catch (error) {
@@ -301,6 +336,10 @@ export function apply(ctx, rowConfig) {
   ready.catch(() => {})
 
   function dispose() {
+    if (disposed) return
+    disposed = true
+    // Invoke stop before cognition closes its store; do not change sync teardown.
+    stopReminderProvider()
     disposeBrand()
     try {
       routes.dispose()
@@ -347,6 +386,7 @@ export function apply(ctx, rowConfig) {
     stickers,
     bilibili,
     modules,
+    providerRegistry,
     modulesReady,
     backup,
     upgrade,

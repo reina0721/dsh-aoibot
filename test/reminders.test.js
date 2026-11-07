@@ -247,7 +247,7 @@ test('real reminder commands report validation/duplicate/cancel errors and bound
   assert.match((await command(`/forgetreminder ${row.id}`)).reply, /已取消/)
 })
 
-test('cognition wires owner reminders, persists across restart, starts scheduler and disposes', async (t) => {
+test('cognition defers reminder timers until explicit activation, persists across restart and disposes', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-reminders-'))
   t.after(() => rmSync(dir, { recursive: true, force: true }))
   const config = normalizeConfig({ access: { ownerQQ: '10001' }, cognition: {
@@ -258,17 +258,27 @@ test('cognition wires owner reminders, persists across restart, starts scheduler
   const access = { isOwner: (cfg, id) => cfg.access.ownerQQ === id, canSend: () => ({ allowed: true }) }
   const options = () => ({ dataRoot: dir, getConfig: () => config, clock: { now: scheduler.now }, scheduler, access,
     gateway: { actions: { sendMessage: async (payload) => { sends.push(payload); return { message_id: 1 } } } } })
+  const schedule = t.mock.method(scheduler, 'setTimeout')
   let cog = createCognition(options())
   t.after(() => cog.dispose())
   assert.equal(await cog.ready, true)
+  assert.equal(schedule.mock.calls.filter(call => call.arguments[1] === 1000).length, 0)
   const response = await cog.services.commands.handle({ ...target, senderId: '10001', text: '/remind 2099-01-01T00:00:00Z persist' })
   assert.match(response.reply, /rem_[a-f0-9]+/)
   const row = cog.services.reminders.add({ ...target, createdBy: '10001', text: 'due', at: NOW + 1000 })
+  scheduler.advance(1000)
+  await new Promise(setImmediate)
+  assert.equal(cog.store.get('persona_self:reminder', row.id).status, 'active')
+  assert.equal(sends.length, 1) // only the command reply, no constructor-side reminder timer
   cog.dispose()
   scheduler = createFakeScheduler(NOW + 1000)
   cog = createCognition(options())
   assert.equal(await cog.ready, true)
   assert.equal(cog.services.reminders.list(target).length, 2)
+  const start = t.mock.method(cog.services.reminders, 'start')
+  cog.startReminders()
+  cog.startReminders()
+  assert.equal(start.mock.callCount(), 1)
   scheduler.advance(1000)
   await new Promise(setImmediate)
   assert.equal(cog.store.get('persona_self:reminder', row.id).status, 'sent')
@@ -276,6 +286,8 @@ test('cognition wires owner reminders, persists across restart, starts scheduler
   assert.equal(sends[1].message[0].data.text, 'due')
   assert.equal(cog.store.count('llm_usage'), 0)
   cog.dispose()
+  cog.startReminders()
+  assert.equal(start.mock.callCount(), 1)
   scheduler.advance(60000)
   await new Promise(setImmediate)
   assert.equal(sends.length, 2)

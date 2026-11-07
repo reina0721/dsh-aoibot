@@ -72,7 +72,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -317,6 +317,17 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       dir: record.moduleDir,
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
+      providers: Object.freeze({
+        register(name, provider) {
+          requireActive(runtime)
+          requirePermission(record, 'providers:register')
+          if (!record.builtin) throw new Error('provider 仅允许内置模块注册')
+          if (!providerRegistry?.register) throw new Error('provider 注册表不可用')
+          const dispose = providerRegistry.register(name, provider, { moduleId: record.id, source: record.source })
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
       turn: Object.freeze({
         register(descriptor) {
           requireActive(runtime)
