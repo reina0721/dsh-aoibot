@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, open, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -392,18 +392,16 @@ test('modules config：setup 前加载、clone、监听隔离/注销、revision�
   await assert.rejects(h.kernel.setModuleConfig(first.id, { unknown: true }, 1), { code: 'MODULE_CONFIG_INVALID' })
   await assert.rejects(h.kernel.setModuleConfig(first.id, {}, undefined), { code: 'MODULE_CONFIG_INVALID' })
   assert.equal((await h.kernel.getModuleConfig(first.id)).revision, 1)
-  const oldFile = await open(file, 'r')
-  try {
-    const raced = await Promise.allSettled([h.kernel.setModuleConfig(first.id, {}, 1), h.kernel.setModuleConfig(first.id, {}, 1)])
-    assert.equal(raced.filter((result) => result.status === 'fulfilled').length, 1)
-    assert.equal(raced.filter((result) => result.status === 'rejected').length, 1)
-    const fulfilled = raced.find((result) => result.status === 'fulfilled')
-    const rejected = raced.find((result) => result.status === 'rejected')
-    assert.equal(fulfilled.value.revision, 2); assert.equal(rejected.reason.code, 'MODULE_CONFIG_CONFLICT')
-    // 已打开的旧文件保持完整 revision 1；路径已原子替换为完整 revision 2。
-    assert.equal(JSON.parse(await oldFile.readFile('utf8')).revision, 1)
-    assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 2)
-  } finally { await oldFile.close() }
+  // Windows cannot replace a file that is still open for reading; capture the
+  // pre-write contents instead of holding a handle across atomic replacement.
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 1)
+  const raced = await Promise.allSettled([h.kernel.setModuleConfig(first.id, {}, 1), h.kernel.setModuleConfig(first.id, {}, 1)])
+  assert.equal(raced.filter((result) => result.status === 'fulfilled').length, 1)
+  assert.equal(raced.filter((result) => result.status === 'rejected').length, 1)
+  const fulfilled = raced.find((result) => result.status === 'fulfilled')
+  const rejected = raced.find((result) => result.status === 'rejected')
+  assert.equal(fulfilled.value.revision, 2); assert.equal(rejected.reason.code, 'MODULE_CONFIG_CONFLICT')
+  assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 2)
   await h.kernel.setEnabled(first.id, false)
   await h.kernel.setModuleConfig(first.id, { message: '关闭时' }, 2)
   assert.equal(changes.length, 2)
