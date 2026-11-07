@@ -1761,6 +1761,7 @@ test('CogSettings: budget card appears only above cog-llm fields and keeps confi
 
 test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上限与刷新', async () => {
   const items = [
+    { id: 'builtin-typing', name: '私聊输入状态', builtin: true, status: 'loaded', enabled: true, hasConfig: false, permissions: ['turn:lifecycle', 'status:write'], canReload: false, canToggle: true },
     { id: 'builtin-reply-delivery', name: '回复交付', builtin: true, status: 'loaded', enabled: true, hasConfig: false, permissions: ['delivery:plan'], canReload: false, canToggle: true },
     { id: 'builtin-sample', name: '内置示例', builtin: true, status: 'blocked', enabled: true, requires: ['external'], permissions: ['commands'], canReload: false, canToggle: true },
     { id: 'external', name: '外部清单关闭', builtin: false, status: 'disabled', enabled: false, requires: [], canReload: true, canToggle: false },
@@ -1768,7 +1769,7 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   const session = { values: [items, false, '', ''], index: 0 }
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast() {} }) } finally { hookSession = null } }
   const tree = render(), text = JSON.stringify(tree)
-  assert.match(text, /内置 2/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
+  assert.match(text, /内置 3/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
   assert.match(text, /permissions 不是沙箱/)
   const panels = treeNodes(tree).filter((node) => node.props?.title)
   const built = panels.find((node) => node.props.title === '内置示例')
@@ -1778,6 +1779,10 @@ test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上
   assert.ok(reply)
   assert.equal(treeNodes(reply.props.actions).some((node) => node.children?.includes('配置')), false)
   assert.equal(control(reply.props.actions, '停用').props.disabled, false)
+  const typing = panels.find((node) => node.props.title === '私聊输入状态')
+  assert.ok(typing)
+  assert.equal(treeNodes(typing.props.actions).some((node) => ['配置', '重载'].some(label => node.children?.includes(label))), false)
+  assert.equal(control(typing.props.actions, '停用').props.disabled, false)
   const external = panels.find((node) => node.props.title === '外部清单关闭')
   assert.equal(control(external.props.actions, '启用').props.disabled, true)
   assert.equal(control(external.props.actions, '重载').props.disabled, false)

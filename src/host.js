@@ -22,6 +22,7 @@ import { normalizeEvent } from './gateway/normalize.js'
 import { createIngressCoordinator } from './ingress/coordinator.js'
 import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
+import { createTurnHooks } from './cognition/turn-hooks.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
@@ -84,7 +85,9 @@ export function apply(ctx, rowConfig) {
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
   const bilibili = createBilibiliService({ getConfig, logger })
   const deliveryRegistry = createDeliveryRegistry()
+  const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
   const cognition = createCognition({
+    turnHooks,
     deliveryRegistry,
     ctx,
     getConfig,
@@ -99,6 +102,8 @@ export function apply(ctx, rowConfig) {
     bilibili,
   })
   const modules = createModuleKernel({
+    turnHooks,
+    gateway: { get actions() { return gatewayRef?.actions || null } },
     deliveryRegistry,
     dataDir: dataDir('modules'),
     registry: builtinRegistry,

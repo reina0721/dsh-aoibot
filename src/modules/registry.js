@@ -2,6 +2,16 @@
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
+      id: 'builtin-typing', name: '私聊输入状态', version: '1.0.0',
+      description: '使用 cognition.typing.enabled 在私聊轮次开始和结束时提示输入状态',
+      entry: 'builtin/typing.js', apiVersion: 1,
+      permissions: Object.freeze(['turn:lifecycle', 'status:write']), requires: Object.freeze([]),
+    }),
+    defaultEnabled: true,
+    load: () => import('./builtin/typing.js'),
+  }),
+  Object.freeze({
+    manifest: Object.freeze({
       id: 'builtin-reply-delivery', name: '回复交付', version: '1.0.0',
       description: '使用 cognition.reply 配置规划回复分条、引用、@ 与条间等待',
       entry: 'builtin/reply-delivery.js', apiVersion: 1,

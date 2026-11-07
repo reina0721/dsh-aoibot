@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { createDeliveryRegistry } from '../src/delivery/registry.js'
+import { createTurnHooks } from '../src/cognition/turn-hooks.js'
+import { builtinRegistry } from '../src/modules/registry.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
 import { createCommandService } from '../src/cognition/commands.js'
 import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from '../src/modules/config.js'
@@ -17,9 +19,10 @@ async function moduleDir(root, id, manifest, source) {
   return dir
 }
 
-async function harness(registry = [], logger = null, delivery = null) {
+async function harness(registry = [], logger = null, delivery = null, gateway = null) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-modules-'))
   const deliveryRegistry = createDeliveryRegistry()
+  const turnHooks = createTurnHooks({ logger })
   const sent = []
   const commandReplies = []
   const commands = createCommandService({
@@ -31,6 +34,8 @@ async function harness(registry = [], logger = null, delivery = null) {
     dataDir: root,
     registry,
     deliveryRegistry,
+    turnHooks,
+    gateway,
     delivery,
     logger,
     getConfig: () => ({}),
@@ -43,7 +48,7 @@ async function harness(registry = [], logger = null, delivery = null) {
     },
   })
   const turn = (text, senderId = 'owner') => ({ text, senderId, chatType: 'private', chatId: senderId })
-  return { root, sent, commandReplies, commands, kernel, turn, deliveryRegistry }
+  return { root, sent, commandReplies, commands, kernel, turn, deliveryRegistry, turnHooks }
 }
 
 test('modules：加载、稳定 API、存储、事件与命令可用，列表不泄露路径', async (t) => {
@@ -172,6 +177,133 @@ function builtin(id, load, extra = {}, defaultEnabled = false) {
   return { manifest: { id, name: id, version: '1', ...extra }, defaultEnabled, load }
 }
 const row = (kernel, id) => kernel.list().find((item) => item.id === id)
+
+test('typing module: default enabled, legacy config, private-only, awaited status and isolated errors', async (t) => {
+  const calls = [], logs = []
+  let failure = null
+  const logger = { warn: (...args) => logs.push(args) }
+  const h = await harness(builtinRegistry, logger, null, { actions: { async setInputStatus(id, event) {
+    await new Promise(setImmediate)
+    calls.push([id, event])
+    if (failure) throw failure
+  } } })
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const item = row(h.kernel, 'builtin-typing')
+  assert.equal(item.enabled, true)
+  assert.equal(item.status, 'loaded')
+  assert.equal(item.hasConfig, false)
+  assert.deepEqual(item.permissions, ['turn:lifecycle', 'status:write'])
+  assert.deepEqual(h.turnHooks.list().map(hook => hook.id), ['builtin-typing'])
+  await assert.rejects(h.kernel.getModuleConfig(item.id), /配置/)
+  const context = (typingEnabled, chatType = 'private') => ({ turn: { chatType, chatId: 1000199876543 }, settings: { typingEnabled } })
+  for (const value of [undefined, false, 'true', 1]) {
+    await h.turnHooks.start(context(value)); await h.turnHooks.end(context(value))
+  }
+  await h.turnHooks.start(context(true, 'group')); await h.turnHooks.end(context(true, 'group'))
+  assert.deepEqual(calls, [])
+  await h.turnHooks.start(context(true))
+  assert.deepEqual(calls, [['1000199876543', 1]])
+  await h.turnHooks.end(context(true))
+  assert.deepEqual(calls, [['1000199876543', 1], ['1000199876543', 2]])
+  failure = Error('raw gateway error for 1000199876543')
+  await h.turnHooks.start(context(true)); await h.turnHooks.end(context(true))
+  assert.equal(calls.length, 4)
+  assert.equal(row(h.kernel, item.id).status, 'loaded')
+  assert.doesNotMatch(JSON.stringify(logs), /1000199876543|raw gateway/)
+  await h.kernel.setEnabled(item.id, false)
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start(context(true)); await h.turnHooks.end(context(true))
+  assert.equal(calls.length, 4)
+  await h.kernel.setEnabled(item.id, true)
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.dispose()
+  assert.deepEqual(h.turnHooks.list(), [])
+})
+
+test('typing module: missing action and synchronous gateway failure are best effort', async (t) => {
+  for (const gateway of [null, { actions: {} }, { actions: { setInputStatus() { throw Error('private gateway failure') } } }]) {
+    const h = await harness(builtinRegistry, null, null, gateway)
+    t.after(() => h.kernel.dispose())
+    await h.kernel.start()
+    const context = { turn: { chatType: 'private', chatId: '123' }, settings: { typingEnabled: true } }
+    await h.turnHooks.start(context); await h.turnHooks.end(context)
+    assert.equal(row(h.kernel, 'builtin-typing').status, 'loaded')
+  }
+})
+
+test('turn/status API: permissions, active runtime, gateway validation and errors preserved', async (t) => {
+  let api, error = null
+  const calls = [], result = { ok: true }
+  const h = await harness([
+    builtin('builtin-no-turn', () => ({ setup(api) { api.turn.register({ id: 'denied', onStart() {} }) } }), {}, true),
+    builtin('builtin-no-status', () => ({ setup(api) { api.status.setInputStatus('1', 1) } }), {}, true),
+    builtin('builtin-status', () => ({ setup(value) { api = value } }), { permissions: ['turn:lifecycle', 'status:write'] }, true),
+  ], null, null, { actions: { setInputStatus(id, event) { calls.push([id, event]); if (error) throw error; return result } } })
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  assert.match(row(h.kernel, 'builtin-no-turn').error, /permission: turn:lifecycle/)
+  assert.match(row(h.kernel, 'builtin-no-status').error, /permission: status:write/)
+  assert.equal(api.config, undefined)
+  assert.equal(api.status.setInputStatus(123, 1), result)
+  assert.deepEqual(calls, [['123', 1]])
+  error = Error('gateway validation error')
+  assert.throws(() => api.status.setInputStatus(' invalid ', 3), value => value === error)
+  assert.deepEqual(calls.at(-1), [' invalid ', 3])
+  error = null
+  await h.kernel.setEnabled(api.id, false)
+  assert.throws(() => api.turn.register({ id: 'stopped', onEnd() {} }), /模块已停止/)
+  assert.throws(() => api.status.setInputStatus('123', 2), /模块已停止/)
+  assert.equal(calls.length, 2)
+})
+
+test('turn/status API: external rejected even with permissions and forged source', async (t) => {
+  const h = await harness()
+  t.after(() => h.kernel.dispose())
+  for (const [id, code] of [['external-turn', "api.turn.register({ id: 'external', onStart() {} })"], ['external-status', "api.status.setInputStatus('123', 1)"]]) {
+    await moduleDir(h.root, id, { permissions: ['turn:lifecycle', 'status:write'], builtin: true, source: 'builtin' }, `export function setup(api) { ${code} }`)
+  }
+  await h.kernel.start()
+  for (const id of ['external-turn', 'external-status']) {
+    assert.equal(row(h.kernel, id).status, 'error')
+    assert.match(row(h.kernel, id).error, /仅允许内置模块/)
+  }
+  assert.deepEqual(h.turnHooks.list(), [])
+})
+
+test('turn API: setup failure, dependency reload/disable and dispose remove hooks and listeners', async (t) => {
+  let starts = 0, events = 0
+  const h = await harness([
+    builtin('builtin-failed-turn', () => ({ setup(api) {
+      api.turn.register({ id: 'failed', onStart() { starts++ } })
+      api.on('message', () => events++)
+      throw Error('setup failed')
+    } }), { permissions: ['turn:lifecycle', 'events'] }, true),
+    builtin('builtin-dependent-turn', () => ({ setup(api) {
+      api.turn.register({ id: 'dependent', onStart() { starts++ } })
+      api.on('message', () => events++)
+    } }), { permissions: ['turn:lifecycle', 'events'], requires: ['dependency'] }, true),
+  ])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'dependency', {}, 'export function setup() {}')
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'builtin-failed-turn').status, 'error')
+  assert.deepEqual(h.turnHooks.list().map(hook => hook.id), ['dependent'])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+  await h.kernel.reload('dependency')
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.setEnabled('dependency', false)
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+  await h.kernel.setEnabled('dependency', true)
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.dispose()
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+})
 
 const configSchema = { version: 1, fields: [
   { path: 'message', type: 'text', label: '回复', default: '默认', maxChars: 4 },

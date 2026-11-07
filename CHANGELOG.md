@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 6：私聊 typing 迁入默认启用的 builtin-typing，通过仅内置可用的 turn:lifecycle/status:write 窄 API 执行轮次开始/结束状态；保留默认关闭的 cognition.typing.enabled 及原 UI/normalizer，无模块配置。核心 turn hooks 顺序开始、逆序结束、逐项错误隔离和固定安全日志；生产空 registry/模块停用不 typing，旧未注入 harness 保留原内联路径。覆盖模块权限/清理、原处理异常、私聊/群聊/配置/错误、宿主目录 builtin=3、面板和独立包加载，新增 ADR-005。无媒体/提醒改造、新依赖、版本变更或 live 操作。
+
 - 架构优化 Phase 5：新增单条 DeliveryService，经既有 DeliveryPlan 执行器与 outbound 闸门统一认知命令、模块 sendText、proactivity 和 Agent qq_send_text；生产共享注入，旧 harness 保留 outbound 兼容。保留 source/decisionId/dryRun 与结果字段，补充 parts:1，无 direct gateway 回退或拒绝后重试。新增服务、生产接线与四类入口回归及 ADR-004；面板人工 /send、媒体/文件、提醒保持原路径，不改 planner/分条或限频/重试/部分成功/leak guard，不新增依赖/配置、不升级版本。
 
 - 架构优化 Phase 4：默认启用 builtin-reply-delivery，通过仅内置可用的 delivery:plan 权限与生命周期 registry 规划回复分条、首条引用/群聊 @、条间等待和末条余文合并；保留 cognition.reply.*，纯 splitter 移至 delivery 并兼容旧导入。内部 engine 默认 auto（无规划器走 core），core 可显式回退，planner 缺失或规划抛错/无效时经原 outbound 安全闸门单条纯文本回退，安全日志不回显异常。pipeline 复用 DeliveryPlan 执行器并保留空白/dryRun/部分成功、统计/pending/归因；补充 registry、权限/生命周期、模块、引擎矩阵、宿主/面板与独立包验证及 ADR-003。回复模块没有独立配置/API/UI，不改全局配置字段、命令、入站、版本或 parity；未推送、发布、部署，未做真实 QQ/浏览器验收。

@@ -67,7 +67,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -267,6 +267,26 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       dir: record.moduleDir,
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
+      turn: Object.freeze({
+        register(descriptor) {
+          requireActive(runtime)
+          requirePermission(record, 'turn:lifecycle')
+          if (!record.builtin) throw new Error('turn 生命周期仅允许内置模块注册')
+          if (!turnHooks?.register) throw new Error('turn 生命周期服务不可用')
+          const dispose = turnHooks.register(descriptor)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
+      status: Object.freeze({
+        setInputStatus(userId, eventType) {
+          requireActive(runtime)
+          requirePermission(record, 'status:write')
+          if (!record.builtin) throw new Error('输入状态仅允许内置模块写入')
+          if (typeof gateway?.actions?.setInputStatus !== 'function') throw new Error('输入状态服务不可用')
+          return gateway.actions.setInputStatus(String(userId), eventType)
+        },
+      }),
       delivery: Object.freeze({
         registerPlanner(descriptor) {
           requireActive(runtime)

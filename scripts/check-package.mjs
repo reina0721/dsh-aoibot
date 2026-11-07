@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['src/host.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
+    for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist)$/.test(entry.name),file);
@@ -40,8 +40,12 @@ try {
       const root = await mkdtemp(join(tmpdir(), 'dsh-pack-modules-'));
       const { createDeliveryRegistry } = await import(${JSON.stringify(pathToFileURL(join(base,'src/delivery/registry.js')).href)});
       const deliveryRegistry = createDeliveryRegistry();
+      const { createTurnHooks } = await import(${JSON.stringify(pathToFileURL(join(base,'src/cognition/turn-hooks.js')).href)});
+      const turnHooks = createTurnHooks();
+      const statuses = [];
+      const gateway = { actions: { setInputStatus: (id, event) => statuses.push([id, event]) } };
       let calls = 0;
-      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, deliveryRegistry, commands: {
+      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, deliveryRegistry, turnHooks, gateway, commands: {
         registerCommand(name, handler, options) {
           assert.equal(name, 'module-sample'); assert.equal(options.ownerOnly, true);
           assert.equal(handler(), '内置示例模块已启用。'); calls++; return () => {};
@@ -49,7 +53,16 @@ try {
       } });
       try {
         const items = await kernel.start();
-        assert.equal(items.length, 2); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        assert.equal(items.length, 3); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        const typing = items.find(item => item.id === 'builtin-typing');
+        assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true); assert.equal(typing.hasConfig, false);
+        const context = { turn: { chatType: 'private', chatId: '123' }, settings: { typingEnabled: true } };
+        await turnHooks.start(context); await turnHooks.end(context);
+        assert.deepEqual(statuses, [['123', 1], ['123', 2]]);
+        await kernel.setEnabled(typing.id, false);
+        assert.equal(turnHooks.list().length, 0);
+        await turnHooks.start(context); await turnHooks.end(context);
+        assert.equal(statuses.length, 2);
         const reply = items.find(item => item.id === 'builtin-reply-delivery');
         assert.equal(reply.status, 'loaded'); assert.equal(reply.hasConfig, false);
         assert.equal(deliveryRegistry.resolve('format').id, reply.id);

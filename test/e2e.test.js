@@ -411,8 +411,11 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 
   // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 2, external: 0 })
-  assert.equal(modules.items.length, 2)
+  assert.deepEqual(modules.summary, { builtin: 3, external: 0 })
+  assert.equal(modules.items.length, 3)
+  const typing = modules.items.find((item) => item.id === 'builtin-typing')
+  assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true)
+  assert.equal(typing.hasConfig, false)
   const sample = modules.items.find((item) => item.id === 'builtin-sample')
   assert.equal(sample.id, 'builtin-sample')
   assert.equal(sample.source, 'builtin'); assert.equal(sample.builtin, true)
@@ -1115,7 +1118,7 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
   let catalog = await getJson(fake, '/modules')
   assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
-  assert.deepEqual(catalog.summary, { builtin: 2, external: 1 })
+  assert.deepEqual(catalog.summary, { builtin: 3, external: 1 })
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
   await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
@@ -1181,6 +1184,59 @@ test('e2e: built-in config GET/POST, revision conflict, validation and live samp
   const unsupported = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'DELETE' })
   assert.equal(unsupported.status, 405)
   assert.equal(unsupported.json.code, 'MODULE_CONFIG_INVALID')
+})
+
+test('e2e: typing uses builtin lifecycle, legacy config and toggle; external turn/status denied', async (t) => {
+  const { fake, handle, mock, dir } = await boot(t, { rowConfig: (mock) => endpointConfig(mock, {
+    access: { ownerQQ: '10001' }, cognition: { enabled: true, dryRun: false },
+  }) })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-typing'
+  const unavailable = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'GET' })
+  assert.equal(unavailable.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+  const pipeline = handle.cognition.services.pipeline
+  let index = 0
+  const makeTurn = (chatType = 'private', text = '/status') => ({
+    id: `typing-${++index}`, chatType, chatId: '10001', senderId: '10001', selfId: MOCK_SELF_ID,
+    text, addressed: true, messages: [], messageIds: [],
+  })
+  const statusCalls = () => mock.calls.filter(call => call.action === 'set_input_status')
+  assert.equal(handle.getConfig().cognition.typing.enabled, false)
+  assert.equal((await pipeline.handleTurn(makeTurn())).command, true)
+  assert.equal(statusCalls().length, 0)
+  await patchConfig(fake, { cognition: { typing: { enabled: true } } })
+  const before = mock.calls.length
+  assert.equal((await pipeline.handleTurn(makeTurn())).command, true)
+  assert.deepEqual(statusCalls().map(call => call.params), [{ user_id: '10001', event_type: 1 }, { user_id: '10001', event_type: 2 }])
+  const turnCalls = mock.calls.slice(before).filter(call => ['set_input_status', 'send_private_msg'].includes(call.action))
+  assert.deepEqual(turnCalls.map(call => call.action), ['set_input_status', 'send_private_msg', 'set_input_status'])
+  await pipeline.handleTurn(makeTurn('group'))
+  assert.equal(statusCalls().length, 2)
+  await postJson(fake, '/modules/toggle', { id, enabled: false })
+  await pipeline.handleTurn(makeTurn())
+  assert.equal(statusCalls().length, 2, 'module disabled suppresses typing with config still on')
+  await postJson(fake, '/modules/toggle', { id, enabled: true })
+  await pipeline.handleTurn(makeTurn())
+  assert.equal(statusCalls().length, 4)
+
+  for (const [suffix, code] of [['turn', "api.turn.register({ id: 'external', onStart() {} })"], ['status', "api.status.setInputStatus('10001', 1)"]]) {
+    const externalId = `external-${suffix}`, external = join(dir, 'modules', externalId)
+    await mkdir(external, { recursive: true })
+    await writeFile(join(external, 'module.json'), JSON.stringify({ id: externalId, entry: 'index.mjs', permissions: ['turn:lifecycle', 'status:write'], builtin: true, source: 'builtin' }))
+    await writeFile(join(external, 'index.mjs'), `export function setup(api) { ${code} }`)
+    const reloaded = await postJson(fake, '/modules/reload', { id: externalId })
+    assert.equal(reloaded.item.status, 'error')
+    assert.match(reloaded.item.error, /仅允许内置模块/)
+  }
+  assert.equal(statusCalls().length, 4)
+  const original = Error('memory retrieval failed')
+  t.mock.method(handle.cognition.services.memory, 'retrieveAsync', async () => {
+    assert.equal(statusCalls().at(-1).params.event_type, 1)
+    throw original
+  })
+  await assert.rejects(pipeline.handleTurn(makeTurn('private', '你好')), error => error === original)
+  assert.equal(statusCalls().length, 6)
+  assert.equal(statusCalls().at(-1).params.event_type, 2)
 })
 
 test('e2e: default reply module plans splits, disable changes planner fallback, external registration denied', async (t) => {

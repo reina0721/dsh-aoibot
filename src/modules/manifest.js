@@ -1,6 +1,6 @@
 // 两种来源共享清单；来源与操作能力只能由加载器赋值。
 export const ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/
-const PERMISSIONS = new Set(['events', 'commands', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan'])
+const PERMISSIONS = new Set(['events', 'commands', 'send:text', 'cognition:read', 'knowledge', 'capabilities', 'storage', 'delivery:plan', 'turn:lifecycle', 'status:write'])
 
 export function validateManifest(manifest, { builtin = false, directoryName } = {}) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('module.json 必须是对象')

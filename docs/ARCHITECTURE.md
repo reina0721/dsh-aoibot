@@ -375,6 +375,16 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
 - 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 媒体工具、RVC 仍未实现；受限图片生成/编辑见 §3.19；真实网关/provider 兼容性仍需 M7 实机验证。
 
+### 轮次生命周期（Phase 6）
+
+`src/cognition/turn-hooks.js` 提供内部 `createTurnHooks({logger})`，仅有 `register({id,onStart,onEnd})`、`start(context)`、`end(context)`、`list()`。非空唯一 id、至少一个函数 handler；返回幂等 disposer。start 按注册顺序串行等待，end 逆序等待；单项同步/异步失败隔离，仅固定安全日志，不输出聊天 ID/注册描述符/原始异常；logger 失败也不进入宿主。
+
+host 在 createCognition 前创建 registry，传入 cognition → pipeline，并与 gateway 一起注入模块内核。内核 `turn:lifecycle` / `api.turn.register` 和 `status:write` / `api.status.setInputStatus` 仅内置运行中的模块可用；外部声明权限也拒绝。status 只调用注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留其校验/错误，不开放通用 gateway。hook 随 runtime 停用、失败、依赖清理和 dispose 自动注销。
+
+默认启用的 `builtin-typing` 无配置 schema/API/UI，唯一开关仍为默认关闭的 `cognition.typing.enabled`，UI/normalizer/路径不变。pipeline 构造 `{turn,settings:{typingEnabled:cfg().typing?.enabled===true}}`，await start → try await processTurn → finally await end。模块只在开关严格为 true 且 turn.chatType 为 private 时，分别尽力 await 状态 1/2，吞掉状态异常。保留正常结果、命令提前返回与处理异常，不发送群输入状态。
+
+生产注入 registry 后禁止内联 typing：模块关闭/注册失败/空 registry 都不提示。仅 `turnHooks=null` 的旧 harness/单测保留原内联逻辑；核心不导入 typing 模块。已开始的异步 handler 不强制取消，没有新超时/重试。详见 [ADR-005](architecture/ADR-005-typing-module.md)。
+
 ### 3.18 统一模块内核（模块架构 v2）
 
 - `src/modules/registry.js` 为冻结的包内静态注册表，lazy import；内置 ID 保留 `builtin-` 前缀。外部扫描 `<dataDir>/modules/<id>/module.json`，拒绝此前缀并跳过 `.builtin`；entry 词法路径与 realpath 都必须留在模块目录内。
@@ -384,12 +394,12 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 - `modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}` 与缺失/损坏状态。外部 `manifestEnabled && !disabled`，清单 false 不能 API/UI 启用；内置 disabled 优先，再 enabled，再 defaultEnabled。先成功写状态再改变 live，失败保持原状。
 - 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。sendText 经 DeliveryService/executor 走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
 - 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后提供主人 `/module-sample`，从 api.config.get().message 读取回复（默认「内置示例模块已启用。」）。
-- Phase 4：`delivery:plan` 仅内置模块可调用 `api.delivery.registerPlanner`，外部声明权限也不能注册；注册项随停用、setup 失败、依赖重载和 dispose 清理。生产 registry 包含默认关闭可配置的 builtin-sample、默认启用无配置的 builtin-reply-delivery。只有单一 format 阶段，没有外部 planner API。
+- Phase 4：`delivery:plan` 仅内置模块可调用 `api.delivery.registerPlanner`，外部声明权限也不能注册；注册项随停用、setup 失败、依赖重载和 dispose 清理。生产 registry 包含默认关闭可配置的 builtin-sample、默认启用无配置的 builtin-reply-delivery，以及 Phase 6 默认启用无配置的 builtin-typing，共三个内置模块。只有单一 format 阶段，没有外部 planner API。
 - Phase 3：仅内置 registry 描述符可声明 `config:{version:1,fields}`；`config.js` 无依赖验证平面唯一键（最多 32）、label、默认值、switch/text/textarea/number/select/string-list/number-list 及边界，拒绝 secret 与未知 values 键，缺失字段填默认值。外部 manifest 和未声明的内置模块无配置 API/UI/runtime config。
 - 配置在发现阶段加载，先于 setup；`.builtin/<id>/config.json` 与 data.json 分离，最多 64 KiB、realpath containment、原子替换。缺失/损坏按默认值与 revision 0 安全警告，不阻止模块运行。`setModuleConfig` 与生命周期串行，revision 匹配后持久化递增（首次为 1），再更新内存/通知；过期为 MODULE_CONFIG_CONFLICT。`getModuleConfig` 深拷贝 schema/values/revision/source，不公开路径。
 - `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按 hasConfig/内置来源提供行内 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示，不改全局配置页、入站或交付路径。
 - host 显式传入生产 registry，保持 modulesReady/startup 顺序与规范化事件 dispatch。GET /modules 返回 items 和 summary；记录新增来源、API 版本、requires、操作能力及 blocked，不返回绝对路径。面板按能力提供启停/外部重载与刷新。
-- 模块仍与宿主同进程，permissions 不是沙箱；无核心功能迁移、远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
+- 模块仍与宿主同进程，permissions 不是沙箱；回复交付规划和私聊输入状态已迁入内置模块，无远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
 
 ### 旧档案导入（M7-d）
 

@@ -15,7 +15,7 @@ export function createPipeline({
   person, relationships, emotion, persona, memory, policy, llm,
   knowledge = null, skills = null, gateway = null, turnAggregator = null,
   beliefs = null, dryRun = null, outbound = null, runtime = null, commands = null, purpose = null,
-  media = null, deliveryRegistry = null,
+  media = null, deliveryRegistry = null, turnHooks = null,
 } = {}) {
   const log = logger?.child?.('pipeline') || logger || { debug() {}, warn() {}, info() {} }
   let turnAggregatorRef = turnAggregator
@@ -536,6 +536,15 @@ export function createPipeline({
   }
 
   async function handleTurn(turn) {
+    if (turnHooks !== null) {
+      const context = { turn, settings: { typingEnabled: cfg().typing?.enabled === true } }
+      await turnHooks.start(context)
+      try {
+        return await processTurn(turn)
+      } finally {
+        await turnHooks.end(context)
+      }
+    }
     if (cfg().typing?.enabled !== true || turn?.chatType !== 'private' || typeof gateway?.actions?.setInputStatus !== 'function') {
       return processTurn(turn)
     }

@@ -7,7 +7,7 @@
 | 内置（builtin） | 随 dsh-bot 发布的静态受信任注册表，不扫描包内目录 | 可以 | 不可以 | `<数据目录>/modules/.builtin/<id>/` |
 | 外部（external） | 操作员安装到 `<数据目录>/modules/<id>/` 的本地 JS | 清单允许时可以 | 可以 | 模块目录 |
 
-内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。Phase 4 已把回复交付规划迁入内置模块；没有远程安装、上传、marketplace 或网络下载模块代码。
+内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。Phase 4 已把回复交付规划迁入内置模块，Phase 6 把私聊输入状态迁入内置模块；没有远程安装、上传、marketplace 或网络下载模块代码。
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
@@ -44,7 +44,9 @@
 
 随包提供 `builtin-sample`（内置示例，1.0.0），`permissions: ["commands","storage"]`、`requires: []`。默认关闭且不调用 import/setup，没有默认消息行为。启用后仅主人可用 `/module-sample`，读取 `api.config.get().message` 回复，默认「内置示例模块已启用。」；示例申请 storage 权限，但不主动写入 data.json。内置模块不能直接重载；依赖协调可以用缓存代码重新运行 setup，生命周期内不再次调用 lazy import。
 
-另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。新安装 `/modules` 有两个内置模块：回复交付 loaded，示例 disabled。
+另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。
+
+默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。新安装 `/modules` 有三个内置模块：私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
 
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
@@ -78,6 +80,8 @@ export async function setup(api) {
 | `knowledge` | `api.registerKnowledgeSource(source)` | 注册认知知识源，重载/停用时自动移除 |
 | `capabilities` | `api.registerCapability(name, impl)` | 注册认知 capability，重载/停用时自动移除 |
 | `delivery:plan` | `api.delivery.registerPlanner(descriptor)` | 仅内置模块；注册唯一 format 规划器，返回生命周期 disposer；外部或缺权限调用抛错 |
+| `turn:lifecycle` | `api.turn.register({id,onStart,onEnd})` | 仅内置模块；注册顺序开始、逆序结束，返回生命周期 disposer；外部、缺权限或已停止调用抛错 |
+| `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
@@ -110,6 +114,30 @@ api.delivery.registerPlanner({
 | planner | 使用模块规划 | 单条纯文本回退 |
 
 已选中的规划器抛错或返回无效计划时也回退为单条纯文本（无引用/@/等待），仅记录固定安全警告；回退仍过 outbound，不重试发送拒绝。空正文、纯空白处理、dryRun、部分成功、统计与归因保持既有语义。配置不迁移，不新增模块配置文件；停用后下一次发送重新解析 registry。详见 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。
+
+## 轮次生命周期与私聊输入状态（Phase 6）
+
+宿主创建核心 `createTurnHooks({logger})` 并同时注入 cognition/pipeline 和模块内核。注册仅通过内核的 builtin API 开放，外部即使声明新权限或伪造 source/builtin 也被拒绝。这些权限不是进程沙箱。
+
+```js
+api.turn.register({
+  id: 'builtin-typing',
+  async onStart({ turn, settings }) {
+    if (settings.typingEnabled !== true || turn?.chatType !== 'private') return
+    try { await api.status.setInputStatus(String(turn.chatId), 1) } catch {}
+  },
+  async onEnd({ turn, settings }) {
+    if (settings.typingEnabled !== true || turn?.chatType !== 'private') return
+    try { await api.status.setInputStatus(String(turn.chatId), 2) } catch {}
+  },
+})
+```
+
+核心 registry 只有 `register/start/end/list`：id 必须非空且唯一，至少一个 handler，提供的 handler 必须为函数；disposer 幂等。start 按注册顺序串行等待，end 逆序串行等待，每个同步/异步错误独立捕获，仅记录固定安全文案，不记录聊天 ID、描述符或原始网关异常，也不改变处理结果或异常。
+
+pipeline 仅传入 `{turn,settings:{typingEnabled:cfg().typing?.enabled===true}}`，不暴露全局配置或 gateway；先 await start，再 await processTurn，finally await end（含命令提前返回和处理失败）。私聊/config 判断属于模块。typing 尽力提示，不影响回复；群聊不调用状态动作；status API 不提供通用 action 或其它 gateway 回退，也不自行记录异常。
+
+注册项与模块命令/监听器一样，在停用、setup 失败、依赖清理或 dispose 时注销；停用后即使全局 typing 配置开启也不提示，不走旧内联回退。已经开始的异步 handler 不强制取消。仅旧 harness/调用者未注入 `turnHooks`（null）时保留原 pipeline 内联 typing；注入空 registry 也不会触发旧路径。详见 [ADR-005](architecture/ADR-005-typing-module.md)。
 
 ## 内置模块声明式配置（Phase 3）
 
@@ -159,7 +187,7 @@ config: {
 - 启动先发现并校验全部目录，再分析 requires 图，最后导入有效且启用的模块。就绪节点中内置优先，其次按 ID 稳定排序。
 - 缺失依赖或依赖环上的模块进入 `error`；下游进入 `blocked`。依赖被禁用、导入/setup/事件失败时，下游也会 blocked；无关模块继续工作。不会自动启用依赖，应先启用/修复依赖。
 - 清理时先清理下游，再清理其依赖。外部重载会停止目标与所有间接依赖它的模块，重新读取目标清单并导入，按图恢复允许运行的下游；内置下游使用缓存代码。
-- 停用清理 cleanup、命令、事件、知识源和 capability；重新启用按图恢复。操作串行执行，旧 runtime 的迟到事件错误不会覆盖新的状态。
+- 停用清理 cleanup、命令、事件、turn hooks、配置监听、知识源和 capability；重新启用按图恢复。操作串行执行，旧 runtime 的迟到事件错误不会覆盖新的状态。
 - 事件 handler 异步执行；异常被隔离并记录，不向 OneBot 事件循环抛出。
 
 ## REST 与面板
