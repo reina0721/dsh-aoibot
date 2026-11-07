@@ -17,7 +17,7 @@ async function moduleDir(root, id, manifest, source) {
   return dir
 }
 
-async function harness(registry = [], logger = null) {
+async function harness(registry = [], logger = null, delivery = null) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-modules-'))
   const deliveryRegistry = createDeliveryRegistry()
   const sent = []
@@ -31,6 +31,7 @@ async function harness(registry = [], logger = null) {
     dataDir: root,
     registry,
     deliveryRegistry,
+    delivery,
     logger,
     getConfig: () => ({}),
     commands,
@@ -665,4 +666,29 @@ test('delivery module API: dependency reload/disable, builtin re-enable and disp
   assert.equal(h.deliveryRegistry.list().length, 1)
   await h.kernel.dispose()
   assert.equal(h.deliveryRegistry.resolve(), null)
+})
+
+
+test('modules：sendText 优先 delivery，保留结果/来源与旧 outbound harness', async (t) => {
+  for (const injected of [false, true]) {
+    const calls = []
+    const result = { ok: false, error: 'RATE_LIMITED', parts: 1 }
+    const delivery = { async deliver(intent) { calls.push(intent); return result } }
+    const h = await harness([], null, injected ? delivery : null)
+    t.after(() => h.kernel.dispose())
+    await moduleDir(h.root, 'sender', { permissions: ['send:text', 'storage'] }, `
+      export async function setup(api) {
+        await api.storage.set('result', await api.sendText({ chatType: 'group', chatId: ' 20001 ', text: ' hello ' }))
+      }
+    `)
+    await h.kernel.start()
+    assert.equal(h.kernel.list()[0].status, 'loaded')
+    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender' }
+    assert.deepEqual(injected ? calls : h.sent, [expected])
+    if (injected) {
+      assert.equal(h.sent.length, 0)
+      const stored = JSON.parse(await readFile(join(h.root, 'sender', 'data.json'), 'utf8'))
+      assert.deepEqual(stored.result, result)
+    }
+  }
 })

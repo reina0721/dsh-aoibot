@@ -89,7 +89,7 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, delivery = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
@@ -149,11 +149,12 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
   async function send(turn, text) {
     const value = String(text || '').trim()
     if (!value) return { handled: true, reply: '' }
-    if (!outbound || typeof outbound.deliver !== 'function') {
+    const sender = delivery?.deliver ? delivery : outbound
+    if (!sender || typeof sender.deliver !== 'function') {
       return { handled: true, reply: value }
     }
     try {
-      const result = await outbound.deliver({
+      const result = await sender.deliver({
         chatType: turn.chatType,
         chatId: turn.chatId,
         segments: [{ type: 'text', data: { text: value } }],
@@ -485,9 +486,10 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (parsed.name === 'say') {
       if (!parsed.args) return send(turn, '用法：/say 要发送的文本')
       if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
-      if (!outbound?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
+      const sender = delivery?.deliver ? delivery : outbound
+      if (!sender?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
       try {
-        const result = await outbound.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
+        const result = await sender.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
         return { handled: true, reply: '', error: result?.ok ? '' : (result?.error || 'SEND_FAILED') }
       } catch (error) { return { handled: true, reply: '', error: String(error?.message || error) } }
     }

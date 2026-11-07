@@ -91,3 +91,28 @@ test('runtime：只给 full/private 注册三个工具，注册失败隔离，di
   runtime.dispose()
   rmSync(dir, { recursive: true, force: true })
 })
+
+test('runtime: registered qq_send_text uses injected delivery and does not fall back on rejection', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-runtime-delivery-'))
+  const env = runtimeEnv()
+  const calls = []
+  let rejected = false
+  const runtime = createAgentRuntime({
+    ctx: env.ctx, dataRoot: dir,
+    getConfig: () => ({ access: { ownerQQ: '10001' }, runtime: { engine: 'agent', workspaceDir: '/tmp/dsh-bot-test-workspace', replyTimeoutMs: 5000 } }),
+    delivery: { async deliver(intent) { calls.push(intent); return rejected ? { ok: false, error: 'ACCESS_DENIED' } : { ok: true, messageId: 'delivery' } } },
+    outbound: { deliver() { assert.fail('must use delivery') } },
+    gateway: { actions: { sendMessage() { assert.fail('must not send directly') } } },
+  })
+  t.after(() => { runtime.dispose(); rmSync(dir, { recursive: true, force: true }) })
+  const turn = { chatType: 'private', chatId: '10001', senderId: '10001' }
+  assert.equal((await runtime.compose({ turn, system: '', user: 'hi' })).ok, true)
+  const tool = env.registered.find((tool) => tool.name === 'qq_send_text')
+  assert.deepEqual(await tool.execute({ text: ' hello ' }), { ok: true, chatType: 'private', chatId: '10001', messageId: 'delivery' })
+  assert.deepEqual(calls, [{ chatType: 'private', chatId: '10001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'agent-tool' }])
+  rejected = true
+  await assert.rejects(tool.execute({ text: 'blocked' }), /ACCESS_DENIED/)
+  assert.equal(calls.length, 2)
+  await assert.rejects(tool.execute({ text: 'no', chatId: 'other' }), /不能指定其它 QQ 目标/)
+  assert.equal(calls.length, 2)
+})

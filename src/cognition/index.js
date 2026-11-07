@@ -31,6 +31,7 @@ import { createBeliefService } from './beliefs.js'
 import { createKnowledgeService, defaultSourceRegistry } from './knowledge.js'
 import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
+import { createDeliveryService } from '../delivery/service.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createReminderService } from './reminders.js'
@@ -138,7 +139,9 @@ export function createCognition({
         logger: log,
         clock,
       })
+      state.services.delivery = createDeliveryService({ outbound: state.services.outbound })
       state.services.runtime = createAgentRuntime({
+        delivery: state.services.delivery,
         ctx,
         getConfig,
         access,
@@ -155,6 +158,7 @@ export function createCognition({
         outbound: state.services.outbound, logger: log,
       })
       state.services.commands = createCommandService({
+        delivery: state.services.delivery,
         getConfig,
         setConfig,
         access,
@@ -223,6 +227,7 @@ export function createCognition({
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
       state.services.pipeline.setTurnAggregator(state.services.aggregator)
       state.services.proactivity = createProactivityService({
+        delivery: state.services.delivery,
         store: personaStore, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
         memory: state.services.memory, persona: state.services.persona, emotion: state.services.emotion,
         llm: state.services.llm, gateway, policy: state.services.policy, logger: log, outbound: state.services.outbound,

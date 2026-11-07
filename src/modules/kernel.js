@@ -67,7 +67,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null, registry = builtinRegistry, deliveryRegistry = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -303,12 +303,13 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       },
       async sendText({ chatType, chatId, text } = {}) {
         requirePermission(record, 'send:text')
-        if (!outbound?.deliver) throw new Error('出站服务不可用')
+        const sender = delivery?.deliver ? delivery : outbound
+        if (!sender?.deliver) throw new Error('出站服务不可用')
         const type = chatType === 'group' ? 'group' : chatType === 'private' ? 'private' : ''
         const id = String(chatId ?? '').trim()
         const value = String(text ?? '').trim()
         if (!type || !id || !value) throw new Error('sendText 需要 chatType、chatId、text')
-        return outbound.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
+        return sender.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
       },
       registerKnowledgeSource(source) {
         requireActive(runtime)

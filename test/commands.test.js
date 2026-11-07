@@ -75,6 +75,7 @@ function harness(overrides = {}, services = {}) {
     setConfig,
     access,
     outbound,
+    delivery: services.delivery,
     llm: services.llm === undefined ? llm : services.llm,
     memory,
     runtime: services.runtime === undefined ? runtime : services.runtime,
@@ -1329,4 +1330,26 @@ test('identity commands: missing service, full registry and storage errors give 
   }
   const full = harness({}, { identities: { link() { throw new Error('IDENTITY_FULL') } } })
   assert.match((await full.service.handle(turn('/identity link qq 123 p'))).reply, /最多 5000/)
+})
+
+
+test('commands：注入 delivery 后普通回复与 /say 均只交付一次，拒绝不回退', async () => {
+  const calls = []
+  let reject = false
+  const delivery = { async deliver(intent) { calls.push(intent); return reject ? { ok: false, error: 'RATE_LIMITED' } : { ok: true, messageId: 'd1' } } }
+  const h = harness({}, { delivery })
+  const help = await h.service.handle(turn('/help'))
+  assert.match(help.reply, /\/status/)
+  assert.deepEqual(await h.service.handle(turn('/say hello')), { handled: true, reply: '', error: '' })
+  assert.equal(calls.length, 2)
+  assert.equal(calls[0].source, 'command')
+  assert.equal(calls[1].segments[0].data.text, 'hello')
+  reject = true
+  for (const command of ['/help', '/say blocked']) {
+    assert.deepEqual(await h.service.handle(turn(command)), { handled: true, reply: '', error: 'RATE_LIMITED' })
+  }
+  assert.equal(h.sent.length, 0)
+  const denied = harness({}, { delivery, allowSend: false })
+  assert.equal((await denied.service.handle(turn('/say no'))).error, 'ACCESS_DENIED')
+  assert.equal(calls.length, 4)
 })

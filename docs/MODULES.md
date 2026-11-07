@@ -73,7 +73,7 @@ export async function setup(api) {
 |---|---|---|
 | `events` | `api.on(name, handler)` | 监听 `message`、`notice`、`request`、`meta_event` 或 `any`；收到规范化事件记录 |
 | `commands` | `api.registerCommand(name, handler, { ownerOnly=true })` | 注册 `/name`；handler 收到 `{turn, parsed, args}`，返回字符串或 `{reply}`；不能覆盖内置/其它模块命令 |
-| `send:text` | `api.sendText({chatType, chatId, text})` | 通过统一 outbound 以 `source: module:<id>` 发送，仍受访问控制和频率限制 |
+| `send:text` | `api.sendText({chatType, chatId, text})` | 通过 DeliveryService → executor → outbound 以 `source: module:<id>` 单条发送，仍受访问控制、频率限制和 leak guard 约束 |
 | `cognition:read` | `api.cognition` | 只读暴露 `snapshot`、`overview`、`memories`、`personDetail`、`relationshipsList`、`timeline` |
 | `knowledge` | `api.registerKnowledgeSource(source)` | 注册认知知识源，重载/停用时自动移除 |
 | `capabilities` | `api.registerCapability(name, impl)` | 注册认知 capability，重载/停用时自动移除 |
@@ -81,6 +81,8 @@ export async function setup(api) {
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
+
+生产 host 向模块内核注入 `cognition.services.delivery`，`api.sendText` 将文本交给单条 DeliveryPlan 执行，不拆分、不添加引用/@、不等待。权限、输入修整和返回语义保持，结果保留 outbound 字段并补充 `parts:1`。旧 harness 未注入 delivery 时仍可使用 outbound；DeliveryService 本身缺少 outbound 则安全失败，不直连 gateway，也不对拒绝回退或重试。面板人工 `/send` 保留独立 gateway 路径，媒体/文件和提醒留待后续阶段，详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
 
 ## 回复交付规划（Phase 4）
 

@@ -11,7 +11,7 @@ export function isQuietHour(hour, start, end) {
 }
 
 export function createProactivityService({
-  store, getConfig, clock, person, relationships, memory, persona, emotion, llm, gateway, policy, logger, outbound = null,
+  store, getConfig, clock, person, relationships, memory, persona, emotion, llm, gateway, policy, logger, outbound = null, delivery = null,
 } = {}) {
   const log = logger?.child?.('proactivity') || logger || { debug() {}, warn() {} }
   const cfg = () => getConfig()?.cognition || {}
@@ -92,8 +92,9 @@ export function createProactivityService({
     const chatId = String(rel.scopeId || '')
     try {
       let delivered
-      if (outbound && typeof outbound.deliver === 'function') {
-        delivered = await outbound.deliver({
+      const sender = delivery?.deliver ? delivery : outbound
+      if (sender && typeof sender.deliver === 'function') {
+        delivered = await sender.deliver({
           chatType: 'private',
           chatId,
           segments: [{ type: 'text', data: { text } }],

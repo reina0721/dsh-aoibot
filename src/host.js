@@ -107,6 +107,7 @@ export function apply(ctx, rowConfig) {
     logger,
     cognition,
     outbound: cognition.services.outbound,
+    delivery: cognition.services.delivery,
     commands: cognition.services.commands,
   })
   const modulesReady = modules.start().catch((error) => {
