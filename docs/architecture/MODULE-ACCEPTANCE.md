@@ -66,4 +66,4 @@ provider 注册同时要求加载器认定的内置来源和 providers:register 
 
 边界与提醒仓库专项 `node --test test/module-boundary.test.js test/module-reminder-repository.test.js`：46 项全部通过；外部 11 项特权 × 普通/伪造来源共 22 个拒绝子用例。完整测试包含既有 provider 交接、提醒命令/数据对等、出站闸门与媒体回归；pack/package 检查在填入最终记录后重新执行，保证产物包含最终文档。
 
-推送、部署、发布与版本变更是独立工作，需要另行明确授权。本次只创建一个本地提交，不执行上述操作。
+推送、部署、发布与版本变更是独立工作，需要另行明确授权。本次只创建一个本地提交，不执行上述操作。后续拟议顺序与逐项授权门槛见 [Phase 15 发布就绪与授权边界](MODULE-RELEASE-READINESS.md)，不表示已经执行或授权。
