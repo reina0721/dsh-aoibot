@@ -57,7 +57,7 @@ git diff --check
 
 ## 6. 真机验收状态（部分）
 
-**0.11.10 部署**：live 将升级 0.11.10；`GET /modules` 默认含四个内置模块，`builtin-sample` 停用，reminders provider 接管提醒，核心 fallback 保留。
+**0.11.10 部署**：live 已升级 0.11.10；`GET /modules` 默认含四个内置模块，`builtin-sample` 停用，reminders provider 接管提醒，核心 fallback 保留。
 
 **0.11.9 说明**：标签存在但 Release workflow 在 Windows 上因测试保持配置文件句柄失败，无资产；0.11.10 修复。：live 将升级 0.11.9；`GET /modules` 默认含四个内置模块，`builtin-sample` 停用，reminders provider 接管提醒，核心 fallback 保留。
 
