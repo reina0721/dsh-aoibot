@@ -19,6 +19,7 @@ import { loadConfig, saveConfig, defaultConfig, refreshSecrets } from './core/co
 import { dataDir } from './core/store.js'
 import { createGatewayManager } from './gateway/manager.js'
 import { normalizeEvent } from './gateway/normalize.js'
+import { createIngressCoordinator } from './ingress/coordinator.js'
 import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
 import { createModelGateway } from './model/index.js'
@@ -157,35 +158,11 @@ export function apply(ctx, rowConfig) {
 
   registerPromptVariables()
 
+  const ingress = createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger: log })
+
   /** WS 原始事件 → raw 日志/认知 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
   function onEvent(raw) {
-    try {
-      // 访问控制先于一切：被拒绝的消息不落 raw、不聚合、不回复。
-      const gate = access.decideRaw(raw)
-      if (!gate.allowed) {
-        log.debug(`访问拒绝：${gate.chatType || '?'}:${gate.chatId || '?'}/${gate.senderId || '?'}（${gate.reason}）`)
-        return
-      }
-      // 过滤前先交给认知：原始事件不能因为过滤规则丢失。
-      try { cognition.ingestRaw(raw) } catch (error) { log.warn('认知 raw 事件失败：', error.message) }
-      const normalized = normalizeEvent(raw, getConfig())
-      if (!normalized) return
-      const pushed = events.push(normalized)
-      try { cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' }) } catch (error) { log.warn('认知 observe 失败：', error.message) }
-      if (!pushed.accepted) {
-        log.debug(`事件被过滤：${pushed.reason}`)
-        return
-      }
-      // 模块事件与宿主广播并行；模块异常由 kernel 隔离，不能阻塞 OneBot 事件循环。
-      modules.dispatch(pushed.record).catch((error) => log.warn('模块事件分发失败：', error.message))
-      try {
-        ctx.emit?.('onebot-qq/event', pushed.record)
-      } catch (error) {
-        log.warn('广播 onebot-qq/event 失败：', error.message)
-      }
-    } catch (error) {
-      log.warn('处理 OneBot 事件失败：', error.message)
-    }
+    ingress.handleRaw(raw)
   }
 
   const gateway = createGatewayManager({

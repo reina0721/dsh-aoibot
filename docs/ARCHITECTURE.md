@@ -31,6 +31,7 @@ dsh-bot/
 │   ├── core/logger.js    # 分级日志 + 环形缓冲（移植自 aurabot MIT）
 │   ├── core/config.js    # DEFAULTS / 读取 / 校验 / 保存
 │   ├── core/events.js    # 规范化事件环形缓冲 + 统计
+│   ├── ingress/coordinator.js # 原始事件入站顺序与异常隔离
 │   ├── onebot/client.js  # OneBot v11 客户端：HTTP+WS、重连、echo（移植自 aurabot MIT）
 │   ├── gateway/
 │   │   ├── normalize.js  # 原始事件 → 规范化事件
@@ -49,7 +50,7 @@ dsh-bot/
 
 ## 3. 关键契约
 
-内部交付 seam（Phase 0 + Phase 1）：采用模块化单体，`src/delivery/plan.js` 纯函数负责回复布局，`src/delivery/executor.js` 负责顺序执行；outbound 继续持有访问/限频/leak guard，pipeline 继续维护统计与归因。内部 `cognition.delivery.engine` 默认 `core`，显式 `planner` 才启用新路径，可随时切回；`cognition.reply.*` 及默认行为保持不变。分条尚未迁入模块，无 schema/ingress 改造、版本升级或部署，详见 [ADR-001](architecture/ADR-001-delivery-seam.md)。
+内部交付 seam（Phase 0 + Phase 1）：采用模块化单体，`src/delivery/plan.js` 纯函数负责回复布局，`src/delivery/executor.js` 负责顺序执行；outbound 继续持有访问/限频/leak guard，pipeline 继续维护统计与归因。内部 `cognition.delivery.engine` 默认 `core`，显式 `planner` 才启用新路径，可随时切回；`cognition.reply.*` 及默认行为保持不变。分条尚未迁入模块，该阶段未做 schema/ingress 改造、版本升级或部署，详见 [ADR-001](architecture/ADR-001-delivery-seam.md)。Phase 2 仅将宿主入站编排抽到 `src/ingress/coordinator.js`，公开事件与既有行为保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
 
 ### 3.1 配置（src/core/config.js）
 
@@ -85,7 +86,25 @@ export function createGatewayManager({ getConfig, log, onEvent }) {
 - 重连参数全部来自配置：`reconnect.minDelayMs/maxDelayMs/factor/jitterRatio/enabled`。
 - 所有日志走注入的 `log`，token 必须脱敏。
 
-### 3.3 事件规范化（src/gateway/normalize.js）
+### 3.3 入站协调与事件规范化（src/ingress/coordinator.js、src/gateway/normalize.js）
+
+`host.js` 在 access/cognition/events/modules 就绪后、创建 gateway 前构造 `createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger })`，网关的 `onEvent(raw)` 委托其同步 `handleRaw(raw)`。模块启动与 `ready` 等待顺序保持原样。协调器仅拥有调用顺序和异常隔离，不拥有访问规则、规范化、过滤、认知、模块执行或广播实现；无定时器、全局状态、新配置或公开 hook。
+
+每条入站严格保持以下顺序：
+
+1. `access.decideRaw(raw)`；拒绝则 debug 日志并返回，禁止落 raw 或执行后续步骤。
+2. `cognition.ingestRaw(raw)`；同步异常记录 warning，继续。
+3. `normalizeEvent(raw, getConfig())`；返回 null 则停止。
+4. `events.push(normalized)`；过滤、缓冲与统计仍由 event store 拥有。
+5. `cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' })`；同步异常记录 warning，继续。
+6. 未接受则 debug 记录原过滤原因并返回。
+7. 调用 `modules.dispatch(pushed.record).catch(...)`，不等待 Promise；拒绝记录 warning。
+8. `ctx.emit?.('onebot-qq/event', pushed.record)`；保留同一 record 引用，同步异常记录 warning。
+9. 外层同步异常记录 warning 并结束本条处理，不抛入 gateway。dispatch 同步抛错也沿用此路径，跳过广播。
+
+每次调用的内部 envelope 为 `{ version: 1, platform: 'onebot', raw, normalized, accepted, reason, correlationId }`。raw/normalized 只保存引用，不附加到公共事件或 hook。correlationId 仅取现有 `normalized.message.id`、`notice.messageId`、`notice.flag` 或 `request.flag`（按此优先顺序，空值回退），保留字符串/数字原值；无标识时为空，不用时间、seq 或随机值生成。envelope 不持久化、不广播、不记录日志。
+
+`handleRaw` 的内部返回值为 `{ accepted, reason, correlationId }`，host 忽略该值。accepted 表示 event store 是否接受，不代表模块执行完成或广播成功；拒绝/过滤沿用原 reason，无法规范化为 `unrecognized`，接受前外层异常为 `error`。返回值不包含 raw、normalized 或配置；请求 flag 用作内部关联值时不追加到公共事件或日志。原规范化事件的 `raw` 字段仍遵循下方既有契约，本阶段不增加或改变脱敏策略。
 
 ```js
 export function normalizeEvent(raw, cfg) -> null | {
