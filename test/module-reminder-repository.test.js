@@ -212,7 +212,7 @@ test('reminder/config ports: independent permissions, external and forged builti
   }
 })
 
-const calls = repo => [() => repo.get(id(1)), () => repo.list(), () => repo.findDue(10000), () => repo.countActive(), () => repo.put(row()), () => repo.update(id(1), { status: 'sent' }), () => repo.remove(id(1))]
+const calls = repo => [() => repo.get(id(1)), () => repo.list(), () => repo.all(), () => repo.findDue(10000), () => repo.countActive(), () => repo.put(row()), () => repo.update(id(1), { status: 'sent' }), () => repo.remove(id(1))]
 function revoked(api) {
   for (const work of [...calls(api.reminderRepository), () => api.legacyConfig.section('cognition.reminders')]) assert.throws(work, /已停止|生命周期/)
 }
@@ -341,4 +341,48 @@ test('reminder repository capture pins original persona without exposing identit
   assert.throws(() => captured.isCurrent(), /已停止/)
   assert.throws(() => repo.capture(), /已停止/)
   assert.throws(() => repo.all(), /已停止/)
+})
+
+test('final reminder boundary: all/capture stay persona-confined on both backends; config is only the global five-field snapshot', async t => {
+  for (const fallback of [false, true]) await t.test(fallback ? 'json' : 'sqlite', async t => {
+    let api
+    const config = { media: { dataDir: '/private/media' }, onebot: { accessToken: 'secret-token' },
+      cognition: { reminders: { enabled: true, path: '/private/reminders', personaId: 'other', apiKey: 'secret-key' } } }
+    const h = await harness(t, [builtin('final', value => { api = value })], { fallback, getConfig: () => config })
+    await h.kernel.start()
+    assert.equal(h.base.mode, fallback ? 'json' : 'sqlite')
+    const repo = api.reminderRepository, binding = api.legacyConfig
+    repo.put(row(1, { text: 'original persona' }))
+    const captured = repo.capture()
+    h.activate('other')
+    assert.deepEqual(repo.all(), []); assert.equal(captured.isCurrent(), false)
+    repo.put(row(1, { text: 'current persona' }))
+    assert.equal(repo.all()[0].text, 'current persona')
+    assert.equal(captured.all()[0].text, 'original persona')
+    assert.equal(captured.capture(), captured)
+    assert.throws(() => repo.all('active', 'self'), /参数/)
+    assert.throws(() => repo.capture('self'), /参数/)
+    assert.throws(() => captured.capture('other'), /参数/)
+    for (const port of [repo, captured, binding]) {
+      assert.ok(Object.isFrozen(port))
+      for (const key of ['base', 'store', 'kind', 'path', 'dir', 'file', 'sql', 'personaId', 'currentPersonaId']) {
+        assert.equal(Object.hasOwn(port, key), false, key)
+      }
+    }
+    const snapshot = binding.section('cognition.reminders')
+    assert.deepEqual(Object.keys(snapshot).sort(),
+      ['enabled', 'maxActive', 'minIntervalSeconds', 'maxIntervalSeconds', 'tickMs'].sort())
+    assert.doesNotMatch(JSON.stringify(snapshot), /private|secret|path|personaId/)
+    snapshot.enabled = false
+    assert.equal(binding.section('cognition.reminders').enabled, true)
+    for (const path of ['media', 'onebot', 'cognition', 'cognition.reminders.path']) {
+      assert.throws(() => binding.section(path), /只允许读取 cognition.reminders/)
+    }
+    h.activate('self')
+    assert.equal(repo.all()[0].text, 'original persona'); assert.equal(captured.isCurrent(), true)
+    await h.kernel.setEnabled('builtin-final', false)
+    assert.throws(() => captured.all(), /已停止/)
+    assert.throws(() => captured.capture(), /已停止/)
+    assert.throws(() => binding.section('cognition.reminders'), /已停止/)
+  })
 })

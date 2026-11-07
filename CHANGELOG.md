@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 14（最终验收）：固定 11 项外部特权的普通/伪造 builtin 清单双组拒绝测试，验证无注册或宿主副作用；补充无权限调用、媒体资源/路由缺失与媒体权限/provider 槽位拒绝、provider 来源/权限/撤销及生产四内置目录验收。补验 SQLite/JSON 的提醒 all/capture 人格隔离、生命周期撤销与全局五字段配置/无路径秘密；沿用单所有者排空交接/失败回退证据。ADR-013 明确媒体传输/存储/provider/HTTP/文件约束继续属于核心，本程序不提取 builtin-media 服务；未来仅可经宿主 media port 提取功能策略/命令，无数据迁移。增加最终验收说明，更新架构/模块/状态/README，包检查确保文档与四内置独立加载。无生产行为、新模块、配置/UI/依赖/版本变化；仅离线验证，无 live/浏览器，不推送/部署/发布，部署与版本另行授权。
+
 - 架构优化 Phase 13：新增默认启用的 builtin-reminders（内置共四个），沿用 cognition.reminders 只读配置与原 persona-scoped reminder 数据；共用核心/模块规则和精确命令文案，通过 reminders provider、scheduler、仓库与窄 access/delivery API 接管三个提醒命令及单 timer 调度，停用恢复核心。provider subscribe 以安全元数据通知，宿主串行等待旧所有者排空再接管，启动失败清理后回退；核心增加幂等 stopReminders。仓库 capture 固定在途原人格，all 支持完整防重/额度与按聊天限量；取消/删除/替换不被旧结果覆盖，最终同步卸载禁止迟到写库。新 API 仅内置权限开放，外部不可注册 provider。补充注册表、切换/失败/异步清理、命令/数据对等、调度/人格/出站闸门、e2e 与独立包测试及 ADR-012。无数据迁移、配置/UI/媒体/依赖/版本变化；仅本地验证，不推送/部署/发布，未做真实 QQ 验收。
 
 - 架构优化 Phase 12（仅前置端口）：新增仅内置 reminders:service / api.reminderRepository，同步 get/list/findDue/countActive/put/update/remove 固定访问当前人格核心 reminder kind，无迁移或 module_store 副本；严格 ID/目标/状态/时间/行字段验证，list 最多 50、到期先排序后取最多 20，写入/输出复制，补丁仅限投递状态，不暴露 base store/SQL/路径/跨人格参数。独立 config:read / api.legacyConfig.section 仅开放 cognition.reminders 当前规范化五字段深拷贝，无秘密、其它配置、写入或通知。外部声明在导入前拒绝，缺权限无属性，停止/失败/依赖清理/dispose 撤销旧端口；补充双后端、隔离/权限/生命周期/配置与核心互通测试和 ADR-011。现有提醒服务与测试保持，不提取提醒/媒体、无新增生产模块或 provider、配置/UI/REST/依赖或版本变化，仅本地验证，不推送/部署/发布。

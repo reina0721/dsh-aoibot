@@ -11,6 +11,12 @@
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
+## 最终边界（Phase 14）
+
+架构程序以四个现有内置模块收束：reply delivery、typing、reminders 默认启用，sample 默认关闭。外部模块不能获得 provider/服务所有权、交付规划、turn 生命周期、输入状态写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖或内部 delivery/access 端口；来源由加载器赋值，清单 source/builtin 无法授权。部分权限声明在导入前拒绝，其余在注册/调用时拒绝或不暴露属性；单独声明不会赋予能力，普通外部 API 保持。11 项权限的双组拒绝矩阵、提醒人格隔离/安全错误和单所有者交接证据见 [最终验收](architecture/MODULE-ACCEPTANCE.md)。
+
+媒体传输、存储、provider/HTTP 与文件约束明确保留核心，本程序不提取 builtin-media 服务，无数据迁移。未来可选 builtin-media 仅限功能策略/命令，并须先建立宿主持有的窄 media port；外部模块不获得媒体资源、原始服务或路由注册入口，详见 [ADR-013](architecture/ADR-013-media-boundary.md)。本阶段只做离线测试/文档/包检查，无生产行为、配置/UI/依赖或版本变化，无 live/浏览器验收；推送、部署和发布另行授权。
+
 ## 安装与清单
 
 把完整外部模块目录复制到 `<数据目录>/modules/<id>/`，然后重启插件，或调用重载 API 并指定 id。已发现的模块可以在面板「模块」页重载；面板刷新只读取当前目录列表，不重新扫描文件系统。仓库的 `examples/modules/echo/` 是最小示例，但示例目录本身不会被自动加载。

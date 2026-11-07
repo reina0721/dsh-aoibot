@@ -34,7 +34,7 @@
 - 合并转发展开、拍一拍回应、表情表态归因；主人命令 `/like` `/poke` `/groupinfo` `/memberinfo`。
 - 可选媒体：图片下载/视觉描述、语音 ASR/TTS、图片/语音发送、群/私聊文件上传，以及本地表情包库与媒体面板；M7-c 增加 OpenAI 兼容生图/改图和 `/draw` `/redraw` `/image`；外部 provider 默认关闭。
 - 本地文件面板（M7-k/M7-u，M7-u 未发布）：媒体页上传、列出、下载、确认删除并刷新 `files/` 文件，显示相对路径/大小/时间；下载用 base64 JSON 转 Blob，上传/下载/删除共用忙碌锁并显示错误。要求媒体与文件双开关，仅安全存储 basename≤120、白名单扩展名、普通非符号链接文件，无任意本地路径；默认行为不变。发送仍用主人 `/file 相对路径`，无发送按钮，真实 QQ 文件兼容性未验证，#45 仍 partial。矩阵 6 has / 40 partial / 0 none / 1 limited / 6 leading / 8 exempt，remaining 47；#31/#42/#49/#50 不变。
-- 统一模块目录：包内静态内置模块 + 操作员安装的外部 JS，共享权限 API、依赖顺序/阻塞隔离、命令/事件/存储与面板。默认关闭 builtin-sample；内置可启停，外部可重载（清单关闭不能强开）；无远程安装或 marketplace。
+- 统一模块目录（架构 Phase 14 收束）：内置 reply delivery、typing、reminders 默认启用，sample 默认关闭；内置可启停，外部本地 JS 可重载（清单关闭不能强开）。外部稳定 API 不开放服务所有权或内置特权，伪造来源无效；模块仍是同进程可信代码。媒体基础设施明确保留核心，本程序不提取 builtin-media、无数据迁移；无远程安装或 marketplace。见[模块契约](docs/MODULES.md)、[媒体决策](docs/architecture/ADR-013-media-boundary.md)与[最终离线验收](docs/architecture/MODULE-ACCEPTANCE.md)；部署/发布另行授权。
 - 可选 B站公共内容（M7-m）：搜索、热门、BV 视频信息与公开评论、离线分享链接，提供 `/bili comments BV号`、`/bili share BV号`、REST API 与「内容」页。默认关闭，不使用 Cookie/WBI/登录态，不含字幕或发布评论；真实接口未验证，#48 仍 partial，remaining 47。QQ空间因登录授权与服务条款边界未实现。
 - 本地目录备份与「备份」面板：默认 200 MiB / 5000 文件 / 保留 10 份；恢复默认暂存，应用需显式开启并先创建恢复前备份。快照含密钥与认知隐私，请按秘密保护；复制 SQLite 前停止写入，恢复后重启。无 zip、云端传输、自动恢复或工作区迁移，见[备份说明](docs/USER-MANUAL.md#备份)。
 - 「安全」页：只读访问审计与危险面、上线检查清单；默认关闭的手动 GitHub Release 版本检查，stable/beta 仅改变发布过滤，不自动更新、下载或安装。保持 DSH 本机信任边界，不改变 API 鉴权；不提供工作区迁移或离峰省钱，见[安全与上线检查](docs/USER-MANUAL.md#安全与上线检查)。

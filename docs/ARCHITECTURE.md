@@ -50,6 +50,8 @@ dsh-bot/
 
 ## 3. 关键契约
 
+Phase 14 完成模块边界验收，生产目录保持 reply delivery、typing、reminders 与 sample 四个内置模块。外部模块不能通过稳定 API 获得 provider/服务所有权、交付规划、turn 生命周期、status 写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖及内部 delivery/access 端口；伪造 source/builtin 无效。媒体传输、存储、provider/HTTP 与文件约束明确保留核心，不在本程序提取 builtin-media，无数据迁移。权限不构成同进程 Node.js 沙箱。最终拒绝阶段、单所有者交接和离线包验收证据见 [MODULE-ACCEPTANCE](architecture/MODULE-ACCEPTANCE.md)，媒体原因与未来宿主窄端口见 [ADR-013](architecture/ADR-013-media-boundary.md)。本阶段无生产行为、配置/UI/依赖或版本变化，部署/发布另行授权。
+
 内部交付 seam（Phase 1 + Phase 4 + Phase 5）：`src/delivery/registry.js` 是宿主在 cognition/modules 之前创建的共享 registry，模块在宿主 ready 前完成启动。默认启用的 `builtin-reply-delivery` 通过仅内置可用的 `delivery:plan` API 注册唯一 format 规划器，布局纯函数位于 `src/delivery/reply-plan.js`，模块入口仅注册它；`src/delivery/plan.js` 保留兼容导出、校验和单条纯文本回退，`src/delivery/executor.js` 顺序执行。outbound 继续持有访问/限频/leak guard，pipeline 保留统计、pending、归因与轮次记录。内部 engine 默认 auto：有 planner 用模块，无 planner 用 core 兼容布局；core 始终绕过注册表，显式 planner 缺失或规划抛错/无效时单条纯文本回退。core 与模块复用纯布局函数和执行器，pipeline 不再构建消息段或计算分条/等待；所有 `cognition.reply.*` 保留。无配置迁移或模块配置 UI，详见 [ADR-001](architecture/ADR-001-delivery-seam.md) 与 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。Phase 2 的入站编排保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
 
 ### 3.1 配置（src/core/config.js）
