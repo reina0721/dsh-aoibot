@@ -381,7 +381,10 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - 生命周期操作串行；setup 可异步返回 cleanup，按下游到依赖逆序清理命令/事件/知识源/capability。外部 reload 会停止并恢复符合条件的下游；内置禁止直接 reload，协调时只用缓存代码重新 setup。旧 runtime 的迟到事件错误不能污染新状态。
 - `modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}` 与缺失/损坏状态。外部 `manifestEnabled && !disabled`，清单 false 不能 API/UI 启用；内置 disabled 优先，再 enabled，再 defaultEnabled。先成功写状态再改变 live，失败保持原状。
 - 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。发送仍走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
-- 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后只提供主人 `/module-sample` 固定回复。
+- 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后提供主人 `/module-sample`，从 api.config.get().message 读取回复（默认「内置示例模块已启用。」）。
+- Phase 3：仅内置 registry 描述符可声明 `config:{version:1,fields}`；`config.js` 无依赖验证平面唯一键（最多 32）、label、默认值、switch/text/textarea/number/select/string-list/number-list 及边界，拒绝 secret 与未知 values 键，缺失字段填默认值。外部 manifest 和未声明的内置模块无配置 API/UI/runtime config。
+- 配置在发现阶段加载，先于 setup；`.builtin/<id>/config.json` 与 data.json 分离，最多 64 KiB、realpath containment、原子替换。缺失/损坏按默认值与 revision 0 安全警告，不阻止模块运行。`setModuleConfig` 与生命周期串行，revision 匹配后持久化递增（首次为 1），再更新内存/通知；过期为 MODULE_CONFIG_CONFLICT。`getModuleConfig` 深拷贝 schema/values/revision/source，不公开路径。
+- `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按 hasConfig/内置来源提供行内 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示，不改全局配置页、入站或交付路径。
 - host 显式传入生产 registry，保持 modulesReady/startup 顺序与规范化事件 dispatch。GET /modules 返回 items 和 summary；记录新增来源、API 版本、requires、操作能力及 blocked，不返回绝对路径。面板按能力提供启停/外部重载与刷新。
 - 模块仍与宿主同进程，permissions 不是沙箱；无核心功能迁移、远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
 
@@ -429,7 +432,7 @@ REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBy
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
 ├── media/               # 可选：inbound/、outbound/、generated/、files/、stickers/ 与 stickers.json
-├── modules/             # 外部模块、state.json、各模块 data.json 与 .builtin/<id>/data.json
+├── modules/             # 外部模块、state.json、各模块 data.json 与 .builtin/<id>/{data,config}.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）

@@ -1127,3 +1127,58 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   catalog = await getJson(fake, '/modules')
   assert.ok(!JSON.stringify(catalog).includes(dir))
 })
+
+test('e2e: built-in config GET/POST, revision conflict, validation and live sample command', async (t) => {
+  const { fake, dir, handle, mock } = await boot(t, { rowConfig: endpointConfig })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-sample'
+  const initial = await getJson(fake, '/modules/config?id=' + id)
+  assert.equal(initial.ok, true); assert.equal(initial.id, id); assert.equal(initial.revision, 0)
+  assert.equal(initial.schema.version, 1)
+  assert.deepEqual(initial.values, { message: '内置示例模块已启用。' })
+  assert.ok((await getJson(fake, '/modules')).items[0].hasConfig)
+  const saved = await postJson(fake, '/modules/config', { id, values: { message: '配置后的回复' }, revision: initial.revision })
+  assert.equal(saved.revision, 1)
+  assert.deepEqual(saved, await getJson(fake, '/modules/config?id=' + id))
+  const stale = await fake.call(API + '/modules/config', { id, values: { message: '旧值' }, revision: 0 }, { method: 'POST' })
+  assert.equal(stale.status, 200); assert.equal(stale.json.ok, false); assert.equal(stale.json.code, 'MODULE_CONFIG_CONFLICT')
+  for (const body of [
+    { id, values: { message: 'a'.repeat(201) }, revision: 1 },
+    { id, values: { secret: 'not allowed' }, revision: 1 },
+    { id, values: { message: false }, revision: 1 },
+    { id, values: {}, revision: '1' }, { id, values: {} }, { id, revision: 1 },
+  ]) {
+    const invalid = await fake.call(API + '/modules/config', body, { method: 'POST' })
+    assert.equal(invalid.json.code, 'MODULE_CONFIG_INVALID')
+  }
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: true })).item.status, 'loaded')
+  await patchConfig(fake, { access: { ownerQQ: '123456' } })
+  const result = await handle.cognition.services.commands.handle({ text: '/module-sample', senderId: '123456', chatType: 'private', chatId: '123456' })
+  assert.equal(result.reply, '配置后的回复')
+  assert.equal(mock.sent('send_private_msg').at(-1).params.message[0].data.text, '配置后的回复')
+  await postJson(fake, '/modules/config', { id, values: { message: '即时更新' }, revision: 1 })
+  assert.equal((await handle.cognition.services.commands.handle({ text: '/module-sample', senderId: '123456', chatType: 'private', chatId: '123456' })).reply, '即时更新')
+  const moduleDir = join(dir, 'modules', 'config-external')
+  await mkdir(moduleDir)
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id: 'config-external', entry: 'index.mjs', config: initial.schema }))
+  await writeFile(join(moduleDir, 'index.mjs'), 'export function setup(api) { if (api.config) throw Error("external config") }')
+  assert.equal((await postJson(fake, '/modules/reload', { id: 'config-external' })).item.status, 'loaded')
+  for (const deniedId of ['config-external', 'absent', '../escape', '/private/path']) {
+    const get = await fake.call(API + '/modules/config?id=' + encodeURIComponent(deniedId), undefined, { method: 'GET' })
+    const post = await fake.call(API + '/modules/config', { id: deniedId, values: {}, revision: 0 }, { method: 'POST' })
+    for (const response of [get, post]) {
+      assert.equal(response.status, 200)
+      assert.equal(response.json.ok, false)
+      assert.equal(response.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+      assert.ok(!JSON.stringify(response.json).includes(deniedId))
+    }
+  }
+  const config = await getJson(fake, '/modules/config?id=' + id)
+  assert.equal(config.revision, 2)
+  assert.equal(config.values.message, '即时更新')
+  for (const response of [initial, saved, stale.json, config, await getJson(fake, '/modules')]) assert.ok(!JSON.stringify(response).includes(dir))
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'modules', '.builtin', id, 'config.json'), 'utf8')), { version: 1, revision: 2, values: config.values })
+  const unsupported = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'DELETE' })
+  assert.equal(unsupported.status, 405)
+  assert.equal(unsupported.json.code, 'MODULE_CONFIG_INVALID')
+})

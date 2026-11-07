@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
+import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from './config.js'
 const COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 const EVENT_NAMES = new Set(['message', 'notice', 'request', 'meta_event', 'any'])
 const MAX_STORAGE_BYTES = 1024 * 1024
@@ -52,6 +53,8 @@ function publicRecord(record) {
     requires: [...record.requires],
     canReload: !record.builtin,
     canToggle: record.builtin || (record.valid && record.manifestEnabled),
+    hasConfig: Boolean(record.builtin && record.configSchema),
+    configWarning: record.configWarning || '',
     permissions: [...record.permissions],
     enabled: Boolean(record.enabled),
     status: record.status,
@@ -147,7 +150,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   // 写目录和 data.json 都需要 realpath containment；包内源码路径从不作为写入目标。
-  async function storagePath(record) {
+  async function storagePath(record, filename = 'data.json') {
     const realRoot = await realpath(root)
     if (record.builtin) {
       const base = join(root, '.builtin')
@@ -159,11 +162,31 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
     const dir = await realpath(record.moduleDir)
     if (!inside(realRoot, dir)) throw new Error('模块存储目录符号链接逃逸')
-    const file = join(dir, 'data.json')
+    const file = join(dir, filename)
     try {
       if (!inside(dir, await realpath(file))) throw new Error('模块存储文件符号链接逃逸')
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     return file
+  }
+
+  async function loadModuleConfig(record) {
+    if (!record.configSchema) return
+    record.configValues = validateConfigValues(record.configSchema, {})
+    record.configRevision = 0
+    record.configWarning = ''
+    try {
+      const file = await storagePath(record, 'config.json')
+      if ((await stat(file)).size > MAX_CONFIG_BYTES) throw new Error('配置文件超过 64 KiB')
+      const bytes = await readFile(file)
+      if (bytes.length > MAX_CONFIG_BYTES) throw new Error('配置文件超过 64 KiB')
+      const saved = JSON.parse(bytes.toString('utf8'))
+      if (saved?.version !== record.configSchema.version || !Number.isSafeInteger(saved.revision) || saved.revision < 1) throw new Error('配置版本或 revision 不合法')
+      record.configValues = validateConfigValues(record.configSchema, saved.values)
+      record.configRevision = saved.revision
+    } catch (error) {
+      record.configWarning = error.code === 'ENOENT' ? '配置文件缺失，使用默认值' : '配置文件不可用，使用默认值'
+      log.warn?.(`模块 ${record.id}：${record.configWarning}`)
+    }
   }
 
   async function disposeRuntime(record) {
@@ -293,6 +316,21 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         return dispose
       },
     }
+    if (record.builtin && record.configSchema) {
+      api.config = Object.freeze({
+        get: () => clone(record.configValues),
+        onChange(handler) {
+          requireActive(runtime)
+          if (typeof handler !== 'function') throw new Error('配置 handler 必须是函数')
+          // 每次注册有独立身份；disposer 幂等，生命周期清理后不再通知。
+          const registration = { handler }
+          runtime.configListeners.add(registration)
+          const dispose = () => runtime.configListeners.delete(registration)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      })
+    }
     Object.defineProperty(api, 'storage', {
       enumerable: true,
       get() { requirePermission(record, 'storage'); return runtime.storage },
@@ -319,7 +357,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), disposers: [], storage: null }
+    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), disposers: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {
@@ -386,8 +424,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       const manifest = validateManifest(descriptor.manifest, { builtin: true })
       if (records.has(manifest.id)) throw new Error('内置注册表 id 重复')
       if (typeof descriptor.load !== 'function') throw new Error('内置注册表缺少 lazy loader')
-      records.set(manifest.id, makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
-        defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) }))
+      const record = makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
+        configSchema: descriptor.config === undefined ? null : validateConfigSchema(descriptor.config),
+        defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) })
+      await loadModuleConfig(record)
+      records.set(manifest.id, record)
     }
     const entries = await readdir(root, { withFileTypes: true })
     for (const entry of entries) {
@@ -469,6 +510,51 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
+  function configRecord(id) {
+    if (disposed) throw actionError('模块内核已释放', 'MODULE_CONFIG_UNAVAILABLE')
+    const record = typeof id === 'string' ? records.get(id) : null
+    if (!record?.builtin || !record.configSchema) throw actionError('模块不存在或不支持内置配置', 'MODULE_CONFIG_UNAVAILABLE')
+    return record
+  }
+
+  function configSnapshot(record) {
+    return { id: record.id, source: 'builtin', schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
+  }
+
+  function getModuleConfig(id) {
+    return serialize(() => configSnapshot(configRecord(id)))
+  }
+
+  function setModuleConfig(id, values, revision) {
+    // 在进入队列前复制调用参数，避免等待期间被调用者修改。
+    let draft
+    try { draft = clone(values) } catch { return Promise.reject(actionError('配置 values 必须可复制', 'MODULE_CONFIG_INVALID')) }
+    return serialize(async () => {
+      const record = configRecord(id)
+      if (!Number.isSafeInteger(revision) || revision < 0) throw actionError('需要非负整数 revision', 'MODULE_CONFIG_INVALID')
+      if (revision !== record.configRevision) throw actionError('配置已被修改，请重新加载后再保存', 'MODULE_CONFIG_CONFLICT')
+      const validated = validateConfigValues(record.configSchema, draft)
+      const nextRevision = revision + 1
+      if (!Number.isSafeInteger(nextRevision)) throw actionError('配置 revision 已达上限', 'MODULE_CONFIG_INVALID')
+      const saved = { version: record.configSchema.version, revision: nextRevision, values: validated }
+      if (Buffer.byteLength(JSON.stringify(saved, null, 2)) > MAX_CONFIG_BYTES) throw actionError('模块配置超过 64 KiB', 'MODULE_CONFIG_INVALID')
+      try { await writeJsonAtomic(await storagePath(record, 'config.json'), saved) }
+      catch { throw actionError('模块配置保存失败，当前值未改变', 'MODULE_CONFIG_WRITE_FAILED') }
+      record.configValues = validated
+      record.configRevision = nextRevision
+      record.configWarning = ''
+      const runtime = record.runtime
+      for (const registration of [...(runtime?.configListeners || [])]) {
+        if (!runtime.active || !runtime.configListeners.has(registration)) continue
+        try {
+          // 不等待 handler，避免 handler 排队启停/保存时和生命周期队列互锁。
+          Promise.resolve(registration.handler(clone(validated))).catch(() => log.warn?.(`模块 ${record.id} 配置监听器失败`))
+        } catch { log.warn?.(`模块 ${record.id} 配置监听器失败`) }
+      }
+      return configSnapshot(record)
+    })
+  }
+
   async function dispatch(normalizedEvent) {
     if (disposed || !normalizedEvent) return
     const tasks = []
@@ -500,6 +586,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, reload, setEnabled, dispatch, dispose }
+  return { start, list, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

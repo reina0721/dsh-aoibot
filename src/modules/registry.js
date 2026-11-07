@@ -7,6 +7,12 @@ export const builtinRegistry = Object.freeze([
       permissions: Object.freeze(['commands', 'storage']), requires: Object.freeze([]),
     }),
     defaultEnabled: false,
+    config: Object.freeze({
+      version: 1,
+      fields: Object.freeze([
+        Object.freeze({ path: 'message', type: 'text', label: '示例回复', default: '内置示例模块已启用。', maxChars: 200, help: '主人使用 /module-sample 时发送的回复。' }),
+      ]),
+    }),
     load: () => import('./builtin/sample.js'),
   }),
 ])

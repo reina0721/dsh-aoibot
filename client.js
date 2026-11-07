@@ -2860,7 +2860,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
             'span',
             { className: 'ob-tag', key: item },
             String(item),
-            h('button', { type: 'button', 'aria-label': '移除 ' + item, onClick: () => props.onChange(value.filter((entry) => entry !== item)) }, '×'),
+            h('button', { type: 'button', disabled: props.disabled, 'aria-label': '移除 ' + item, onClick: () => props.onChange(value.filter((entry) => entry !== item)) }, '×'),
           ),
         ),
         h('input', {
@@ -7347,6 +7347,41 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
       const [loading, setLoading] = useState(true)
       const [error, setError] = useState('')
       const [busy, setBusy] = useState('')
+      const [editor, setEditor] = useState(null)
+      const [configError, setConfigError] = useState('')
+
+      const readModuleConfig = async (id) => {
+        const result = safeObject(await get('/modules/config?id=' + encodeURIComponent(id)))
+        if (result.ok === false) throw new Error(String(result.message || '模块配置加载失败'))
+        setEditor({ id, schema: result.schema, values: result.values, revision: result.revision })
+      }
+
+      const openConfig = async (item) => {
+        setBusy(item.id + ':config')
+        setEditor({ id: item.id, schema: null, values: {}, revision: 0 })
+        setConfigError('')
+        try { await readModuleConfig(item.id) }
+        catch (error) { setConfigError(String(error.message || '模块配置加载失败')) }
+        finally { setBusy('') }
+      }
+
+      const saveModuleConfig = async () => {
+        setBusy(editor.id + ':save')
+        setConfigError('')
+        try {
+          const result = safeObject(await post('/modules/config', { id: editor.id, values: editor.values, revision: editor.revision }))
+          if (result.ok === false) {
+            setConfigError(result.code === 'MODULE_CONFIG_CONFLICT' ? '配置冲突：配置已被修改，请重新加载后再编辑保存。' : String(result.message || '模块配置保存失败'))
+            return
+          }
+          // 保存已成功，即使后续 GET 失败也保留新的 revision。
+          setEditor({ id: editor.id, schema: result.schema, values: result.values, revision: result.revision })
+          await readModuleConfig(editor.id)
+          await refresh()
+          props.toast?.('模块配置已保存', 'ok')
+        } catch (error) { setConfigError(String(error.message || '模块配置保存失败')) }
+        finally { setBusy('') }
+      }
 
       const refresh = useCallback(async () => {
         setLoading(true)
@@ -7400,6 +7435,7 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 title: String(item.name || item.id),
                 description: String(item.description || item.id),
                 actions: h('div', { className: 'ob-row' },
+                  item.builtin && item.source === 'builtin' && item.hasConfig ? h(Btn, { small: true, kind: 'secondary', busy: busy === item.id + ':config', disabled: Boolean(busy), onClick: () => openConfig(item) }, '配置') : null,
                   item.canReload ? h(Btn, { small: true, kind: 'secondary', icon: 'refresh', busy: busy === item.id + ':reload', disabled: Boolean(busy), onClick: () => action(item, 'reload') }, '重载') : null,
                   h(Btn, { small: true, kind: item.enabled ? 'danger' : 'primary', busy: busy === item.id + ':toggle', disabled: Boolean(busy) || !item.canToggle, onClick: () => action(item, 'toggle') }, item.enabled ? '停用' : '启用'),
                 ),
@@ -7414,6 +7450,20 @@ body[data-ds-dark-theme] .ob-select{background-image:url("data:image/svg+xml;cha
                 safeArray(item.requires).length ? h('p', { className: 'ob-muted ob-small' }, '依赖：' + item.requires.join('、')) : null,
                 !item.canToggle && !item.builtin ? h('p', { className: 'ob-muted ob-small' }, '请编辑外部清单并重载后启停') : null,
                 item.error ? h('p', { className: 'ob-field-error', style: { marginTop: '12px' } }, String(item.error)) : null,
+                item.configWarning ? h('p', { className: 'ob-muted ob-small' }, String(item.configWarning)) : null,
+                item.builtin && item.source === 'builtin' && item.hasConfig && editor?.id === item.id ? h('section', { className: 'ob-stack', 'aria-label': '模块配置', style: { marginTop: '16px' } },
+                  h('p', { className: 'ob-muted ob-small' }, '模块配置 · revision ' + editor.revision),
+                  configError ? h(Banner, { tone: 'err', message: configError }) : null,
+                  safeArray(editor.schema?.fields).map((spec) => h(FieldRow, {
+                    key: item.id + ':' + spec.path, spec, value: editor.values[spec.path], disabled: Boolean(busy),
+                    onChange: (value) => setEditor((current) => ({ ...current, values: { ...current.values, [spec.path]: value } })),
+                  })),
+                  h('div', { className: 'ob-row' },
+                    h(Btn, { small: true, busy: busy === item.id + ':save', disabled: Boolean(busy) || !editor.schema, onClick: saveModuleConfig }, '保存配置'),
+                    h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => openConfig(item) }, '重新加载配置'),
+                    h(Btn, { small: true, kind: 'secondary', disabled: Boolean(busy), onClick: () => { setEditor(null); setConfigError('') } }, '取消'),
+                  ),
+                ) : null,
               )
             }))
           : h(Panel, null, h(EmptyState, {

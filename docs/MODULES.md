@@ -42,7 +42,7 @@
 
 ## 内置示例与状态
 
-随包提供 `builtin-sample`（内置示例，1.0.0），`permissions: ["commands","storage"]`、`requires: []`。默认关闭且不调用 import/setup，没有默认消息行为。启用后仅主人可用 `/module-sample`，固定回复「内置示例模块已启用。」；示例申请 storage 权限，但不主动写入数据。内置模块不能直接重载；依赖协调可以用缓存代码重新运行 setup，生命周期内不再次调用 lazy import。
+随包提供 `builtin-sample`（内置示例，1.0.0），`permissions: ["commands","storage"]`、`requires: []`。默认关闭且不调用 import/setup，没有默认消息行为。启用后仅主人可用 `/module-sample`，读取 `api.config.get().message` 回复，默认「内置示例模块已启用。」；示例申请 storage 权限，但不主动写入 data.json。内置模块不能直接重载；依赖协调可以用缓存代码重新运行 setup，生命周期内不再次调用 lazy import。
 
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
@@ -79,6 +79,48 @@ export async function setup(api) {
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
 
+## 内置模块声明式配置（Phase 3）
+
+只有受信任的内置 registry 描述符可以声明可选的 `config`，不能写在共享 manifest 中。外部 manifest 即使声明同名属性，也没有配置 API、运行时 `api.config` 或面板配置入口。未声明配置的内置模块同样没有这些能力。不接受 `secret`，配置字段只适合非秘密值；不把令牌或密码放入配置。
+
+```js
+config: {
+  version: 1,
+  fields: [
+    { path: 'message', type: 'text', label: '示例回复', default: '内置示例模块已启用。', maxChars: 200, help: '主人使用 /module-sample 时发送的回复。' },
+  ],
+}
+```
+
+`version` 目前只支持数字 1。最多 32 个字段；`path` 必须唯一并匹配平面键 `^[a-z][a-zA-Z0-9_]{0,63}$`，不能用点路径；`label` 必须是非空字符串。支持可选 `help`、`placeholder`、`unit` 文本元数据，数字可带正数 `step` 供控件显示。所有默认值也经过完整类型与边界校验。
+
+| 类型 | 服务端验证 | 省略 default 时 |
+|---|---|---|
+| `switch` | 严格 boolean | `false` |
+| `text` / `textarea` | 字符串，Unicode 码点数 ≤ maxChars | `""` |
+| `number` | 有限数字，可选 min/max（含边界） | `0` |
+| `select` | 值属于 options；1–100 项 `{value,label?}`，value 为唯一字符串 | 第一项 value |
+| `string-list` | 字符串数组，每项受 maxChars 限制，长度受 minItems/maxItems 限制 | `[]` |
+| `number-list` | 有限数字数组，每项受 min/max 限制，长度受 minItems/maxItems 限制 | `[]` |
+
+字符串 `maxChars` 默认 2000，可设 0–65536；列表 `minItems` 默认 0、`maxItems` 默认 100，可设 0–1000 且 minItems ≤ maxItems。类型默认值若不符合字段边界，描述符无效，需显式提供合法 default（例如 min 为 1 的 number）。更新的 `values` 必须是对象，拒绝未知键、类型转换及非法值；缺失字段填 schema 默认值，属于完整替换而不是合并旧值。
+
+内核在启动发现内置模块时加载并验证配置，因此关闭时也可以读取/保存，且 `setup(api)` 一开始就能读到有效值；不会为此导入默认关闭模块的代码。文件为 `<数据目录>/modules/.builtin/<id>/config.json`，与模块 `data.json` 分离，从不写包内源码：
+
+```json
+{ "version": 1, "revision": 1, "values": { "message": "新的示例回复" } }
+```
+
+文件最多 64 KiB（包括 version/revision 和格式化 JSON），校验目录及文件 realpath 包含关系，在同目录写临时文件后原子替换，失败清理临时文件，保留当前内存值。缺失、损坏、超限或无法读取时使用全部默认值、revision 0，并通过安全日志和模块记录的 `configWarning` 提示，不因配置文件故障阻止 setup。回退不会自动改写文件，成功保存后清除警告。磁盘有效配置在重启时恢复；不监视手动文件修改，不提供 schema 迁移。
+
+声明了配置的内置模块获得只读的 `api.config` 对象，无需另增 permission：
+
+- `api.config.get()` 同步返回当前已校验值的深拷贝，调用者修改不会影响内核。
+- `api.config.onChange(handler)` 注册监听，返回幂等 disposer。保存成功后传入新值的独立深拷贝；同步/异步 handler 错误仅安全记录，不让模块进入 error。通知不等待异步 handler，避免 handler 调用生命周期操作时互锁。
+- 监听属于当前 setup 生命周期，停用、依赖重载引发的重新 setup、失败清理及 dispose 都会自动注销；已开始的异步 handler 不会被强制取消。
+
+内核 `getModuleConfig(id)` 返回 `{id,source:'builtin',schema,values,revision}` 深拷贝；`setModuleConfig(id,values,revision)` 与启停/重载/dispose 串行。POST 必须携带 GET 返回的非负整数 revision，过期返回 `MODULE_CONFIG_CONFLICT`；成功持久化后 revision 加 1、再更新内存和通知监听器，首次写入为 1。未知模块、外部模块及无配置模块统一拒绝。revision 用于同一内核中的乐观并发控制，不是跨进程文件锁；缺失/损坏回退后从 0 开始。
+
 
 ## 生命周期与故障隔离
 
@@ -97,10 +139,14 @@ export async function setup(api) {
 | `GET /modules` | `{ok:true,items,summary:{builtin,external}}`；summary 是目录数量，包含关闭/错误项 |
 | `POST /modules/reload {id}` | 外部返回 `{ok:true,item}`；内置返回 `{ok:false,code:"MODULE_BUILTIN_RELOAD",message}` |
 | `POST /modules/toggle {id,enabled}` | 两种来源均支持；清单上限返回 `MODULE_MANIFEST_DISABLED`，状态保存失败返回 `MODULE_STATE_WRITE_FAILED` |
+| `GET /modules/config?id=<id>` | 仅声明配置的内置模块：`{ok:true,id,schema,values,revision}` |
+| `POST /modules/config {id,values,revision}` | 校验、原子保存、通知后返回与 GET 相同形状；过期返回 `MODULE_CONFIG_CONFLICT` |
 
-公开记录保留 id/name/version/description/permissions/enabled/status/error/loadedAt，新增 source/builtin/apiVersion/requires/canReload/canToggle，不返回绝对路径。status 可为 disabled/loading/loaded/error/blocked；动作 `ok:true` 表示请求处理完成，仍需检查 item.status 是否实际 loaded。
+公开记录保留 id/name/version/description/permissions/enabled/status/error/loadedAt，新增 source/builtin/apiVersion/requires/canReload/canToggle/hasConfig/configWarning，不返回绝对路径。配置错误统一 `{ok:false,code,message}`：字段/revision 无效为 `MODULE_CONFIG_INVALID`，不可用为 `MODULE_CONFIG_UNAVAILABLE`，写入失败为 `MODULE_CONFIG_WRITE_FAILED`；消息不含存储绝对路径。status 可为 disabled/loading/loaded/error/blocked；动作 `ok:true` 表示请求处理完成，仍需检查 item.status 是否实际 loaded。
 
 面板显示来源徽章、数量、依赖和 blocked/error，按 canReload/canToggle 控制按钮；内置隐藏重载，外部清单关闭时提示先编辑并重载。刷新重新读取列表，操作后按返回状态提示结果。没有安装、卸载或删除路由。
+
+有配置的内置模块显示「配置」按钮，展开行内编辑区，按 schema.fields 复用既有 FieldRow/FieldControl；关闭状态也可编辑。GET 加载到本地草稿，保存携带 revision，成功后重新 GET；取消关闭并丢弃草稿。保存期间禁用控件，冲突或保存错误保留草稿并提示重新加载；重新加载丢弃当前草稿。外部和未声明配置的模块没有配置区。此能力独立于全局 `/config`，不涉及回复分条或交付规划迁移。
 
 当前限制：没有依赖下载/安装、版本解析、签名、进程/VM 沙箱、远程仓库、自动更新、marketplace 或上传安装 UI。模块自己的文件变更不会被监视；需要手动点击重载或调用 API。
 

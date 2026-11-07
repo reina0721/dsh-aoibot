@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 3：仅内置 registry 支持声明式配置 schema（7 种非秘密字段），服务端验证、默认值、独立 64 KiB 原子 config.json 与 revision 冲突控制；setup 前加载，提供深拷贝 api.config.get 和生命周期 onChange，损坏配置安全回退。模块面板复用 FieldRow/FieldControl 行内编辑、保存重读、取消与错误提示；默认关闭的 builtin-sample 回复改读 message 配置。新增模块/HTTP/面板回归测试与配置契约文档；外部模块不开放配置 API/UI，不改全局 /config、入站、交付或回复分条，不升级版本、不推送/发布/部署，未做真实 QQ/浏览器验收。
+
 - 架构优化 Phase 2：将 `host.onEvent` 原始事件编排抽到注入依赖的 ingress coordinator，保持访问闸门 → raw 归档 → 规范化 → 缓冲/过滤 → observe → 非阻塞模块分发 → 同 record 广播的顺序、错误隔离与日志。新增仅内部使用的 v1 OneBot envelope 和既有标识关联值，不扩展公共事件/hook；补充入站行为测试与 ADR-002。无新配置/依赖，不改 UI、认知、模块内核、交付或分条，不升级版本、不发布、不部署，未做真实 QQ/浏览器验收，parity 矩阵不变。
 
 - 架构优化 Phase 0 + Phase 1：刻画既有回复投递语义，新增纯 DeliveryPlan builder、校验/单条纯文本回退与 DeliveryExecutor，pipeline 保留原 core 路径并增加显式启用的 planner 路径。内部 `cognition.delivery.engine=core|planner` 默认 core，可切回；原 `cognition.reply.*`、outbound 安全闸门、统计/pending/逐条归因保持。补充 core/planner 离线行为对等测试与 ADR-001；不新增模块/schema/ingress 改造，不升级版本、不发布、不部署，未做 live/浏览器验证，parity 矩阵不变。

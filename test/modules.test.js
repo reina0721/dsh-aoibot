@@ -1,11 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, open, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { createModuleKernel } from '../src/modules/kernel.js'
 import { createCommandService } from '../src/cognition/commands.js'
+import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from '../src/modules/config.js'
 
 async function moduleDir(root, id, manifest, source) {
   const dir = join(root, id)
@@ -15,7 +16,7 @@ async function moduleDir(root, id, manifest, source) {
   return dir
 }
 
-async function harness(registry = []) {
+async function harness(registry = [], logger = null) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-modules-'))
   const sent = []
   const commandReplies = []
@@ -27,6 +28,7 @@ async function harness(registry = []) {
   const kernel = createModuleKernel({
     dataDir: root,
     registry,
+    logger,
     getConfig: () => ({}),
     commands,
     outbound: { async deliver(payload) { sent.push(payload); return { ok: true } } },
@@ -166,6 +168,202 @@ function builtin(id, load, extra = {}, defaultEnabled = false) {
   return { manifest: { id, name: id, version: '1', ...extra }, defaultEnabled, load }
 }
 const row = (kernel, id) => kernel.list().find((item) => item.id === id)
+
+const configSchema = { version: 1, fields: [
+  { path: 'message', type: 'text', label: '回复', default: '默认', maxChars: 4 },
+  { path: 'enabled', type: 'switch', label: '开关' },
+  { path: 'details', type: 'textarea', label: '说明' },
+  { path: 'count', type: 'number', label: '数量', default: 2, min: 1, max: 3 },
+  { path: 'mode', type: 'select', label: '模式', options: [{ value: 'a', label: 'A' }, { value: 'b' }] },
+  { path: 'names', type: 'string-list', label: '名称', default: ['a'], maxChars: 3, maxItems: 2 },
+  { path: 'numbers', type: 'number-list', label: '数字', default: [1], min: 0, max: 10, minItems: 1, maxItems: 2 },
+] }
+
+test('modules config：schema 类型、默认、平面键、边界、未知字段与总大小验证', () => {
+  const schema = validateConfigSchema(configSchema)
+  const defaults = validateConfigValues(schema, {})
+  assert.deepEqual(defaults, { message: '默认', enabled: false, details: '', count: 2, mode: 'a', names: ['a'], numbers: [1] })
+  for (const fields of [
+    [{ path: 'a.b', type: 'text', label: 'x' }],
+    [{ path: 'A', type: 'text', label: 'x' }],
+    [{ path: 'a'.repeat(65), type: 'text', label: 'x' }],
+    [{ path: 'secret', type: 'secret', label: 'x' }],
+    [{ path: 'test', type: 'text', label: ' ' }],
+    [{ path: 'test', type: 'text', label: 'x', default: false }],
+    [{ path: 'test', type: 'number', label: 'x', min: 1 }],
+    [{ path: 'test', type: 'number', label: 'x', default: NaN }],
+    [{ path: 'test', type: 'number', label: 'x', min: 3, max: 1 }],
+    [{ path: 'test', type: 'select', label: 'x', options: [] }],
+    [{ path: 'test', type: 'select', label: 'x', options: [{ value: 'a' }, { value: 'a' }] }],
+    [{ path: 'test', type: 'text', label: 'x', maxChars: -1 }],
+    [{ path: 'test', type: 'string-list', label: 'x', maxItems: 1001 }],
+    [configSchema.fields[0], configSchema.fields[0]],
+    Array.from({ length: 33 }, (_, i) => ({ path: 'field' + i, label: 'x', type: 'text' })),
+  ]) assert.throws(() => validateConfigSchema({ version: 1, fields }), { code: 'MODULE_CONFIG_INVALID' })
+  assert.throws(() => validateConfigSchema({ ...configSchema, version: 2 }))
+  for (const values of [null, [], { extra: 'x' }, { message: '12345' }, { enabled: 1 }, { details: false },
+    { count: '2' }, { count: Infinity }, { count: 0 }, { count: 4 }, { mode: 'c' },
+    { names: ['abcd'] }, { names: [1] }, { names: ['a', 'b', 'c'] },
+    { numbers: [] }, { numbers: ['1'] }, { numbers: [NaN] }, { numbers: [11] }, { numbers: [1, 2, 3] },
+  ]) assert.throws(() => validateConfigValues(schema, values), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal(validateConfigValues(schema, { message: '😀😀😀😀' }).message, '😀😀😀😀')
+  defaults.names.push('mutate')
+  assert.deepEqual(validateConfigValues(schema, {}).names, ['a'])
+  assert.throws(() => validateConfigSchema({ version: 1, fields: [{ path: 'large', label: '大', type: 'text', maxChars: MAX_CONFIG_BYTES, default: '中'.repeat(30000) }] }))
+})
+
+test('modules config：setup 前加载、clone、监听隔离/注销、revision、原子保存与重启', async (t) => {
+  const apis = [], changes = [], warnings = []
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup(api) {
+    apis.push(api)
+    assert.ok(api.config.get().message)
+    api.config.onChange((values) => { changes.push(values); values.names.push('local') })
+    api.config.onChange(() => { throw Error('/private/path secret') })
+    api.config.onChange(async () => { throw Error('async secret') })
+  } })), config: configSchema }
+  const h = await harness([descriptor], { warn: (message) => warnings.push(message) }); t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const first = await h.kernel.getModuleConfig(descriptor.manifest.id)
+  assert.equal(first.source, 'builtin'); assert.equal(first.revision, 0)
+  assert.equal(row(h.kernel, first.id).hasConfig, true)
+  assert.match(row(h.kernel, first.id).configWarning, /默认值/)
+  assert.ok(!JSON.stringify(first).includes(h.root))
+  first.values.message = 'bad'; first.schema.fields[0].maxChars = 99
+  assert.equal((await h.kernel.getModuleConfig(first.id)).schema.fields[0].maxChars, 4)
+  await h.kernel.setEnabled(first.id, true)
+  const api = apis[0]
+  assert.equal(api.config.get().message, '默认')
+  api.config.get().names.push('mutate')
+  assert.deepEqual(api.config.get().names, ['a'])
+  assert.throws(() => api.config.onChange(null))
+  let disposedCalls = 0
+  const off = api.config.onChange(() => disposedCalls++)
+  off(); off()
+  const dir = join(h.root, '.builtin', first.id), file = join(dir, 'config.json')
+  await writeFile(join(dir, 'data.json'), '{"untouched":true}')
+  const saved = await h.kernel.setModuleConfig(first.id, { message: '新回复' }, 0)
+  assert.equal(saved.revision, 1)
+  assert.equal(api.config.get().message, '新回复')
+  assert.deepEqual(api.config.get().names, ['a']); assert.equal(changes.length, 1); assert.equal(disposedCalls, 0)
+  assert.equal(row(h.kernel, first.id).configWarning, '')
+  assert.equal(row(h.kernel, first.id).status, 'loaded')
+  assert.ok(warnings.some((message) => message.includes('监听器失败')))
+  assert.ok(!warnings.join().includes('secret'))
+  assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), { version: 1, revision: 1, values: saved.values })
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'data.json'), 'utf8')), { untouched: true })
+  assert.deepEqual((await readdir(dir)).sort(), ['config.json', 'data.json'])
+  await assert.rejects(h.kernel.setModuleConfig(first.id, { message: '旧' }, 0), { code: 'MODULE_CONFIG_CONFLICT' })
+  await assert.rejects(h.kernel.setModuleConfig(first.id, { unknown: true }, 1), { code: 'MODULE_CONFIG_INVALID' })
+  await assert.rejects(h.kernel.setModuleConfig(first.id, {}, undefined), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal((await h.kernel.getModuleConfig(first.id)).revision, 1)
+  const oldFile = await open(file, 'r')
+  try {
+    const raced = await Promise.allSettled([h.kernel.setModuleConfig(first.id, {}, 1), h.kernel.setModuleConfig(first.id, {}, 1)])
+    assert.equal(raced[0].value.revision, 2); assert.equal(raced[1].reason.code, 'MODULE_CONFIG_CONFLICT')
+    // 已打开的旧文件保持完整 revision 1；路径已原子替换为完整 revision 2。
+    assert.equal(JSON.parse(await oldFile.readFile('utf8')).revision, 1)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 2)
+  } finally { await oldFile.close() }
+  await h.kernel.setEnabled(first.id, false)
+  await h.kernel.setModuleConfig(first.id, { message: '关闭时' }, 2)
+  assert.equal(changes.length, 2)
+  assert.throws(() => api.config.onChange(() => {}), /停止/)
+  await h.kernel.setEnabled(first.id, true)
+  assert.equal(apis[1].config.get().message, '关闭时')
+  await h.kernel.setModuleConfig(first.id, {}, 3)
+  assert.equal(changes.length, 3)
+  await h.kernel.dispose()
+  await assert.rejects(h.kernel.setModuleConfig(first.id, {}, 4), { code: 'MODULE_CONFIG_UNAVAILABLE' })
+  const restarted = createModuleKernel({ dataDir: h.root, registry: [descriptor] }); t.after(() => restarted.dispose())
+  await restarted.start()
+  assert.equal((await restarted.getModuleConfig(first.id)).revision, 4)
+  assert.equal(apis.at(-1).config.get().message, '默认')
+})
+
+test('modules config：损坏/超限回退、符号链接 containment、写失败保持内存与文件', async (t) => {
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup() {} }), {}, true), config: configSchema }
+  const root = await mkdtemp(join(tmpdir(), 'dsh-config-'))
+  const dir = join(root, '.builtin', descriptor.manifest.id), file = join(dir, 'config.json')
+  await mkdir(dir, { recursive: true })
+  const warnings = []
+  for (const content of ['{bad', JSON.stringify({ version: 1, revision: 8, values: { count: 10 } }), JSON.stringify({ version: 1, revision: -1, values: {} }), ' '.repeat(MAX_CONFIG_BYTES + 1)]) {
+    await writeFile(file, content)
+    const kernel = createModuleKernel({ dataDir: root, registry: [descriptor], logger: { warn: (message) => warnings.push(message) } })
+    try {
+      await kernel.start()
+      assert.equal(row(kernel, descriptor.manifest.id).status, 'loaded')
+      assert.match(row(kernel, descriptor.manifest.id).configWarning, /默认值/)
+      assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).values.message, '默认')
+      assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+    } finally { await kernel.dispose() }
+  }
+  assert.ok(warnings.length >= 4); assert.ok(!warnings.join().includes(root))
+  await rm(file)
+  const outside = join(root, 'outside.json')
+  await writeFile(outside, '{"private":true}')
+  await symlink(outside, file)
+  const kernel = createModuleKernel({ dataDir: root, registry: [descriptor] }); t.after(() => kernel.dispose())
+  await kernel.start()
+  assert.equal(row(kernel, descriptor.manifest.id).status, 'loaded')
+  await assert.rejects(kernel.setModuleConfig(descriptor.manifest.id, {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  assert.equal(await readFile(outside, 'utf8'), '{"private":true}')
+  assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  await rm(file); await mkdir(file)
+  await assert.rejects(kernel.setModuleConfig(descriptor.manifest.id, {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  assert.deepEqual(await readdir(dir), ['config.json'])
+  await rm(file, { recursive: true })
+  assert.equal((await kernel.setModuleConfig(descriptor.manifest.id, {}, 0)).revision, 1)
+})
+
+test('modules config：仅 registry 内置描述符生效；外部/未声明/未知拒绝且无路径泄露', async (t) => {
+  let plainApi
+  const h = await harness([builtin('builtin-plain', async () => ({ setup(api) { plainApi = api } }), { config: configSchema }, true)])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'external', { config: configSchema }, `export function setup(api) { if (api.config !== undefined) throw Error('external config exposed') }`)
+  await h.kernel.start()
+  assert.equal(plainApi.config, undefined)
+  assert.equal(row(h.kernel, 'external').status, 'loaded')
+  for (const id of ['external', 'builtin-plain', 'absent', '/absolute/private/path', '../escape']) {
+    assert.equal(row(h.kernel, id)?.hasConfig || false, false)
+    await assert.rejects(h.kernel.getModuleConfig(id), { code: 'MODULE_CONFIG_UNAVAILABLE' })
+    await assert.rejects(h.kernel.setModuleConfig(id, {}, 0), (error) => error.code === 'MODULE_CONFIG_UNAVAILABLE' && !error.message.includes(id))
+  }
+})
+
+test('modules config：依赖 reload 会清理内置下游监听器，dispose 清理当前注册', async (t) => {
+  let calls = 0, setups = 0, cleanups = 0
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup(api) {
+    setups++
+    api.config.onChange(() => calls++)
+    return () => { cleanups++ }
+  } }), { requires: ['base'] }, true), config: configSchema }
+  const h = await harness([descriptor]); t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'base', {}, 'export function setup() {}')
+  await h.kernel.start()
+  await h.kernel.reload('base')
+  assert.equal(setups, 2); assert.equal(cleanups, 1)
+  await h.kernel.setModuleConfig(descriptor.manifest.id, {}, 0)
+  assert.equal(calls, 1)
+  await h.kernel.dispose()
+  assert.equal(cleanups, 2)
+})
+
+test('modules config：保存限制包含文件 envelope，超限不写入或通知', async (t) => {
+  let notified = 0
+  const descriptor = { ...builtin('builtin-large', async () => ({ setup(api) { api.config.onChange(() => notified++) } }), {}, true), config: {
+    version: 1, fields: [{ path: 'large', type: 'textarea', label: '内容', maxChars: MAX_CONFIG_BYTES }],
+  } }
+  const h = await harness([descriptor]); t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const values = { large: 'x'.repeat(MAX_CONFIG_BYTES - 40) }
+  assert.ok(Buffer.byteLength(JSON.stringify(values, null, 2)) < MAX_CONFIG_BYTES)
+  await assert.rejects(h.kernel.setModuleConfig(descriptor.manifest.id, values, 0), { code: 'MODULE_CONFIG_INVALID' })
+  await assert.rejects(h.kernel.setModuleConfig(descriptor.manifest.id, { large: '中'.repeat(30000) }, 0), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal(notified, 0)
+  assert.equal((await h.kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  assert.deepEqual(await readdir(join(h.root, '.builtin', descriptor.manifest.id)), [])
+})
 
 test('modules v2：内置默认不导入，来源只读，启停持久化，独立存储与保留目录', async (t) => {
   let imports = 0, setups = 0
