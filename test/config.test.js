@@ -8,6 +8,16 @@ import { join } from 'node:path'
 import { DEFAULTS, CONFIG_GROUPS, normalizeConfig, getPath } from '../src/core/config.js'
 import { createLogger } from '../src/core/logger.js'
 
+test('delivery engine: internal core default, opt-in planner and strict normalization', () => {
+  assert.deepEqual(DEFAULTS.cognition.delivery, { engine: 'core' })
+  assert.deepEqual(normalizeConfig({}).config.cognition.delivery, { engine: 'core' })
+  for (const engine of ['core', 'planner']) assert.equal(normalizeConfig({ cognition: { delivery: { engine } } }).config.cognition.delivery.engine, engine)
+  for (const engine of ['', 'Planner', 'module', true, 1, null, {}, []]) assert.equal(normalizeConfig({ cognition: { delivery: { engine } } }).config.cognition.delivery.engine, 'core')
+  for (const delivery of [null, true, 'planner', []]) assert.deepEqual(normalizeConfig({ cognition: { delivery } }).config.cognition.delivery, { engine: 'core' })
+  assert.equal(CONFIG_GROUPS.flatMap((group) => group.fields).some((field) => field.path.startsWith('cognition.delivery')), false)
+  assert.deepEqual(normalizeConfig({ cognition: { delivery: { engine: 'planner' } } }).config.cognition.reply, DEFAULTS.cognition.reply)
+})
+
 test('typing config: default off, strict boolean and private-only turn panel switch', () => {
   assert.deepEqual(DEFAULTS.cognition.typing, { enabled: false })
   assert.deepEqual(normalizeConfig({}).config.cognition.typing, { enabled: false })

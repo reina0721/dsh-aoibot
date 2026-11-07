@@ -7,6 +7,8 @@ import { clamp, deepClone, round, truncate, uid, scopeAllows } from './util.js'
 import { analyzeTurn, composeReply } from './analysis.js'
 import { defaultScope, memoryText, relevanceScore } from './memory.js'
 import { splitReply } from './reply-split.js'
+import { buildReplyPlan } from '../delivery/plan.js'
+import { executeDeliveryPlan } from '../delivery/executor.js'
 import { flattenForward, forwardIdsOf } from '../gateway/forward.js'
 
 export function createPipeline({
@@ -309,7 +311,7 @@ export function createPipeline({
     return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)))
   }
 
-  async function sendDecision(decision, text, turn, opts = {}) {
+  async function sendDecisionCore(decision, text, turn, opts = {}) {
     if (!text) {
       policy.markSent(decision.id, { dryRun: isDry() })
       if (isDry()) stats.dryRun += 1
@@ -379,6 +381,51 @@ export function createPipeline({
     noteGroupReply(turn)
     pending.set(chatKey(turn), { decisionId: decision.id, messageId: firstMessageId, sentAt: clock.now(), action: decision.action, text })
     return { ok: true, messageId: firstMessageId, result: lastResult, parts: sentParts }
+  }
+
+  async function sendDecisionPlanner(decision, text, turn, opts = {}) {
+    if (!text) {
+      policy.markSent(decision.id, { dryRun: isDry() })
+      if (isDry()) stats.dryRun += 1
+      return { ok: true, dryRun: isDry(), messageId: '' }
+    }
+    const replyCfg = cfg().reply || {}
+    // The core splitter produces zero parts for whitespace. Keep its historical
+    // SEND_FAILED result rather than turning that case into fallback delivery.
+    if (replyCfg.split !== false && !String(text).trim()) return { ok: false, error: 'SEND_FAILED' }
+    let directPart = 0
+    const sent = await executeDeliveryPlan({
+      plan: () => buildReplyPlan({ text, turn, decision, replyCfg: opts.noReplySegment ? { ...replyCfg, quote: false } : replyCfg }),
+      text, turn, decisionId: decision.id, source: 'pipeline', dryRun: () => isDry() ? true : null,
+      deliver: outbound && typeof outbound.deliver === 'function' ? (payload) => outbound.deliver(payload) : null,
+      fallbackDeliver: (payload) => sendDirect(decision, payload.segments, turn, { mark: directPart++ === 0 }),
+      sleep,
+      onPartSent: ({ messageId, index, parts }) => {
+        turnAggregatorRef?.noteBotMessage?.(messageId)
+        try {
+          ctxEmit('onebot-qq/cognition-sent', {
+            decisionId: decision.id, messageId, chatType: turn.chatType, chatId: turn.chatId,
+            action: decision.action, part: index, parts,
+          })
+        } catch (error) {}
+      },
+      onPartFailed: ({ delivered, index }) => {
+        log.warn?.(index === 0 ? '发送认知回复失败：' : '认知回复分条中途失败：', delivered?.message || delivered?.error || 'unknown')
+      },
+    })
+    if (sent.dryRun) stats.dryRun += 1
+    if (sent.ok && !sent.dryRun) {
+      stats.sent += sent.parts
+      noteGroupReply(turn)
+      pending.set(chatKey(turn), { decisionId: decision.id, messageId: sent.messageId, sentAt: clock.now(), action: decision.action, text })
+    }
+    return sent
+  }
+
+  function sendDecision(decision, text, turn, opts = {}) {
+    return cfg().delivery?.engine === 'planner'
+      ? sendDecisionPlanner(decision, text, turn, opts)
+      : sendDecisionCore(decision, text, turn, opts)
   }
 
   function ctxEmit() {}

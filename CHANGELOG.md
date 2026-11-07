@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布
+
+- 架构优化 Phase 0 + Phase 1：刻画既有回复投递语义，新增纯 DeliveryPlan builder、校验/单条纯文本回退与 DeliveryExecutor，pipeline 保留原 core 路径并增加显式启用的 planner 路径。内部 `cognition.delivery.engine=core|planner` 默认 core，可切回；原 `cognition.reply.*`、outbound 安全闸门、统计/pending/逐条归因保持。补充 core/planner 离线行为对等测试与 ADR-001；不新增模块/schema/ingress 改造，不升级版本、不发布、不部署，未做 live/浏览器验证，parity 矩阵不变。
+
 ## 0.11.7（2026-11-06，内置与外部模块架构）
 
 - 模块架构 v2：统一内置/外部目录，静态冻结 registry 与默认关闭的 builtin-sample（主人 `/module-sample` 固定回复）；保留 builtin- 命名空间，关闭时不导入/运行。共享 apiVersion=1、requires 校验和依赖图，拓扑加载、逆序清理、error/blocked 隔离、外部重载级联与内置代码缓存。

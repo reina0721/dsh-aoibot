@@ -49,6 +49,8 @@ dsh-bot/
 
 ## 3. 关键契约
 
+内部交付 seam（Phase 0 + Phase 1）：采用模块化单体，`src/delivery/plan.js` 纯函数负责回复布局，`src/delivery/executor.js` 负责顺序执行；outbound 继续持有访问/限频/leak guard，pipeline 继续维护统计与归因。内部 `cognition.delivery.engine` 默认 `core`，显式 `planner` 才启用新路径，可随时切回；`cognition.reply.*` 及默认行为保持不变。分条尚未迁入模块，无 schema/ingress 改造、版本升级或部署，详见 [ADR-001](architecture/ADR-001-delivery-seam.md)。
+
 ### 3.1 配置（src/core/config.js）
 
 - 配置文件：`$DSH_HOME/plugins-data/dsh-bot/config.json`（可用 `DSH_BOT_DATA_DIR` 覆盖，测试用）。

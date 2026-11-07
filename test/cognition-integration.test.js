@@ -471,13 +471,13 @@ test('集成：撤回在无原文时不假装看见；有原文时 sawContent=tr
 })
 
 
-test('M2-a：长回复按配置分条，首条引用原消息，内容不丢', async () => {
+for (const engine of ['core', 'planner']) test(`M2-a ${engine}：长回复按配置分条，首条引用原消息，内容不丢`, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-split-'))
   const scheduler = createFakeScheduler()
   const sent = []
   const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 500 + sent.length } } } }
   const longReply = '这是一段比较长的回复。'.repeat(30)
-  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(null, longReply), configOverride: { reply: { split: true, maxChars: 100, maxParts: 3, delayMs: 0, quote: true } } })
+  const cog = makeCog({ dir, gateway, scheduler, llm: fakeLlm(null, longReply), configOverride: { delivery: { engine }, reply: { split: true, maxChars: 100, maxParts: 3, delayMs: 0, quote: true } } })
   try {
     cog.observe(privateEvent(1, '请详细说说'), { accepted: true })
     scheduler.advance(1500)
@@ -492,14 +492,14 @@ test('M2-a：长回复按配置分条，首条引用原消息，内容不丢', a
   }
 })
 
-test('M2-a：群聊回复可引用 + @ 发送者', async () => {
+for (const engine of ['core', 'planner']) test(`M2-a ${engine}：群聊回复可引用 + @ 发送者`, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-cog-at-'))
   const scheduler = createFakeScheduler()
   const sent = []
   const gateway = { actions: { sendMessage: async (payload) => { sent.push(payload); return { message_id: 601 } } } }
   const cog = makeCog({
     dir, gateway, scheduler,
-    configOverride: { turn: groupTurnConfig(), reply: { split: false, quote: true, atSender: true } },
+    configOverride: { delivery: { engine }, turn: groupTurnConfig(), reply: { split: false, quote: true, atSender: true } },
   })
   try {
     cog.observe(groupEvent(1, '你好', { chatId: 'g1', senderId: '10001', mentions: [{ userId: '999', name: '机器人' }] }), { accepted: true })
