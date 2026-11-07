@@ -1,23 +1,2 @@
-import { splitReply } from '../../delivery/text-split.js'
-
-/** Pure reply layout; no configuration reads, policy checks or delivery I/O. */
-export function buildReplyPlan({ text, turn, decision, replyCfg = {}, replyTo = '', source = 'pipeline', decisionId = '' }) {
-  const texts = !text ? [] : replyCfg.split === false
-    ? [String(text)]
-    : splitReply(text, { maxChars: replyCfg.maxChars, maxParts: replyCfg.maxParts })
-  const quoteId = replyTo || turn?.messages?.at(-1)?.messageId
-  const delayMs = Math.max(0, Number(replyCfg.delayMs) || 0)
-  return {
-    source,
-    decisionId: decisionId || decision?.id || '',
-    target: { chatType: turn?.chatType, chatId: turn?.chatId },
-    parts: texts.map((value, index) => {
-      const segments = []
-      if (index === 0 && replyCfg.quote !== false && quoteId) segments.push({ type: 'reply', data: { id: quoteId } })
-      if (index === 0 && turn?.chatType === 'group' && replyCfg.atSender === true && turn.senderId) segments.push({ type: 'at', data: { qq: String(turn.senderId) } })
-      segments.push({ type: 'text', data: { text: value } })
-      return { segments, delayAfterMs: index < texts.length - 1 ? delayMs : 0 }
-    }),
-    meta: { planner: 'core', fallback: false },
-  }
-}
+// The builtin planner shares the pure core layout contract with the rollback path.
+export { buildReplyPlan } from '../../delivery/reply-plan.js'

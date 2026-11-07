@@ -1,5 +1,5 @@
 // Compatibility facade for the core rollback path and Phase 1 callers.
-export { buildReplyPlan } from '../modules/builtin/reply-delivery-plan.js'
+export { buildReplyPlan } from './reply-plan.js'
 
 /** Boolean validation deliberately contains no payloads or diagnostic secrets. */
 export function validateDeliveryPlan(plan) {

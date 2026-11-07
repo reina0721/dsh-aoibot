@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { buildReplyPlan, buildFallbackPlan, validateDeliveryPlan } from '../src/delivery/plan.js'
 import { executeDeliveryPlan } from '../src/delivery/executor.js'
 
@@ -7,6 +8,13 @@ const turn = { chatType: 'group', chatId: 'g1', senderId: 123, messages: [{ mess
 const context = { text: '字'.repeat(115), turn, decision: { id: 'd1' }, replyCfg: { maxChars: 40, maxParts: 3, delayMs: 19, atSender: true } }
 const textSegment = (text) => ({ type: 'text', data: { text } })
 const plan = () => buildReplyPlan(context)
+
+test('delivery architecture: core planner files do not depend on modules', () => {
+  for (const file of ['plan.js', 'reply-plan.js', 'text-split.js']) {
+    const source = readFileSync(new URL(`../src/delivery/${file}`, import.meta.url), 'utf8')
+    assert.doesNotMatch(source, /['"][^'"\r\n]*modules\//, `${file} must not import or re-export modules`)
+  }
+})
 
 test('reply plan: exact shape, limits, first-part quote/@ and purity', () => {
   const input = structuredClone(context)
