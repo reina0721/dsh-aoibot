@@ -74,7 +74,8 @@ export async function setup(api) {
 | 权限 | API | 行为 |
 |---|---|---|
 | `events` | `api.on(name, handler)` | 监听 `message`、`notice`、`request`、`meta_event` 或 `any`；收到规范化事件记录 |
-| `commands` | `api.registerCommand(name, handler, { ownerOnly=true })` | 注册 `/name`；handler 收到 `{turn, parsed, args}`，返回字符串或 `{reply}`；不能覆盖内置/其它模块命令 |
+| `commands` | `api.registerCommand(name, handler, { ownerOnly=true, overrideBuiltin=false })` | 注册 `/name`，返回生命周期 disposer；handler 收到 `{turn, parsed, args}`，返回字符串或 `{reply}`；默认拒绝受保护命令，始终拒绝已有模块注册 |
+| `commands:override` | 同上，显式 `overrideBuiltin:true` | 额外要求 `commands`；仅加载器认定的内置模块可以覆盖核心受保护命令；外部或缺权限调用抛错，setup 中调用则进入 error |
 | `send:text` | `api.sendText({chatType, chatId, text})` | 通过 DeliveryService → executor → outbound 以 `source: module:<id>` 单条发送，仍受访问控制、频率限制和 leak guard 约束 |
 | `cognition:read` | `api.cognition` | 只读暴露 `snapshot`、`overview`、`memories`、`personDetail`、`relationshipsList`、`timeline` |
 | `knowledge` | `api.registerKnowledgeSource(source)` | 注册认知知识源，重载/停用时自动移除 |
@@ -89,6 +90,31 @@ export async function setup(api) {
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
 
 生产 host 向模块内核注入 `cognition.services.delivery`，`api.sendText` 将文本交给单条 DeliveryPlan 执行，不拆分、不添加引用/@、不等待。权限、输入修整和返回语义保持，结果保留 outbound 字段并补充 `parts:1`。旧 harness 未注入 delivery 时仍可使用 outbound；DeliveryService 本身缺少 outbound 则安全失败，不直连 gateway，也不对拒绝回退或重试。面板人工 `/send` 保留独立 gateway 路径，媒体/文件和提醒留待后续阶段，详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
+
+## 内置模块受保护命令覆盖（Phase 10）
+
+这是未来提醒命令迁出的前置契约，本阶段不迁移提醒/媒体，不增加生产模块，生产目录仍为三个内置模块；没有新配置、UI、REST、依赖或版本变化。
+
+```js
+// 仅测试内置描述符：manifest.permissions: ['commands', 'commands:override']
+export function setup(api) {
+  const off = api.registerCommand('status', ({ args }) => `模块状态：${args}`, {
+    overrideBuiltin: true,
+    ownerOnly: true,
+  })
+  // off() 可提前注销；内核也会自动清理，无需模块返回 off。
+}
+```
+
+`overrideBuiltin` 只有严格的 boolean true 才开启覆盖。模块必须来自受信任的静态内置 registry，并同时声明 `commands` 与 `commands:override`；外部即使声明新权限或伪造 source/builtin 也无法覆盖，调用在 setup 中抛错会令模块进入 error。单独声明权限不会改变默认注册行为；外部声明该权限仍可正常注册普通命令，但不能使用覆盖选项。permissions 只约束稳定 API，不是 Node.js 沙箱。
+
+核心 `commands.registerCommand(name, handler, {ownerOnly=true,allowProtected=false})` 仅在 `allowProtected === true` 时允许受保护名称；这个内部选项不直接暴露给模块，内核验证来源/权限后才传入。名称继续小写规范化并验证；每个名称最多一个模块注册项，不允许覆盖另一个覆盖项或普通模块命令，无栈或优先级配置。
+
+分发在核心分支前查找模块注册项，因此有效覆盖只执行模块 handler，不执行核心 handler。沿用默认 ownerOnly（操作员的核心只读权限不会绕过它）；显式 ownerOnly:false 才可向其他用户开放。覆盖仍先检查 `cognition.permissions.deniedCommands`（主人固定提示、其他人静默），并在调用 handler 前检查当前会话 canSend；访问服务缺失、抛错或拒绝都不会执行 handler。回复仍走 source:command 的 DeliveryService → executor → outbound，保留访问控制、限频和 leak guard。
+
+返回的 disposer 幂等且只移除它自己的注册，不会删除后续同名注册。内核保存到当前 runtime.disposers，停用、setup 失败、事件隔离、依赖禁用/重载和内核 dispose 时自动注销；旧 runtime 不能再次注册。没有覆盖时，下一次命令直接回到原核心分支，核心配置开关和既有安全规则继续生效。已开始的异步 handler 不强制取消；handler 抛错或回复被拒绝时沿用模块命令失败路径，不重试、不执行核心 fallback，避免重复副作用。
+
+未来迁移可由内置模块在 setup 中取得名称、在停用时释放名称，核心实现暂留作无注册时的回退。本阶段核心提醒/媒体实现和生产 registry 均保持原样，不提供提醒迁移、定时投递或持久化恢复。详见 [ADR-009](architecture/ADR-009-command-override.md)。
 
 ## 回复交付规划（Phase 4）
 

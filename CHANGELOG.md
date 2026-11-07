@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 10（有限范围）：新增 commands:override 权限与 api.registerCommand 的 overrideBuiltin:false 默认选项，仅同时声明 commands/commands:override 的受信任内置模块可显式覆盖受保护命令；外部伪造来源或缺权限在 setup 中失败。核心 allowProtected 严格 true 才放行，重复模块注册始终拒绝；覆盖优先分发，保留 ownerOnly/deniedCommands，handler 前检查会话访问，回复沿用统一 command 交付路径。身份绑定 disposer 与 runtime 清理在停用、setup/事件失败、依赖禁用/重载、dispose 后恢复原核心分支，旧 API 不可注册；执行/发送失败不重试核心。新增权限/访问/交付/重复/生命周期回归测试、模块/架构文档与 ADR-009；仅为提醒迁移前置 API，不提取提醒/媒体，生产内置仍三个，无新配置/UI/REST/依赖或版本，仅本地校验，不推送/部署/发布。
+
 - 架构优化 Phase 9（有限范围）：新增 persona:store 权限，仅内置模块获得同步 api.personaStore.get/put/remove/list/count；外部声明在导入前拒绝。安全 key、module:<id>:<key> 命名空间与当前人格 facade 隔离，JSON 值进出 structuredClone、每值 UTF-8 JSON 最多 64 KiB、每模块每人格最多 1000 条；事务检查额度、支持满额覆盖，无 raw kind/SQL/底层 store/跨人格参数。生命周期结束撤销旧 API 且保留数据，人格删除清理所有模块记录；复用 cognition SQLite/JSON，无独立持久层。新增仓库/生产接线/重启/清理测试、模块/架构文档与 ADR-008；不是通用 DB，不提取提醒/媒体，不新增生产模块、依赖、配置/UI/REST 或版本，仅本地校验，不推送/部署/发布。
 
 - 架构优化 Phase 8（有限范围）：仅向声明 scheduler 权限的内置模块暴露 api.scheduler.setTimeout(fn,delayMs) → {id,dispose} 与 clearTimeout(id) → boolean；数字整数延迟 0–2,592,000,000 ms、每 runtime 最多 64 个活跃 timer，不透明 ID 按模块/生命周期隔离。按单调截止时间分段避免 Node 32 位 timeout 溢出；停用、失败、依赖重载和 dispose 清空 timer，generation/注册检查阻止迟到回调。同步/异步异常及 logger 错误隔离，固定日志不含聊天 ID/payload。新增调度器测试、模块/架构文档和 ADR-007；不提取提醒/媒体，无 interval/cron/持久化、新生产模块、配置/UI/依赖或版本变更，仅本地校验，不推送/部署/发布。

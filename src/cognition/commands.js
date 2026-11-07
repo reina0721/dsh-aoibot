@@ -93,11 +93,11 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
-  function registerCommand(name, handler, { ownerOnly = true } = {}) {
+  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false } = {}) {
     const normalized = String(name || '').toLowerCase()
     if (!EXTERNAL_COMMAND_RE.test(normalized)) throw new Error('命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$')
     if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
-    if (COMMANDS.includes(normalized) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
+    if ((COMMANDS.includes(normalized) && allowProtected !== true) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
     const registration = { handler, ownerOnly: ownerOnly !== false }
     externalCommands.set(normalized, registration)
     return () => {
@@ -345,6 +345,8 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (operatorSafe && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
 
     if (external) {
+      // 受保护命令的覆盖也必须先通过会话访问闸门，再执行模块副作用。
+      if (COMMANDS.includes(parsed.name) && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
       try {
         const result = await external.handler({ turn, parsed, args: parsed.args })
         const reply = typeof result === 'string' ? result : result?.reply

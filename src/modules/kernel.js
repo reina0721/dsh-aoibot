@@ -360,14 +360,18 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         runtime.disposers.push(dispose)
         return dispose
       },
-      registerCommand(name, handler, options = {}) {
+      registerCommand(name, handler, { ownerOnly = true, overrideBuiltin = false } = {}) {
         requireActive(runtime)
         requirePermission(record, 'commands')
+        if (overrideBuiltin === true) {
+          if (!record.builtin) throw new Error('受保护命令覆盖仅允许内置模块注册')
+          requirePermission(record, 'commands:override')
+        }
         const normalized = String(name || '').toLowerCase()
         if (!COMMAND_RE.test(normalized)) throw new Error('命令名不合法')
         if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
         if (!commands?.registerCommand) throw new Error('命令服务不可用')
-        const dispose = commands.registerCommand(normalized, (...args) => runtime.active ? handler(...args) : undefined, { ownerOnly: options.ownerOnly !== false })
+        const dispose = commands.registerCommand(normalized, (...args) => runtime.active ? handler(...args) : undefined, { ownerOnly: ownerOnly !== false, allowProtected: overrideBuiltin === true })
         runtime.disposers.push(dispose)
         return dispose
       },

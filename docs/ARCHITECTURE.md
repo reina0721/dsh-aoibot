@@ -326,6 +326,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 - `src/cognition/commands.js`：`parseCommand(text)` + `createCommandService()`；只处理 `/name args`，非主人静默忽略。
 - 命令在 `pipeline.handleTurn` 的自循环检查之后、分析/策略之前处理；回复走 `delivery.deliver({ source:'command' })` → executor → outbound，
   因此同样受访问控制与频率上限约束。
+- Phase 10：命令服务 `registerCommand(name,handler,{ownerOnly=true,allowProtected=false})` 仅在 allowProtected 严格为 true 时接受受保护名称，始终拒绝同名模块注册。分发优先选模块覆盖，再走核心分支；覆盖保留 ownerOnly/deniedCommands，handler 前另检查当前会话 canSend（缺失/异常/拒绝均安全失败），回复沿用上述命令交付路径。disposer 仅删除自身注册，无注册时恢复原核心命令；handler 错误或发送拒绝不会触发核心重试。详见 [ADR-009](architecture/ADR-009-command-override.md)。
 - `/quiet` `/active` 写回 `cognition.turn.groupReplyMode` 与 `cognition.proactivity.enabled`；`/model` 写
   `cognition.modelRouting.routes`（`chatId=provider/model`）；`/remember` `/forget` 调用记忆服务的 `remember` /
   `forgetMatching`，作用域是当前私聊或群。
@@ -388,6 +389,7 @@ host 在 createCognition 前创建 registry，传入 cognition → pipeline，�
 
 ### 3.18 统一模块内核（模块架构 v2）
 
+- Phase 10：新增已知权限 `commands:override`，`api.registerCommand(name,handler,{ownerOnly=true,overrideBuiltin=false})` 仅对加载器认定为 builtin 且同时声明 commands/commands:override 的模块开放严格 true 的覆盖选项。外部声明权限/伪造来源无效，外部或缺权限调用在 setup 中抛错进入 error；默认仍拒绝受保护名称，普通外部命令行为不变。内核验证后传 allowProtected:true，disposer 进入 runtime.disposers，在停用、setup/事件失败、依赖禁用/重载及 dispose 时注销；旧 API 不能重新注册，已开始的异步 handler 不强制取消。下一次命令无覆盖即回到核心；本阶段只是提醒迁移前置 API，不提取提醒/媒体，无新生产模块，目录仍为三个内置模块，无配置/UI/REST/依赖或版本变化。详见 [模块契约](MODULES.md) 和 [ADR-009](architecture/ADR-009-command-override.md)。
 - `src/modules/registry.js` 为冻结的包内静态注册表，lazy import；内置 ID 保留 `builtin-` 前缀。外部扫描 `<dataDir>/modules/<id>/module.json`，拒绝此前缀并跳过 `.builtin`；entry 词法路径与 realpath 都必须留在模块目录内。
 - `manifest.js` 共享 id/name/version/description/entry/permissions/enabled 校验，apiVersion 默认且仅支持 1，requires 默认 []、最多 16、合法 ID、无重复/自身。来源与 canReload/canToggle 由加载器赋值。
 - `dependencies.js` 先校验完整依赖图再导入：稳定拓扑排序，就绪内置优先再按 ID；缺失/环节点 error，下游 blocked，禁用/失败依赖也阻塞下游，无关模块继续。不会自动启用或下载依赖。
