@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 9（有限范围）：新增 persona:store 权限，仅内置模块获得同步 api.personaStore.get/put/remove/list/count；外部声明在导入前拒绝。安全 key、module:<id>:<key> 命名空间与当前人格 facade 隔离，JSON 值进出 structuredClone、每值 UTF-8 JSON 最多 64 KiB、每模块每人格最多 1000 条；事务检查额度、支持满额覆盖，无 raw kind/SQL/底层 store/跨人格参数。生命周期结束撤销旧 API 且保留数据，人格删除清理所有模块记录；复用 cognition SQLite/JSON，无独立持久层。新增仓库/生产接线/重启/清理测试、模块/架构文档与 ADR-008；不是通用 DB，不提取提醒/媒体，不新增生产模块、依赖、配置/UI/REST 或版本，仅本地校验，不推送/部署/发布。
+
 - 架构优化 Phase 8（有限范围）：仅向声明 scheduler 权限的内置模块暴露 api.scheduler.setTimeout(fn,delayMs) → {id,dispose} 与 clearTimeout(id) → boolean；数字整数延迟 0–2,592,000,000 ms、每 runtime 最多 64 个活跃 timer，不透明 ID 按模块/生命周期隔离。按单调截止时间分段避免 Node 32 位 timeout 溢出；停用、失败、依赖重载和 dispose 清空 timer，generation/注册检查阻止迟到回调。同步/异步异常及 logger 错误隔离，固定日志不含聊天 ID/payload。新增调度器测试、模块/架构文档和 ADR-007；不提取提醒/媒体，无 interval/cron/持久化、新生产模块、配置/UI/依赖或版本变更，仅本地校验，不推送/部署/发布。
 
 - 架构优化 Phase 7（有限范围）：DeliveryResult 新增 sent/dry_run/partial/failed/empty 状态；后续分条失败保留 ok:true 和已发消息，显式返回 partial、sentParts、零基 failedPart 与 PARTIAL_SEND，不重试、不回滚。DeliveryService 移除 parts:1 固定覆盖，单条真实成功为 1、失败/dry-run 为 0，保留 outbound 结果字段；pipeline 统计/pending/群聊记账与调用方 ok 分支保持不变。补充执行器、pipeline、服务精确结果测试及 ADR-006；频率账本、传输重试、leak guard 顺序和 shutdown 留待后续，不改 typing/媒体/提醒/模块 API/规划器，无新依赖/配置/UI、版本变更或 live 操作。

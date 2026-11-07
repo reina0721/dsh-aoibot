@@ -69,7 +69,7 @@ export async function setup(api) {
 
 ## 权限与 API
 
-所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
+所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler` 和 `persona:store` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
 
 | 权限 | API | 行为 |
 |---|---|---|
@@ -83,6 +83,7 @@ export async function setup(api) {
 | `turn:lifecycle` | `api.turn.register({id,onStart,onEnd})` | 仅内置模块；注册顺序开始、逆序结束，返回生命周期 disposer；外部、缺权限或已停止调用抛错 |
 | `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
 | `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
+| `persona:store` | `api.personaStore` | 仅内置模块；同步 `get/put/remove/list/count`，当前人格与模块命名空间隔离；外部清单声明即拒绝 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
@@ -161,6 +162,38 @@ timer.dispose() // 同一取消操作，幂等；已取消/触发/停止后返�
 - 同步抛错与异步拒绝都独立捕获，仅记录固定文案及模块 ID，不读取/输出异常、stack、聊天 ID 或 payload；logger 失败也隔离，不把模块置为 error。已开始的异步回调不会被强制取消或在停用时等待，模块须自行管理在途工作；停止后不能用旧 scheduler 注册新任务。
 
 本阶段只建立未来提醒/媒体工作的前置 API 契约，**不提取或迁移现有提醒/媒体功能**；没有 interval、cron、持久化、重启恢复、重试、发送保证或新增内置模块，生产目录仍为三个内置模块。没有配置、REST 或面板入口。详见 [ADR-007](architecture/ADR-007-module-scheduler.md)。
+
+## 内置模块人格作用域仓库（Phase 9）
+
+仅加载器认定为 builtin 且声明 `persona:store` 的模块获得冻结的 `api.personaStore`。缺权限时整个属性不存在；外部清单声明此权限会在导入前被拒绝，伪造 source/builtin 无效。permissions 约束稳定 API，不是同进程 Node.js 沙箱。
+
+所有方法均为**同步**，沿用认知 store 的同步事务；不需要 await。key 严格匹配 `^[a-z0-9][a-z0-9_-]{0,63}$`（1–64 位，不转换类型），不能传原始 kind、路径、模块或人格标识。方法参数数量严格校验；put 没有 options，list 仅接受 limit，不接受 personaId/kind/where/offset 等其它选项。
+
+| 方法 | 返回与行为 |
+|---|---|
+| `get(key)` | 值的 structuredClone；不存在返回 null，已存 null 也返回 null，可用 list/count 区分 |
+| `put(key, value)` | 新建或完整覆盖，返回保存值的 structuredClone；无 merge、TTL 或时间戳选项 |
+| `remove(key)` | 存在并删除返回 true，不存在返回 false |
+| `list({limit} = {})` | 返回 `{key,value}[]`；最新创建优先，同时间顺序未定义，覆盖不改变创建时间；默认 100，limit 必须是 1–1000 的整数 |
+| `count()` | 当前模块在当前人格的记录数 |
+
+```js
+// 仅测试描述符使用新权限；生产 registry 不新增模块。
+// manifest.permissions: ['persona:store']
+api.personaStore.put('draft_1', { text: '本地模块状态', flags: [true, null] })
+const draft = api.personaStore.get('draft_1')
+const items = api.personaStore.list({ limit: 20 })
+const total = api.personaStore.count()
+api.personaStore.remove('draft_1')
+```
+
+- 值限于可 structuredClone 的 JSON 值：null、boolean、字符串、有限数字、稠密数组及普通对象；按 JSON 持久化语义保存。拒绝 undefined、函数、Symbol、BigInt、非有限数字、循环引用、稀疏数组、Date/Map/Set/二进制视图等非 JSON 值。写入与读取（含 put 返回值、list 内嵌值）都复制，调用者修改不改变保存值。
+- 每条值经 JSON.stringify 后 UTF-8 最多 **65,536 bytes（64 KiB，含 JSON 引号/转义）**；不含内部 key/元数据开销。每模块每人格最多 **1000 条**；同步事务中检查额度，满额可覆盖已有 key，remove 后释放额度。非法/超限同步抛错，旧值保持。底层故障只给固定错误，不回显数据库路径、SQL 或 payload。
+- 宿主将 `cognition.services.personaStore`（现有 persona-scoped store）注入内核的 personaStore 选项。内部固定集合 `module_store` 使用 `module:<moduleId>:<key>` 记录 ID，再由既有 facade 添加 `persona_<id>:` kind 前缀；分隔符不能出现在模块 ID/key，模块前缀不会互相覆盖，也不会碰触核心 kinds。API 不暴露底层 store、SQL、路径、原始 kind 或当前人格 ID。
+- 每次同步调用使用**当时的当前人格**；切换人格后同一 API 只访问新人格。没有跨人格参数或绑定原人格的句柄；未来异步提醒的归属与恢复须另行设计。
+- API 属于当前 setup runtime；停用、setup/事件失败、依赖重载/禁用、dispose 后所有旧方法均拒绝调用，cleanup 中也不可读写。已提交数据保留，重新启用/重新 setup/重启后可读取；停用不删除数据。人格删除通过既有 dropPersonaData 清理该人格所有模块记录。模块记录不加入人格复制/统计数据组，无新 UI。
+
+这不是通用数据库，也不是提醒功能；只提供未来提醒迁移的前置仓库契约。持久化完全复用认知 SQLite/JSON fallback、事务与备份目录，没有独立文件、数据库或调度/发送/重试/恢复逻辑。现有异步 `api.storage` 的模块级 data.json 契约保持；本阶段不提取提醒或媒体，不新增生产内置模块、依赖、配置、REST、面板或版本。详见 [ADR-008](architecture/ADR-008-module-persona-store.md)。
 
 ## 内置模块声明式配置（Phase 3）
 

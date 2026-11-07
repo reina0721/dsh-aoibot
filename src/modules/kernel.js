@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
+import { createModulePersonaStore } from './persona-store.js'
 import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from './config.js'
 const COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 const EVENT_NAMES = new Set(['message', 'notice', 'request', 'meta_event', 'any'])
@@ -71,7 +72,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -398,6 +399,16 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       },
     }
     if (record.builtin && record.permissions.includes('scheduler')) api.scheduler = schedulerApi(record, runtime)
+    if (record.builtin && record.permissions.includes('persona:store')) {
+      api.personaStore = createModulePersonaStore({
+        store: personaStore, moduleId: record.id,
+        assertActive() {
+          requireActive(runtime)
+          requirePermission(record, 'persona:store')
+          if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('人格仓库生命周期已结束')
+        },
+      })
+    }
     if (record.builtin && record.configSchema) {
       api.config = Object.freeze({
         get: () => clone(record.configValues),

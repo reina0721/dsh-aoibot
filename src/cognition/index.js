@@ -110,6 +110,7 @@ export function createCognition({
         getPersonaId: () => state.services.persona?.activeId?.() || migrationTarget,
       })
       const personaStore = state.scopedStore
+      state.services.personaStore = personaStore
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })

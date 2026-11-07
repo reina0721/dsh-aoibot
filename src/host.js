@@ -114,6 +114,7 @@ export function apply(ctx, rowConfig) {
     outbound: cognition.services.outbound,
     delivery: cognition.services.delivery,
     commands: cognition.services.commands,
+    personaStore: cognition.services.personaStore,
   })
   const modulesReady = modules.start().catch((error) => {
     log.warn('本地模块初始化失败：', error.message)
