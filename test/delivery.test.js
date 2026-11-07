@@ -92,7 +92,7 @@ function recorder(responses = []) {
 
 test('executor: exact calls, synchronous callbacks, between-part delays and final result', async () => {
   const h = recorder()
-  assert.deepEqual(await executeDeliveryPlan(h.options), { ok: true, messageId: '1', result: { n: 3 }, parts: 3 })
+  assert.deepEqual(await executeDeliveryPlan(h.options), { ok: true, status: 'sent', messageId: '1', result: { n: 3 }, parts: 3 })
   assert.deepEqual(h.calls, plan().parts.map((part, index) => ({ chatType: 'group', chatId: 'g1', segments: part.segments, decisionId: index ? '' : 'd1', source: 'pipeline', dryRun: null })))
   assert.deepEqual(h.events, [
     ['deliver', 0], ['sent', { messageId: '1', index: 0, parts: 3 }], ['sleep', 19],
@@ -105,7 +105,7 @@ test('executor: first failure has exact error/blocked/reason and never retries a
   for (const failure of [{ ok: false, error: 'ACCESS_DENIED', blocked: true, reason: 'denied' }, { ok: false }, {}]) {
     const h = recorder([failure])
     let fallbackCalls = 0
-    assert.deepEqual(await executeDeliveryPlan({ ...h.options, fallbackDeliver: () => { fallbackCalls++ } }), { ok: false, error: failure.error || 'SEND_FAILED', blocked: Boolean(failure.blocked), reason: failure.reason || '' })
+    assert.deepEqual(await executeDeliveryPlan({ ...h.options, fallbackDeliver: () => { fallbackCalls++ } }), { ok: false, status: 'failed', error: failure.error || 'SEND_FAILED', blocked: Boolean(failure.blocked), reason: failure.reason || '', parts: 0 })
     assert.equal(fallbackCalls, 0)
     assert.equal(h.calls.length, 1)
     assert.deepEqual(h.events, [['deliver', 0], ['failed', { delivered: failure, index: 0, parts: 3 }]])
@@ -114,20 +114,28 @@ test('executor: first failure has exact error/blocked/reason and never retries a
 
 test('executor: partial failure stops with prior sends and last successful result', async () => {
   const failure = { ok: false, error: 'RATE_LIMITED' }
-  const h = recorder([{ ok: true, messageId: 'first', result: 'first-result' }, { ok: true, messageId: 'second', result: 'second-result' }, failure])
-  assert.deepEqual(await executeDeliveryPlan(h.options), { ok: true, messageId: 'first', result: 'second-result', parts: 2 })
-  assert.deepEqual(h.events.at(-1), ['failed', { delivered: failure, index: 2, parts: 3 }])
-  assert.equal(h.events.filter(([kind]) => kind === 'sleep').length, 2)
+  const successes = [{ ok: true, messageId: 'first', result: 'first-result' }, { ok: true, messageId: 'second', result: 'second-result' }]
+  for (const sentParts of [1, 2]) {
+    const h = recorder([...successes.slice(0, sentParts), failure])
+    assert.deepEqual(await executeDeliveryPlan(h.options), {
+      ok: true, status: 'partial', partial: true, sentParts, failedPart: sentParts, error: 'PARTIAL_SEND',
+      messageId: 'first', result: successes[sentParts - 1].result, parts: sentParts,
+    })
+    assert.equal(h.calls.length, sentParts + 1)
+    assert.deepEqual(h.events.at(-1), ['failed', { delivered: failure, index: sentParts, parts: 3 }])
+    assert.equal(h.events.filter(([kind]) => kind === 'sent').length, sentParts)
+    assert.equal(h.events.filter(([kind]) => kind === 'sleep').length, sentParts)
+  }
 })
 
 test('executor: first/later dryRun stops without sent/failed callback for simulated part', async () => {
   const dry = { ok: true, dryRun: true, messageId: '' }
   const first = recorder([dry])
-  assert.deepEqual(await executeDeliveryPlan({ ...first.options, dryRun: true }), { ok: true, dryRun: true, messageId: '' })
+  assert.deepEqual(await executeDeliveryPlan({ ...first.options, dryRun: true }), { ok: true, status: 'dry_run', dryRun: true, messageId: '', parts: 0 })
   assert.deepEqual(first.events, [['deliver', 0]])
   assert.equal(first.calls[0].dryRun, true)
   const later = recorder([{ ok: true, messageId: 'm1', result: 1 }, dry])
-  assert.deepEqual(await executeDeliveryPlan({ ...later.options, dryRun: () => later.calls.length ? true : null }), { ok: true, messageId: 'm1', result: 1, parts: 1 })
+  assert.deepEqual(await executeDeliveryPlan({ ...later.options, dryRun: () => later.calls.length ? true : null }), { ok: true, status: 'dry_run', messageId: 'm1', result: 1, parts: 1 })
   assert.deepEqual(later.calls.map((call) => call.dryRun), [null, true])
   assert.deepEqual(later.events, [['deliver', 0], ['sent', { messageId: 'm1', index: 0, parts: 3 }], ['sleep', 19], ['deliver', 1]])
 })
@@ -135,17 +143,17 @@ test('executor: first/later dryRun stops without sent/failed callback for simula
 test('executor: invalid/throwing planner falls back once through the same delivery function', async () => {
   for (const invalid of [null, {}, { ...plan(), parts: [] }, () => { throw new Error('secret must not escape') }]) {
     const h = recorder()
-    assert.deepEqual(await executeDeliveryPlan({ ...h.options, plan: invalid, text: context.text, turn, decisionId: 'fallback-id', source: 'fallback-source' }), { ok: true, messageId: '1', result: { n: 1 }, parts: 1 })
+    assert.deepEqual(await executeDeliveryPlan({ ...h.options, plan: invalid, text: context.text, turn, decisionId: 'fallback-id', source: 'fallback-source' }), { ok: true, status: 'sent', messageId: '1', result: { n: 1 }, parts: 1 })
     assert.deepEqual(h.calls, [{ chatType: 'group', chatId: 'g1', segments: [textSegment(context.text)], decisionId: 'fallback-id', source: 'fallback-source', dryRun: null }])
     assert.deepEqual(h.events, [['deliver', 0], ['sent', { messageId: '1', index: 0, parts: 1 }]])
     for (const text of ['', ' ']) {
       const empty = recorder()
-      assert.deepEqual(await executeDeliveryPlan({ ...empty.options, plan: invalid, text, turn }), { ok: false, error: 'EMPTY_MESSAGE' })
+      assert.deepEqual(await executeDeliveryPlan({ ...empty.options, plan: invalid, text, turn }), { ok: false, status: 'empty', error: 'EMPTY_MESSAGE', parts: 0 })
       assert.deepEqual(empty.calls, [])
     }
   }
   const invalidTarget = recorder()
-  assert.deepEqual(await executeDeliveryPlan({ ...invalidTarget.options, plan: null, text: 'hi', turn: {} }), { ok: false, error: 'EMPTY_MESSAGE' })
+  assert.deepEqual(await executeDeliveryPlan({ ...invalidTarget.options, plan: null, text: 'hi', turn: {} }), { ok: false, status: 'empty', error: 'EMPTY_MESSAGE', parts: 0 })
   assert.deepEqual(invalidTarget.calls, [])
 })
 
@@ -153,7 +161,7 @@ test('executor: missing primary uses legacy transport; missing both fails; trans
   const h = recorder()
   assert.equal((await executeDeliveryPlan({ ...h.options, deliver: null, fallbackDeliver: h.options.deliver })).parts, 3)
   assert.equal(h.calls.length, 3)
-  assert.deepEqual(await executeDeliveryPlan({ plan: plan() }), { ok: false, error: 'GATEWAY_UNAVAILABLE', blocked: false, reason: '' })
+  assert.deepEqual(await executeDeliveryPlan({ plan: plan() }), { ok: false, status: 'failed', error: 'GATEWAY_UNAVAILABLE', blocked: false, reason: '', parts: 0 })
   await assert.rejects(executeDeliveryPlan({ plan: plan(), deliver: () => { throw new Error('transport') } }), /transport/)
 })
 

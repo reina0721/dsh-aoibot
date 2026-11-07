@@ -44,7 +44,7 @@ function harness({ engine, deliveryRegistry = engine === 'planner' ? registeredR
 for (const engine of [undefined, 'auto', 'core', 'planner']) {
   test(`delivery ${engine || 'default'}: exact split, quote/@, attribution and side effects`, async () => {
     const h = harness({ engine })
-    assert.deepEqual(await h.send(), { ok: true, messageId: 'm1', result: { n: 3 }, parts: 3 })
+    assert.deepEqual(await h.send(), { ok: true, status: 'sent', messageId: 'm1', result: { n: 3 }, parts: 3 })
     assert.deepEqual(h.calls, texts.map((value, index) => ({ chatType: 'group', chatId: 'g1', segments: [...(index ? [] : [{ type: 'reply', data: { id: 'latest' } }, { type: 'at', data: { qq: '123' } }]), segment(value)], decisionId: index ? '' : 'd1', source: 'pipeline', dryRun: null })))
     assert.deepEqual(h.notes, ['m1', 'm2', 'm3'])
     assert.deepEqual(h.pipeline._events, texts.map((_, index) => ['onebot-qq/cognition-sent', { decisionId: 'd1', messageId: `m${index + 1}`, chatType: 'group', chatId: 'g1', action: 'reply', part: index, parts: 3 }]))
@@ -78,18 +78,18 @@ for (const engine of [undefined, 'auto', 'core', 'planner']) {
     t.mock.timers.tick(1); await new Promise((resolve) => setImmediate(resolve))
     assert.equal(h.calls.length, 2)
     t.mock.timers.tick(17)
-    assert.deepEqual(await done, { ok: true, messageId: 'm1', result: { n: 3 }, parts: 3 })
+    assert.deepEqual(await done, { ok: true, status: 'sent', messageId: 'm1', result: { n: 3 }, parts: 3 })
   })
 
   test(`delivery ${engine || 'default'}: first/later failure and first/later dryRun`, async () => {
     const success = { ok: true, messageId: 'first', result: { first: true } }
     const failure = { ok: false, error: 'ACCESS_DENIED', blocked: true, reason: 'deny' }
     for (const [responses, expected, sent, dry] of [
-      [[failure], { ok: false, error: 'ACCESS_DENIED', blocked: true, reason: 'deny' }, 0, 0],
-      [[{}], { ok: false, error: 'SEND_FAILED', blocked: false, reason: '' }, 0, 0],
-      [[success, failure], { ok: true, messageId: 'first', result: { first: true }, parts: 1 }, 1, 0],
-      [[{ ok: true, dryRun: true }], { ok: true, dryRun: true, messageId: '' }, 0, 1],
-      [[success, { ok: true, dryRun: true }], { ok: true, messageId: 'first', result: { first: true }, parts: 1 }, 1, 0],
+      [[failure], { ok: false, status: 'failed', error: 'ACCESS_DENIED', blocked: true, reason: 'deny', parts: 0 }, 0, 0],
+      [[{}], { ok: false, status: 'failed', error: 'SEND_FAILED', blocked: false, reason: '', parts: 0 }, 0, 0],
+      [[success, failure], { ok: true, status: 'partial', partial: true, sentParts: 1, failedPart: 1, error: 'PARTIAL_SEND', messageId: 'first', result: { first: true }, parts: 1 }, 1, 0],
+      [[{ ok: true, dryRun: true }], { ok: true, status: 'dry_run', dryRun: true, messageId: '', parts: 0 }, 0, 1],
+      [[success, { ok: true, dryRun: true }], { ok: true, status: 'dry_run', messageId: 'first', result: { first: true }, parts: 1 }, 1, 0],
     ]) {
       const h = harness({ engine, responses })
       assert.deepEqual(await h.send(), expected)
@@ -123,21 +123,21 @@ for (const engine of [undefined, 'auto', 'core', 'planner']) {
 
   test(`delivery ${engine || 'default'}: legacy direct fallback marks only the first part`, async () => {
     const h = harness({ engine, direct: true })
-    assert.deepEqual(await h.send(), { ok: true, messageId: '1', result: { message_id: 3 }, parts: 3 })
+    assert.deepEqual(await h.send(), { ok: true, status: 'sent', messageId: '1', result: { message_id: 3 }, parts: 3 })
     assert.deepEqual(h.marks, [['sent', 'd1', { messageId: '1' }]])
     assert.deepEqual(h.calls.map((call) => call.message), texts.map((value, index) => [...(index ? [] : [{ type: 'reply', data: { id: 'latest' } }, { type: 'at', data: { qq: '123' } }]), segment(value)]))
     const dry = harness({ engine, direct: true, dryRun: true })
-    assert.deepEqual(await dry.send(), { ok: true, dryRun: true, messageId: '' })
+    assert.deepEqual(await dry.send(), { ok: true, status: 'dry_run', dryRun: true, messageId: '', parts: 0 })
     assert.deepEqual(dry.marks, [['sent', 'd1', { dryRun: true }]])
     assert.equal(dry.calls.length, 0)
     const failure = harness({ engine, direct: true, responses: [new Error('failed')] })
-    assert.deepEqual(await failure.send(), { ok: false, error: 'failed', blocked: false, reason: '' })
+    assert.deepEqual(await failure.send(), { ok: false, status: 'failed', error: 'failed', blocked: false, reason: '', parts: 0 })
     assert.deepEqual(failure.marks, [['failed', 'd1', 'failed']])
     const partial = harness({ engine, direct: true, responses: [{ message_id: 1 }, new Error('later failed')] })
-    assert.deepEqual(await partial.send(), { ok: true, messageId: '1', result: { message_id: 1 }, parts: 1 })
+    assert.deepEqual(await partial.send(), { ok: true, status: 'partial', partial: true, sentParts: 1, failedPart: 1, error: 'PARTIAL_SEND', messageId: '1', result: { message_id: 1 }, parts: 1 })
     assert.deepEqual(partial.marks, [['sent', 'd1', { messageId: '1' }]])
     const unavailable = harness({ engine, direct: true, unavailable: true, dryRun: true })
-    assert.deepEqual(await unavailable.send(), { ok: false, error: 'GATEWAY_UNAVAILABLE', blocked: false, reason: '' })
+    assert.deepEqual(await unavailable.send(), { ok: false, status: 'failed', error: 'GATEWAY_UNAVAILABLE', blocked: false, reason: '', parts: 0 })
   })
 
   test(`delivery ${engine || 'default'}: re-reads dryRun for later parts`, async (t) => {
@@ -147,7 +147,7 @@ for (const engine of [undefined, 'auto', 'core', 'planner']) {
     await new Promise((resolve) => setImmediate(resolve))
     h.config.cognition.dryRun = true
     t.mock.timers.tick(10)
-    assert.deepEqual(await done, { ok: true, messageId: 'first', result: undefined, parts: 1 })
+    assert.deepEqual(await done, { ok: true, status: 'dry_run', messageId: 'first', result: undefined, parts: 1 })
     assert.deepEqual(h.calls.map((call) => call.dryRun), [null, true])
     assert.equal(h.pipeline.stats().sent, 1)
     assert.equal(h.pipeline.stats().dryRun, 0)
@@ -158,7 +158,7 @@ test('delivery planner: invalid plan uses guarded single text fallback; runtime 
   // Raw invalid delay cannot arise from normalizeConfig. It exercises routing and
   // recovery without a production test hook or replacing the actual builder.
   const h = harness({ engine: 'planner', reply: { delayMs: Infinity } })
-  assert.deepEqual(await h.send(), { ok: true, messageId: 'm1', result: { n: 1 }, parts: 1 })
+  assert.deepEqual(await h.send(), { ok: true, status: 'sent', messageId: 'm1', result: { n: 1 }, parts: 1 })
   assert.deepEqual(h.calls[0].segments, [segment(text)])
   assert.deepEqual(h.pipeline._events[0][1], { decisionId: 'd1', messageId: 'm1', chatType: 'group', chatId: 'g1', action: 'reply', part: 0, parts: 1 })
   h.config.cognition.delivery.engine = 'core'
@@ -210,7 +210,7 @@ test('delivery planner: thrown/invalid plans fall back safely in auto and planne
     assert.equal(blocked.calls.length, 1)
     assert.equal(blocked.pipeline.stats().sent, 0)
     const dry = harness({ engine, deliveryRegistry: registry, responses: [{ ok: true, dryRun: true }] })
-    assert.deepEqual(await dry.send(), { ok: true, dryRun: true, messageId: '' })
+    assert.deepEqual(await dry.send(), { ok: true, status: 'dry_run', dryRun: true, messageId: '', parts: 0 })
     assert.equal(dry.pipeline.stats().dryRun, 1)
     assert.equal(dry.pipeline._pending.size, 0)
   }

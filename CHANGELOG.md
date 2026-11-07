@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 架构优化 Phase 7（有限范围）：DeliveryResult 新增 sent/dry_run/partial/failed/empty 状态；后续分条失败保留 ok:true 和已发消息，显式返回 partial、sentParts、零基 failedPart 与 PARTIAL_SEND，不重试、不回滚。DeliveryService 移除 parts:1 固定覆盖，单条真实成功为 1、失败/dry-run 为 0，保留 outbound 结果字段；pipeline 统计/pending/群聊记账与调用方 ok 分支保持不变。补充执行器、pipeline、服务精确结果测试及 ADR-006；频率账本、传输重试、leak guard 顺序和 shutdown 留待后续，不改 typing/媒体/提醒/模块 API/规划器，无新依赖/配置/UI、版本变更或 live 操作。
+
 - 架构优化 Phase 6：私聊 typing 迁入默认启用的 builtin-typing，通过仅内置可用的 turn:lifecycle/status:write 窄 API 执行轮次开始/结束状态；保留默认关闭的 cognition.typing.enabled 及原 UI/normalizer，无模块配置。核心 turn hooks 顺序开始、逆序结束、逐项错误隔离和固定安全日志；生产空 registry/模块停用不 typing，旧未注入 harness 保留原内联路径。覆盖模块权限/清理、原处理异常、私聊/群聊/配置/错误、宿主目录 builtin=3、面板和独立包加载，新增 ADR-005。无媒体/提醒改造、新依赖、版本变更或 live 操作。
 
 - 架构优化 Phase 5：新增单条 DeliveryService，经既有 DeliveryPlan 执行器与 outbound 闸门统一认知命令、模块 sendText、proactivity 和 Agent qq_send_text；生产共享注入，旧 harness 保留 outbound 兼容。保留 source/decisionId/dryRun 与结果字段，补充 parts:1，无 direct gateway 回退或拒绝后重试。新增服务、生产接线与四类入口回归及 ADR-004；面板人工 /send、媒体/文件、提醒保持原路径，不改 planner/分条或限频/重试/部分成功/leak guard，不新增依赖/配置、不升级版本。

@@ -286,7 +286,7 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.11 访问控制与统一出站
 
 - `src/core/access.js`：`normalizeAccess` / `decideInbound` / `canSend` 纯函数；`createAccess` 负责配置读取、审计环形缓冲与计数。
-- `src/delivery/service.js`：认知命令、模块 `api.sendText`、proactivity、Agent `qq_send_text` 在生产中共享 `services.delivery`；单条 DeliveryPlan → `executeDeliveryPlan` → `outbound.deliver`。segments 优先于 text，无分条/引用/@/等待；保留 outbound 结果字段，有效单条计划返回 `parts:1`（含 dryRun/拒绝）。详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
+- `src/delivery/service.js`：认知命令、模块 `api.sendText`、proactivity、Agent `qq_send_text` 在生产中共享 `services.delivery`；单条 DeliveryPlan → `executeDeliveryPlan` → `outbound.deliver`。segments 优先于 text，无分条/引用/@/等待；保留 outbound 结果字段，透传执行器的状态与实际条数，单条真实成功 `parts:1`，失败/dry-run `parts:0`。详见 [ADR-004](architecture/ADR-004-unified-egress.md) 与 [ADR-006](architecture/ADR-006-delivery-result-status.md)。
 - `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 保持自动文本发送的安全闸门；
   顺序为访问控制 → 频率上限 → leak guard → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
 - pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 仅在两者都缺失时保留 legacy 路径。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
@@ -337,7 +337,8 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger
 
 - `src/delivery/text-split.js`（`src/cognition/reply-split.js` 兼容重导出）：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
 - `builtin-reply-delivery` 按核心传入的 `cognition.reply` 配置产生 DeliveryPlan，`pipeline.sendDecision` 选择模块或 core 兼容布局交给 executor；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
-- 失败语义：第一条失败 → 整轮失败；后续条失败 → 已发部分保留，记录 `SEND_FAILED`，不回滚、不重发。
+- DeliveryResult（Phase 7）：执行器正常返回显式 `status:sent|dry_run|partial|failed|empty`，`parts` 为实际成功发送条数。全部成功为 `sent`；首条失败为 `failed`、`ok:false`、`parts:0`，保留原 error/blocked/reason；后续失败保留 `ok:true`、此前 messageId/result 与 parts，同时返回 `status:'partial', partial:true, sentParts, failedPart, error:'PARTIAL_SEND'`，failedPart 从 0 开始。不回滚、不重发、不重试。
+- dry-run 为 `status:'dry_run'`：首条仍返回 `dryRun:true`、空 messageId，新增 `parts:0`；后续 dry-run 保留此前实际条数与结果，不新增 dryRun 标记，统计/pending/群聊记账保持原状。无效计划且回退仍无效为 `status:'empty', error:'EMPTY_MESSAGE', parts:0`。pipeline 自身空正文/纯空白提前返回不变；抛出的传输/回调异常仍传播。完整状态矩阵与兼容边界见 [ADR-006](architecture/ADR-006-delivery-result-status.md)；频率账本、传输重试、leak guard 顺序及 shutdown 留待后续阶段。
 - 防刷屏：`cognition.turn.maxConsecutiveGroupReplies` 限制连续**未点名**接话；`noteGroupReply` 按是否点名维护计数（点名回复清零），`groupReplyAllowed` 超限返回 `consecutive_limit`，与冷却/每分钟上限并存。
 - 边界：合并转发展开、拍一拍/表态、QQ 动作工具仍在 M2-b。
 
