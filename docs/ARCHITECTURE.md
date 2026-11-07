@@ -399,6 +399,16 @@ createCognition 仍构造/初始化原提醒服务并负责 dispose，但 init �
 
 宿主 dispose 保持同步、幂等，在 cognition 之前调用 provider.stop，捕获同步异常和 Promise rejection，不等待异步清理。卸载早于 modulesReady 则不启动提醒/网关；卸载中在途 start 完成后再 stop，防止迟到启动残留。停止异步工作仍依赖 provider 自身正确实现；stop 失败只能尽力清理，无法保证错误 provider 不遗留资源。运行期注册变化不触发重新组合、热切换或故障监控。本阶段没有提醒/媒体提取、新生产模块、配置/UI/REST/依赖或版本变化。详见 [ADR-010](architecture/ADR-010-provider-composition.md)。
 
+### 提醒仓库端口与只读配置绑定（Phase 12）
+
+`src/modules/reminder-repository.js` 为未来 builtin-reminders 提供冻结同步端口，内核仅向声明 `reminders:service` 的 builtin 模块暴露 `api.reminderRepository`。复用 host 已注入的 personaStore facade，只访问当前人格核心 reminder kind；不访问 facade.base/scopedKind、不持有原始 store，不暴露 SQL/路径/kind/跨人格参数。数据原地保留，复用既有人格复制/删除/统计与备份，无迁移或独立存储。
+
+端口为 get/list/findDue/countActive/put/update/remove：严格验证核心 rem_ + 24 小写 hex ID、active/sent/cancelled、private/group 数字目标、安全创建者、文本、有限有效时间和重复间隔等业务行字段；拒绝未知字段和额外参数。list 默认/最多 50，findDue 默认/最多 20，均只接受正整数；到期行先按 nextAt/id 升序排序再截取，目前在内存扫描排序。put 完整 upsert，保留首次创建时间；update 只合并 status/nextAt/sentCount/lastError，不存在返回 null，不复活删除行；remove 返回 boolean。所有输入/行输出复制，底层异常固定安全文案，无 store 明确不可用。业务授权、防重、活跃额度、开关和调度/发送仍属提醒服务。
+
+`src/modules/legacy-config.js` 通过独立 `config:read` 权限提供 `api.legacyConfig.section('cognition.reminders')`，只允许这个精确路径，读取时复用现有 normalizeConfig，返回当前 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 的深拷贝，无秘密、其它配置、写入或通知。两项权限外部清单声明即拒绝，缺权限不暴露属性；两种端口的所有方法均检查当前 runtime，停止/失败/依赖清理/dispose 后旧引用不能调用。
+
+每次同步操作采用当前人格，端口不提供跨 await 固定原人格的能力，未来 provider 的异步归属/停止仍待设计。核心提醒及现有测试保持，未使用端口时没有行为变化；没有新增 builtin-reminders 或生产 provider，没有配置/UI/依赖/版本变化。详见 [模块契约](MODULES.md) 和 [ADR-011](architecture/ADR-011-reminder-repository.md)。
+
 ### 3.18 统一模块内核（模块架构 v2）
 
 - Phase 10：新增已知权限 `commands:override`，`api.registerCommand(name,handler,{ownerOnly=true,overrideBuiltin=false})` 仅对加载器认定为 builtin 且同时声明 commands/commands:override 的模块开放严格 true 的覆盖选项。外部声明权限/伪造来源无效，外部或缺权限调用在 setup 中抛错进入 error；默认仍拒绝受保护名称，普通外部命令行为不变。内核验证后传 allowProtected:true，disposer 进入 runtime.disposers，在停用、setup/事件失败、依赖禁用/重载及 dispose 时注销；旧 API 不能重新注册，已开始的异步 handler 不强制取消。下一次命令无覆盖即回到核心；本阶段只是提醒迁移前置 API，不提取提醒/媒体，无新生产模块，目录仍为三个内置模块，无配置/UI/REST/依赖或版本变化。详见 [模块契约](MODULES.md) 和 [ADR-009](architecture/ADR-009-command-override.md)。

@@ -69,7 +69,7 @@ export async function setup(api) {
 
 ## 权限与 API
 
-所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler` 和 `persona:store` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
+所有模块始终可读 `api.id`、`api.name`、`api.version`、`api.dir`、只读 `api.source`（builtin/external）、`api.builtin`、只读 `api.permissions` 和模块子 logger `api.log`。缺少权限时调用对应 API 会抛出明确错误；若发生在 setup，模块会进入 error，不会拖垮宿主。`scheduler`、`persona:store`、`reminders:service` 和 `config:read` 采用按来源和权限条件暴露属性的方式，未授权时整个属性不存在。
 
 | 权限 | API | 行为 |
 |---|---|---|
@@ -85,6 +85,8 @@ export async function setup(api) {
 | `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
 | `scheduler` | `api.scheduler.setTimeout(fn, delayMs)` / `clearTimeout(id)` | 仅向声明权限的内置模块暴露；一次性、当前 runtime 范围内的定时器，返回 `{id,dispose}` |
 | `persona:store` | `api.personaStore` | 仅内置模块；同步 `get/put/remove/list/count`，当前人格与模块命名空间隔离；外部清单声明即拒绝 |
+| `reminders:service` | `api.reminderRepository` | 仅内置模块；同步访问当前人格核心 reminder 行；外部清单声明即拒绝 |
+| `config:read` | `api.legacyConfig.section('cognition.reminders')` | 仅内置模块；固定路径、当前规范化配置的深拷贝；外部清单声明即拒绝 |
 | `providers:register` | `api.providers.register(name, provider)` | 仅内置且运行中的模块；固定白名单目前只有 reminders，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `storage` | `api.storage` | `get(key,fallback)`、`set(key,value)`、`delete(key)`、`all()`；均为异步 |
 
@@ -231,6 +233,32 @@ api.personaStore.remove('draft_1')
 - API 属于当前 setup runtime；停用、setup/事件失败、依赖重载/禁用、dispose 后所有旧方法均拒绝调用，cleanup 中也不可读写。已提交数据保留，重新启用/重新 setup/重启后可读取；停用不删除数据。人格删除通过既有 dropPersonaData 清理该人格所有模块记录。模块记录不加入人格复制/统计数据组，无新 UI。
 
 这不是通用数据库，也不是提醒功能；只提供未来提醒迁移的前置仓库契约。持久化完全复用认知 SQLite/JSON fallback、事务与备份目录，没有独立文件、数据库或调度/发送/重试/恢复逻辑。现有异步 `api.storage` 的模块级 data.json 契约保持；本阶段不提取提醒或媒体，不新增生产内置模块、依赖、配置、REST、面板或版本。详见 [ADR-008](architecture/ADR-008-module-persona-store.md)。
+
+## 提醒仓库与只读旧配置（Phase 12）
+
+仅加载器确认 builtin 且声明 `reminders:service` 的模块得到冻结的 `api.reminderRepository`；`config:read` 独立控制冻结的 `api.legacyConfig`。缺权限时对应属性不存在，外部清单声明任一权限在导入前拒绝，伪造 source/builtin 无效。权限约束稳定 API，不是 Node.js 沙箱。
+
+提醒仓库由内核复用宿主已注入的 `cognition.services.personaStore`，仅调用其同步 get/put/list/count/remove/tx，固定访问核心 `reminder` kind。没有原始 base store、SQL、路径、kind 或人格参数/句柄。所有方法检查参数数量；list 仅接受 status/limit，行和 patch 拒绝未知字段（包括 kind/personaId/path）。无 store 时所有方法报服务不可用，底层错误不回显原始路径、SQL 或正文。
+
+| 方法 | 返回与限制 |
+|---|---|
+| `get(id)` | 核心业务行的深拷贝，不存在返回 null |
+| `list({status='active',limit=50}={})` | 当前人格指定状态的行；limit 为 1–50 整数，最新创建优先，同创建时间顺序未定义 |
+| `findDue(now,limit=20)` | active 且 nextAt ≤ now；先按 nextAt 升序、同时间按 id 排序，再截取；limit 为 1–20 整数 |
+| `countActive()` | 当前人格所有 active 行数，不受列表返回上限影响 |
+| `put(row)` | 验证完整行后新建/完整覆盖；返回深拷贝，覆盖保留核心 store 的首次创建时间 |
+| `update(id,patch)` | 仅合并 status/nextAt/sentCount/lastError；同步事务内读取现行行，不存在返回 null，不会重新创建；返回深拷贝 |
+| `remove(id)` | 同步事务中删除，存在返回 true，不存在返回 false |
+
+行只包含 `id/scopeType/scopeId/text/at/everySeconds/nextAt/status/createdBy/createdAt/sentCount/lastError`，不返回 kind/updatedAt。ID 严格为 `^rem_[0-9a-f]{24}$`，与核心生成格式一致；status 只接受 active/sent/cancelled。scopeType 为 private/group，scopeId/createdBy 为无前导零的正安全整数字符串；text 非空且最多 500 Unicode 字符。at 与 everySeconds 恰好一个非 null；重复间隔为 60–2592000 整数秒。at（非 null）、nextAt、createdAt 和 findDue 的 now 必须是非负、有限、有效 Date 范围的毫秒数字，不强制未来时间。sentCount 为非负安全整数；lastError 仅允许空串或 ACCESS_DENIED/RATE_LIMITED/LEAK_BLOCKED/GATEWAY_UNAVAILABLE/SEND_FAILED。输入与所有行输出复制，调用方修改不会影响存储。
+
+put 是创建/完整替换入口，update 刻意只提供取消和投递结果所需字段，remove 用于显式删除；没有批量操作、任意 predicate/事务回调或通用数据库入口。业务开关、主人校验、防重、maxActive 和配置中的间隔策略仍由提醒服务负责，仓库不调度/发送或调用 LLM。findDue 目前在进程内读取当前人格全部到期候选后排序，返回上限不是扫描上限。
+
+每次同步调用访问**调用当时的当前人格**；人格切换后同一端口访问新人格，不支持跨人格操作或为异步 await 固定原人格。未来 provider 必须先解决在途操作的人格归属，不能直接依赖旧快照向新人格写回。两种 API 均绑定 setup runtime；停用、setup/事件失败、依赖禁用/重载及 dispose 撤销旧方法，cleanup 中也不能调用。提交数据和已返回快照保留。
+
+`api.legacyConfig.section(path)` 只接受单个严格等于 `cognition.reminders` 的字符串，每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
+
+数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。当前核心提醒仍拥有命令、调度与出站逻辑，没有 builtin-reminders 或生产 provider，不改变未使用端口时的行为。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
 
 ## 内置模块声明式配置（Phase 3）
 
