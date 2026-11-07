@@ -7,6 +7,9 @@
 // - 服务层不需要知道 persona，所有 get/put/list/search 都由 wrapper 自动加前缀。
 import { deepClone } from './util.js'
 
+// 固定内部集合，记录 ID 再按模块隔离；不加入 UI 数据复制/统计组。
+export const MODULE_STORE_KIND = 'module_store'
+
 export const PERSONA_GLOBAL_KINDS = new Set([
   'setting',
   'persona',
@@ -109,7 +112,7 @@ export function migrateLegacyPersonaData({ base, targetId = 'self', clock = { no
 
 export function dropPersonaData({ base, personaId }) {
   let removed = 0
-  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage_persona']) {
+  for (const kind of [...PERSONA_DATA_KINDS, 'llm_usage_persona', MODULE_STORE_KIND]) {
     const targetKind = scopedPersonaKind(personaId, kind)
     try {
       removed += base.removeWhere(targetKind, () => true)

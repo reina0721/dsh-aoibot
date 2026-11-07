@@ -1761,18 +1761,28 @@ test('CogSettings: budget card appears only above cog-llm fields and keeps confi
 
 test('ModulesPage: 来源/计数/依赖/blocked、内置隐藏重载、清单上限与刷新', async () => {
   const items = [
+    { id: 'builtin-typing', name: '私聊输入状态', builtin: true, status: 'loaded', enabled: true, hasConfig: false, permissions: ['turn:lifecycle', 'status:write'], canReload: false, canToggle: true },
+    { id: 'builtin-reply-delivery', name: '回复交付', builtin: true, status: 'loaded', enabled: true, hasConfig: false, permissions: ['delivery:plan'], canReload: false, canToggle: true },
     { id: 'builtin-sample', name: '内置示例', builtin: true, status: 'blocked', enabled: true, requires: ['external'], permissions: ['commands'], canReload: false, canToggle: true },
     { id: 'external', name: '外部清单关闭', builtin: false, status: 'disabled', enabled: false, requires: [], canReload: true, canToggle: false },
   ]
   const session = { values: [items, false, '', ''], index: 0 }
   const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast() {} }) } finally { hookSession = null } }
   const tree = render(), text = JSON.stringify(tree)
-  assert.match(text, /内置 1/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
+  assert.match(text, /内置 3/); assert.match(text, /外部 1/); assert.match(text, /blocked/); assert.match(text, /依赖：external/)
   assert.match(text, /permissions 不是沙箱/)
   const panels = treeNodes(tree).filter((node) => node.props?.title)
   const built = panels.find((node) => node.props.title === '内置示例')
   assert.equal(treeNodes(built.props.actions).some((node) => node.children?.includes('重载')), false)
   assert.equal(control(built.props.actions, '停用').props.disabled, false)
+  const reply = panels.find((node) => node.props.title === '回复交付')
+  assert.ok(reply)
+  assert.equal(treeNodes(reply.props.actions).some((node) => node.children?.includes('配置')), false)
+  assert.equal(control(reply.props.actions, '停用').props.disabled, false)
+  const typing = panels.find((node) => node.props.title === '私聊输入状态')
+  assert.ok(typing)
+  assert.equal(treeNodes(typing.props.actions).some((node) => ['配置', '重载'].some(label => node.children?.includes(label))), false)
+  assert.equal(control(typing.props.actions, '停用').props.disabled, false)
   const external = panels.find((node) => node.props.title === '外部清单关闭')
   assert.equal(control(external.props.actions, '启用').props.disabled, true)
   assert.equal(control(external.props.actions, '重载').props.disabled, false)
@@ -1817,4 +1827,103 @@ test('ModulesPage: 启停 payload、状态 toast、失败后清除 busy，空/�
   try { assert.match(JSON.stringify(panel.ModulesPage({})), /列表失败/) } finally { stateOverrides = null }
   stateOverrides = [[], true, '', '']
   try { assert.doesNotMatch(JSON.stringify(panel.ModulesPage({})), /还没有模块/) } finally { stateOverrides = null }
+})
+
+test('ModulesPage config: 内置配置按钮、通用 FieldRow/FieldControl、保存 revision、重读与取消', async () => {
+  const item = { id: 'builtin-generic', name: '通用内置', builtin: true, source: 'builtin', hasConfig: true, status: 'disabled', enabled: false, canToggle: true }
+  const external = { ...item, id: 'external', name: '外部', builtin: false, source: 'external' }
+  const absent = { ...item, id: 'builtin-plain', name: '无配置', hasConfig: false }
+  const fields = [
+    { path: 'message', label: '回复', type: 'text', maxChars: 200 },
+    { path: 'on', label: '开关', type: 'switch' }, { path: 'details', label: '说明', type: 'textarea' },
+    { path: 'count', label: '数量', type: 'number', min: 0, max: 10 },
+    { path: 'mode', label: '模式', type: 'select', options: [{ value: 'a', label: 'A' }] },
+    { path: 'names', label: '名称', type: 'string-list' }, { path: 'numbers', label: '数字', type: 'number-list' },
+  ]
+  let payload = { ok: true, id: item.id, schema: { version: 1, fields }, values: { message: '原文', on: true, details: '', count: 1, mode: 'a', names: ['name'], numbers: [1] }, revision: 7 }
+  const session = { values: [[item, external, absent], false, '', ''], index: 0 }, calls = [], toasts = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
+  const card = (tree, title) => treeNodes(tree).find((node) => node.props?.title === title)
+  const original = globalThis.fetch
+  globalThis.fetch = async (path, options) => {
+    const body = options.body ? JSON.parse(options.body) : undefined
+    calls.push({ path, method: options.method, body })
+    if (options.method === 'POST') payload = { ...payload, values: body.values, revision: payload.revision + 1 }
+    return { ok: true, json: async () => path.endsWith('/modules') ? { ok: true, items: [item, external, absent] } : payload }
+  }
+  try {
+    const initial = render()
+    assert.ok(control(card(initial, item.name).props.actions, '配置'))
+    for (const title of [external.name, absent.name]) assert.ok(!treeNodes(card(initial, title).props.actions).some((node) => node.children?.includes('配置')))
+    assert.ok(!treeNodes(initial).some((node) => node.type === 'section'))
+    await control(card(initial, item.name).props.actions, '配置').props.onClick()
+    assert.deepEqual(calls[0], { path: panel.API_PREFIX + '/modules/config?id=' + item.id, method: 'GET', body: undefined })
+    let tree = render()
+    assert.equal(treeNodes(tree).filter((node) => node.props?.['aria-label'] === '模块配置').length, 1)
+    const rows = treeNodes(tree).filter((node) => node.type?.name === 'FieldRow')
+    assert.deepEqual(rows.map((node) => node.props.spec.type), fields.map((field) => field.type))
+    for (const row of rows) {
+      const rowTree = row.type(row.props)
+      const fieldControl = treeNodes(rowTree).find((node) => node.type?.name === 'FieldControl')
+      assert.ok(fieldControl)
+      assert.ok(fieldControl.type(fieldControl.props))
+    }
+    rows[0].props.onChange('新文')
+    tree = render()
+    await control(tree, '保存配置').props.onClick()
+    const saved = calls.find((call) => call.method === 'POST')
+    assert.deepEqual(saved, { path: panel.API_PREFIX + '/modules/config', method: 'POST', body: { id: item.id, values: { ...payload.values, message: '新文' }, revision: 7 } })
+    assert.equal(calls.filter((call) => call.path.includes('/modules/config?id=')).length, 2)
+    assert.equal(session.values[4].revision, 8)
+    assert.equal(session.values[4].values.message, '新文')
+    assert.deepEqual(toasts.at(-1), ['模块配置已保存', 'ok'])
+    await control(render(), '取消').props.onClick()
+    assert.ok(!treeNodes(render()).some((node) => node.type === 'section'))
+  } finally { globalThis.fetch = original }
+})
+
+test('ModulesPage config: busy 禁用、冲突/保存错误保留草稿、重新加载与加载失败', async () => {
+  const item = { id: 'builtin-test', source: 'builtin', builtin: true, hasConfig: true, canToggle: true }
+  const session = { values: [[item], false, '', ''], index: 0 }, toasts = []
+  const render = () => { session.index = 0; hookSession = session; try { return panel.ModulesPage({ toast: (...args) => toasts.push(args) }) } finally { hookSession = null } }
+  const payload = { ok: true, id: item.id, schema: { version: 1, fields: [{ path: 'message', label: '回复', type: 'text' }] }, values: { message: 'original' }, revision: 1 }
+  const original = globalThis.fetch
+  let postResult = { ok: false, code: 'MODULE_CONFIG_CONFLICT', message: 'conflict' }, getError = '', release = null
+  globalThis.fetch = async (_path, options) => {
+    if (options.method === 'POST') {
+      await new Promise((resolve) => { release = resolve })
+      if (postResult instanceof Error) throw postResult
+      return { ok: true, json: async () => postResult }
+    }
+    if (getError) throw Error(getError)
+    return { ok: true, json: async () => payload }
+  }
+  try {
+    await control(treeNodes(render()).find((node) => node.props?.title === item.id).props.actions, '配置').props.onClick()
+    treeNodes(render()).find((node) => node.type?.name === 'FieldRow').props.onChange('draft')
+    for (const [result, expected] of [
+      [postResult, /配置冲突/], [{ ok: false, code: 'MODULE_CONFIG_INVALID', message: 'invalid value' }, /invalid value/], [Error('offline'), /offline/],
+    ]) {
+      postResult = result
+      const saving = control(render(), '保存配置').props.onClick()
+      const pending = render()
+      assert.equal(control(pending, '保存配置').props.disabled, true)
+      assert.equal(control(pending, '取消').props.disabled, true)
+      assert.equal(control(pending, '重新加载配置').props.disabled, true)
+      assert.ok(treeNodes(pending).filter((node) => node.type?.name === 'FieldRow').every((node) => node.props.disabled))
+      release(); await saving
+      assert.match(JSON.stringify(render()), expected)
+      assert.equal(session.values[4].values.message, 'draft')
+      assert.equal(session.values[4].revision, 1)
+      assert.equal(control(render(), '保存配置').props.disabled, false)
+    }
+    assert.equal(toasts.length, 0)
+    await control(render(), '重新加载配置').props.onClick()
+    assert.equal(session.values[4].values.message, 'original')
+    getError = 'load failed'
+    await control(render(), '重新加载配置').props.onClick()
+    assert.match(JSON.stringify(render()), /load failed/)
+    assert.equal(control(render(), '保存配置').props.disabled, true)
+    assert.equal(control(render(), '取消').props.disabled, false)
+  } finally { globalThis.fetch = original }
 })

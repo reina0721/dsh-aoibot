@@ -2,6 +2,7 @@
 // 模块是任意本地代码；这里的 permissions 约束稳定 API 的暴露面，不是进程沙箱。
 
 import { constants } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { access, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -9,9 +10,16 @@ import { pathToFileURL } from 'node:url'
 import { ID_RE, validateManifest } from './manifest.js'
 import { analyzeDependencies, dependentClosure } from './dependencies.js'
 import { builtinRegistry } from './registry.js'
+import { createModulePersonaStore } from './persona-store.js'
+import { createReminderRepository } from './reminder-repository.js'
+import { createLegacyConfig } from './legacy-config.js'
+import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from './config.js'
 const COMMAND_RE = /^[a-z][a-z0-9_-]{0,31}$/
 const EVENT_NAMES = new Set(['message', 'notice', 'request', 'meta_event', 'any'])
 const MAX_STORAGE_BYTES = 1024 * 1024
+const MAX_SCHEDULER_DELAY_MS = 2_592_000_000
+const MAX_MODULE_TIMERS = 64
+const MAX_NATIVE_TIMEOUT_MS = 2_147_483_647
 
 function messageOf(error) {
   return String(error?.message || error || '未知错误').replace(/\s+/g, ' ').trim().slice(0, 500)
@@ -52,6 +60,8 @@ function publicRecord(record) {
     requires: [...record.requires],
     canReload: !record.builtin,
     canToggle: record.builtin || (record.valid && record.manifestEnabled),
+    hasConfig: Boolean(record.builtin && record.configSchema),
+    configWarning: record.configWarning || '',
     permissions: [...record.permissions],
     enabled: Boolean(record.enabled),
     status: record.status,
@@ -64,7 +74,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, commands = null, registry = builtinRegistry } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null, access: accessControl = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -147,7 +157,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   // 写目录和 data.json 都需要 realpath containment；包内源码路径从不作为写入目标。
-  async function storagePath(record) {
+  async function storagePath(record, filename = 'data.json') {
     const realRoot = await realpath(root)
     if (record.builtin) {
       const base = join(root, '.builtin')
@@ -159,18 +169,44 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
     const dir = await realpath(record.moduleDir)
     if (!inside(realRoot, dir)) throw new Error('模块存储目录符号链接逃逸')
-    const file = join(dir, 'data.json')
+    const file = join(dir, filename)
     try {
       if (!inside(dir, await realpath(file))) throw new Error('模块存储文件符号链接逃逸')
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     return file
   }
 
+  async function loadModuleConfig(record) {
+    if (!record.configSchema) return
+    record.configValues = validateConfigValues(record.configSchema, {})
+    record.configRevision = 0
+    record.configWarning = ''
+    try {
+      const file = await storagePath(record, 'config.json')
+      if ((await stat(file)).size > MAX_CONFIG_BYTES) throw new Error('配置文件超过 64 KiB')
+      const bytes = await readFile(file)
+      if (bytes.length > MAX_CONFIG_BYTES) throw new Error('配置文件超过 64 KiB')
+      const saved = JSON.parse(bytes.toString('utf8'))
+      if (saved?.version !== record.configSchema.version || !Number.isSafeInteger(saved.revision) || saved.revision < 1) throw new Error('配置版本或 revision 不合法')
+      record.configValues = validateConfigValues(record.configSchema, saved.values)
+      record.configRevision = saved.revision
+    } catch (error) {
+      record.configWarning = error.code === 'ENOENT' ? '配置文件缺失，使用默认值' : '配置文件不可用，使用默认值'
+      log.warn?.(`模块 ${record.id}：${record.configWarning}`)
+    }
+  }
+
   async function disposeRuntime(record) {
     const runtime = record?.runtime
     if (!runtime) return
+    // Drain provider sends while repository leases are still valid, then revoke APIs.
+    for (const stop of runtime.providerStops) {
+      try { await stop() } catch { log.warn?.(`模块 ${record.id} provider 停止失败`) }
+    }
     runtime.active = false
     record.runtime = null
+    for (const timer of runtime.timers.values()) globalThis.clearTimeout(timer.native)
+    runtime.timers.clear()
     const disposers = [...runtime.disposers].reverse()
     runtime.disposers.length = 0
     for (const dispose of disposers) {
@@ -233,6 +269,49 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     }
   }
 
+  function schedulerApi(record, runtime) {
+    const isCurrent = () => !disposed && runtime.active && record.runtime === runtime && records.get(record.id) === record
+    const warn = () => {
+      // 不读取回调异常：其中可能包含聊天 ID、正文或其它秘密。
+      try { log.warn?.(`模块 ${record.id} 调度回调失败`) } catch {}
+    }
+    function clearTimeout(id) {
+      const timer = runtime.timers.get(id)
+      if (!timer) return false
+      globalThis.clearTimeout(timer.native)
+      runtime.timers.delete(id)
+      return true
+    }
+    return Object.freeze({
+      setTimeout(fn, delayMs) {
+        requireActive(runtime)
+        requirePermission(record, 'scheduler')
+        if (!record.builtin || !isCurrent()) throw new Error('调度器仅允许当前运行的内置模块使用')
+        if (typeof fn !== 'function') throw new Error('调度回调必须是函数')
+        if (!Number.isSafeInteger(delayMs) || delayMs < 0 || delayMs > MAX_SCHEDULER_DELAY_MS) throw new Error('调度延迟必须是 0–2592000000 ms 的整数')
+        if (runtime.timers.size >= MAX_MODULE_TIMERS) throw new Error('模块最多允许 64 个活跃定时器')
+        const id = randomUUID()
+        const timer = { native: null, deadline: performance.now() + delayMs }
+        const run = () => {
+          // runtime 身份即本次 setup 的 generation；旧回调不能进入新生命周期。
+          if (!isCurrent() || runtime.timers.get(id) !== timer) return
+          const remaining = timer.deadline - performance.now()
+          if (remaining > 0) { schedule(remaining); return }
+          runtime.timers.delete(id)
+          try { Promise.resolve(fn()).catch(warn) } catch { warn() }
+        }
+        // Node 超过有符号 32 位毫秒会退化为 1 ms，按单调时钟分段等待。
+        const schedule = (remaining) => {
+          timer.native = globalThis.setTimeout(run, Math.min(MAX_NATIVE_TIMEOUT_MS, Math.ceil(remaining)))
+        }
+        schedule(delayMs)
+        runtime.timers.set(id, timer)
+        return Object.freeze({ id, dispose: () => clearTimeout(id) })
+      },
+      clearTimeout,
+    })
+  }
+
   function apiFor(record, runtime) {
     const moduleLog = log?.child?.(record.id) || log
     const api = {
@@ -244,6 +323,68 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       dir: record.moduleDir,
       permissions: Object.freeze([...record.permissions]),
       log: moduleLog,
+      providers: Object.freeze({
+        register(name, provider) {
+          requireActive(runtime)
+          requirePermission(record, 'providers:register')
+          if (!record.builtin) throw new Error('provider 仅允许内置模块注册')
+          if (!providerRegistry?.register) throw new Error('provider 注册表不可用')
+          const dispose = providerRegistry.register(name, provider, { moduleId: record.id, source: record.source })
+          runtime.providerStops.push(() => provider.stop({ dispose: disposed }))
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
+      turn: Object.freeze({
+        register(descriptor) {
+          requireActive(runtime)
+          requirePermission(record, 'turn:lifecycle')
+          if (!record.builtin) throw new Error('turn 生命周期仅允许内置模块注册')
+          if (!turnHooks?.register) throw new Error('turn 生命周期服务不可用')
+          const dispose = turnHooks.register(descriptor)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
+      status: Object.freeze({
+        setInputStatus(userId, eventType) {
+          requireActive(runtime)
+          requirePermission(record, 'status:write')
+          if (!record.builtin) throw new Error('输入状态仅允许内置模块写入')
+          if (typeof gateway?.actions?.setInputStatus !== 'function') throw new Error('输入状态服务不可用')
+          return gateway.actions.setInputStatus(String(userId), eventType)
+        },
+      }),
+      access: Object.freeze({
+        canSend({ chatType, chatId } = {}) {
+          requireActive(runtime)
+          requirePermission(record, 'access:check')
+          if (!record.builtin) throw new Error('访问检查仅允许内置模块使用')
+          try { return { allowed: accessControl?.canSend?.({ chatType, chatId })?.allowed === true } }
+          catch { return { allowed: false } }
+        },
+      }),
+      delivery: Object.freeze({
+        send({ chatType, chatId, text, source } = {}) {
+          requireActive(runtime)
+          requirePermission(record, 'delivery:send')
+          if (!record.builtin) throw new Error('交付发送仅允许内置模块使用')
+          if (!delivery?.deliver) throw new Error('交付服务不可用')
+          const moduleSource = `module:${record.id}`
+          if (source !== undefined && source !== moduleSource && !(record.id === 'builtin-reminders' && source === 'reminder')) throw new Error('交付 source 不合法')
+          if (!['private', 'group'].includes(chatType) || !/^[1-9]\d*$/.test(String(chatId ?? '')) || !Number.isSafeInteger(Number(chatId)) || typeof text !== 'string' || !text.trim()) throw new Error('交付需要 chatType、chatId、text')
+          return delivery.deliver({ chatType, chatId, segments: [{ type: 'text', data: { text } }], source: source || moduleSource })
+        },
+        registerPlanner(descriptor) {
+          requireActive(runtime)
+          requirePermission(record, 'delivery:plan')
+          if (!record.builtin) throw new Error('交付规划仅允许内置模块注册')
+          if (!deliveryRegistry?.register) throw new Error('交付规划服务不可用')
+          const dispose = deliveryRegistry.register(descriptor)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      }),
       on(eventName, handler) {
         requireActive(runtime)
         requirePermission(record, 'events')
@@ -256,25 +397,30 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         runtime.disposers.push(dispose)
         return dispose
       },
-      registerCommand(name, handler, options = {}) {
+      registerCommand(name, handler, { ownerOnly = true, overrideBuiltin = false } = {}) {
         requireActive(runtime)
         requirePermission(record, 'commands')
+        if (overrideBuiltin === true) {
+          if (!record.builtin) throw new Error('受保护命令覆盖仅允许内置模块注册')
+          requirePermission(record, 'commands:override')
+        }
         const normalized = String(name || '').toLowerCase()
         if (!COMMAND_RE.test(normalized)) throw new Error('命令名不合法')
         if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
         if (!commands?.registerCommand) throw new Error('命令服务不可用')
-        const dispose = commands.registerCommand(normalized, (...args) => runtime.active ? handler(...args) : undefined, { ownerOnly: options.ownerOnly !== false })
+        const dispose = commands.registerCommand(normalized, (...args) => runtime.active ? handler(...args) : undefined, { ownerOnly: ownerOnly !== false, allowProtected: overrideBuiltin === true })
         runtime.disposers.push(dispose)
         return dispose
       },
       async sendText({ chatType, chatId, text } = {}) {
         requirePermission(record, 'send:text')
-        if (!outbound?.deliver) throw new Error('出站服务不可用')
+        const sender = delivery?.deliver ? delivery : outbound
+        if (!sender?.deliver) throw new Error('出站服务不可用')
         const type = chatType === 'group' ? 'group' : chatType === 'private' ? 'private' : ''
         const id = String(chatId ?? '').trim()
         const value = String(text ?? '').trim()
         if (!type || !id || !value) throw new Error('sendText 需要 chatType、chatId、text')
-        return outbound.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
+        return sender.deliver({ chatType: type, chatId: id, segments: [{ type: 'text', data: { text: value } }], source: `module:${record.id}` })
       },
       registerKnowledgeSource(source) {
         requireActive(runtime)
@@ -292,6 +438,44 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
         runtime.disposers.push(dispose)
         return dispose
       },
+    }
+    if (record.builtin && record.permissions.includes('scheduler')) api.scheduler = schedulerApi(record, runtime)
+    for (const [permission, property, create] of [
+      ['reminders:service', 'reminderRepository', assertActive => createReminderRepository({ store: personaStore, assertActive })],
+      ['config:read', 'legacyConfig', assertActive => createLegacyConfig({ getConfig, assertActive })],
+    ]) {
+      if (record.builtin && record.permissions.includes(permission)) {
+        api[property] = create(() => {
+          requireActive(runtime)
+          requirePermission(record, permission)
+          if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('模块服务生命周期已结束')
+        })
+      }
+    }
+    if (record.builtin && record.permissions.includes('persona:store')) {
+      api.personaStore = createModulePersonaStore({
+        store: personaStore, moduleId: record.id,
+        assertActive() {
+          requireActive(runtime)
+          requirePermission(record, 'persona:store')
+          if (disposed || record.runtime !== runtime || records.get(record.id) !== record) throw new Error('人格仓库生命周期已结束')
+        },
+      })
+    }
+    if (record.builtin && record.configSchema) {
+      api.config = Object.freeze({
+        get: () => clone(record.configValues),
+        onChange(handler) {
+          requireActive(runtime)
+          if (typeof handler !== 'function') throw new Error('配置 handler 必须是函数')
+          // 每次注册有独立身份；disposer 幂等，生命周期清理后不再通知。
+          const registration = { handler }
+          runtime.configListeners.add(registration)
+          const dispose = () => runtime.configListeners.delete(registration)
+          runtime.disposers.push(dispose)
+          return dispose
+        },
+      })
     }
     Object.defineProperty(api, 'storage', {
       enumerable: true,
@@ -319,7 +503,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), disposers: [], storage: null }
+    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {
@@ -386,8 +570,11 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
       const manifest = validateManifest(descriptor.manifest, { builtin: true })
       if (records.has(manifest.id)) throw new Error('内置注册表 id 重复')
       if (typeof descriptor.load !== 'function') throw new Error('内置注册表缺少 lazy loader')
-      records.set(manifest.id, makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
-        defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) }))
+      const record = makeRecord({ ...manifest, source: 'builtin', builtin: true, valid: true,
+        configSchema: descriptor.config === undefined ? null : validateConfigSchema(descriptor.config),
+        defaultEnabled: descriptor.defaultEnabled === true, load: descriptor.load, moduleDir: join(root, '.builtin', manifest.id) })
+      await loadModuleConfig(record)
+      records.set(manifest.id, record)
     }
     const entries = await readdir(root, { withFileTypes: true })
     for (const entry of entries) {
@@ -469,6 +656,51 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
+  function configRecord(id) {
+    if (disposed) throw actionError('模块内核已释放', 'MODULE_CONFIG_UNAVAILABLE')
+    const record = typeof id === 'string' ? records.get(id) : null
+    if (!record?.builtin || !record.configSchema) throw actionError('模块不存在或不支持内置配置', 'MODULE_CONFIG_UNAVAILABLE')
+    return record
+  }
+
+  function configSnapshot(record) {
+    return { id: record.id, source: 'builtin', schema: clone(record.configSchema), values: clone(record.configValues), revision: record.configRevision }
+  }
+
+  function getModuleConfig(id) {
+    return serialize(() => configSnapshot(configRecord(id)))
+  }
+
+  function setModuleConfig(id, values, revision) {
+    // 在进入队列前复制调用参数，避免等待期间被调用者修改。
+    let draft
+    try { draft = clone(values) } catch { return Promise.reject(actionError('配置 values 必须可复制', 'MODULE_CONFIG_INVALID')) }
+    return serialize(async () => {
+      const record = configRecord(id)
+      if (!Number.isSafeInteger(revision) || revision < 0) throw actionError('需要非负整数 revision', 'MODULE_CONFIG_INVALID')
+      if (revision !== record.configRevision) throw actionError('配置已被修改，请重新加载后再保存', 'MODULE_CONFIG_CONFLICT')
+      const validated = validateConfigValues(record.configSchema, draft)
+      const nextRevision = revision + 1
+      if (!Number.isSafeInteger(nextRevision)) throw actionError('配置 revision 已达上限', 'MODULE_CONFIG_INVALID')
+      const saved = { version: record.configSchema.version, revision: nextRevision, values: validated }
+      if (Buffer.byteLength(JSON.stringify(saved, null, 2)) > MAX_CONFIG_BYTES) throw actionError('模块配置超过 64 KiB', 'MODULE_CONFIG_INVALID')
+      try { await writeJsonAtomic(await storagePath(record, 'config.json'), saved) }
+      catch { throw actionError('模块配置保存失败，当前值未改变', 'MODULE_CONFIG_WRITE_FAILED') }
+      record.configValues = validated
+      record.configRevision = nextRevision
+      record.configWarning = ''
+      const runtime = record.runtime
+      for (const registration of [...(runtime?.configListeners || [])]) {
+        if (!runtime.active || !runtime.configListeners.has(registration)) continue
+        try {
+          // 不等待 handler，避免 handler 排队启停/保存时和生命周期队列互锁。
+          Promise.resolve(registration.handler(clone(validated))).catch(() => log.warn?.(`模块 ${record.id} 配置监听器失败`))
+        } catch { log.warn?.(`模块 ${record.id} 配置监听器失败`) }
+      }
+      return configSnapshot(record)
+    })
+  }
+
   async function dispatch(normalizedEvent) {
     if (disposed || !normalizedEvent) return
     const tasks = []
@@ -500,6 +732,6 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
     })
   }
 
-  return { start, list, reload, setEnabled, dispatch, dispose }
+  return { start, list, reload, setEnabled, getModuleConfig, setModuleConfig, dispatch, dispose }
 }
 

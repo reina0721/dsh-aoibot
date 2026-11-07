@@ -411,9 +411,12 @@ test('启动即提供 health / status / config，配置默认值与字段表完�
 
   // 新安装也有默认关闭的包内示例；来源、动作与响应不暴露路径。
   const modules = await getJson(fake, '/modules')
-  assert.deepEqual(modules.summary, { builtin: 1, external: 0 })
-  assert.equal(modules.items.length, 1)
-  const sample = modules.items[0]
+  assert.deepEqual(modules.summary, { builtin: 4, external: 0 })
+  assert.equal(modules.items.length, 4)
+  const typing = modules.items.find((item) => item.id === 'builtin-typing')
+  assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true)
+  assert.equal(typing.hasConfig, false)
+  const sample = modules.items.find((item) => item.id === 'builtin-sample')
   assert.equal(sample.id, 'builtin-sample')
   assert.equal(sample.source, 'builtin'); assert.equal(sample.builtin, true)
   assert.equal(sample.status, 'disabled'); assert.equal(sample.enabled, false)
@@ -1115,7 +1118,7 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal((await postJson(fake, '/modules/toggle', { id: 'builtin-sample', enabled: true })).item.status, 'loaded')
   let catalog = await getJson(fake, '/modules')
   assert.equal(catalog.items.find((item) => item.id === manifest.id).status, 'loaded')
-  assert.deepEqual(catalog.summary, { builtin: 1, external: 1 })
+  assert.deepEqual(catalog.summary, { builtin: 4, external: 1 })
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: false })).item.status, 'disabled')
   assert.equal((await postJson(fake, '/modules/toggle', { id: manifest.id, enabled: true })).item.status, 'loaded')
   await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ ...manifest, enabled: false }))
@@ -1126,4 +1129,192 @@ test('e2e: external module reload/toggle, cross-source blocked and manifest ceil
   assert.equal(denied.json.code, 'MODULE_MANIFEST_DISABLED')
   catalog = await getJson(fake, '/modules')
   assert.ok(!JSON.stringify(catalog).includes(dir))
+})
+
+test('e2e: built-in config GET/POST, revision conflict, validation and live sample command', async (t) => {
+  const { fake, dir, handle, mock } = await boot(t, { rowConfig: endpointConfig })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-sample'
+  const initial = await getJson(fake, '/modules/config?id=' + id)
+  assert.equal(initial.ok, true); assert.equal(initial.id, id); assert.equal(initial.revision, 0)
+  assert.equal(initial.schema.version, 1)
+  assert.deepEqual(initial.values, { message: '内置示例模块已启用。' })
+  assert.ok((await getJson(fake, '/modules')).items.find((item) => item.id === id).hasConfig)
+  const saved = await postJson(fake, '/modules/config', { id, values: { message: '配置后的回复' }, revision: initial.revision })
+  assert.equal(saved.revision, 1)
+  assert.deepEqual(saved, await getJson(fake, '/modules/config?id=' + id))
+  const stale = await fake.call(API + '/modules/config', { id, values: { message: '旧值' }, revision: 0 }, { method: 'POST' })
+  assert.equal(stale.status, 200); assert.equal(stale.json.ok, false); assert.equal(stale.json.code, 'MODULE_CONFIG_CONFLICT')
+  for (const body of [
+    { id, values: { message: 'a'.repeat(201) }, revision: 1 },
+    { id, values: { secret: 'not allowed' }, revision: 1 },
+    { id, values: { message: false }, revision: 1 },
+    { id, values: {}, revision: '1' }, { id, values: {} }, { id, revision: 1 },
+  ]) {
+    const invalid = await fake.call(API + '/modules/config', body, { method: 'POST' })
+    assert.equal(invalid.json.code, 'MODULE_CONFIG_INVALID')
+  }
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: true })).item.status, 'loaded')
+  await patchConfig(fake, { access: { ownerQQ: '123456' } })
+  const result = await handle.cognition.services.commands.handle({ text: '/module-sample', senderId: '123456', chatType: 'private', chatId: '123456' })
+  assert.equal(result.reply, '配置后的回复')
+  assert.equal(mock.sent('send_private_msg').at(-1).params.message[0].data.text, '配置后的回复')
+  await postJson(fake, '/modules/config', { id, values: { message: '即时更新' }, revision: 1 })
+  assert.equal((await handle.cognition.services.commands.handle({ text: '/module-sample', senderId: '123456', chatType: 'private', chatId: '123456' })).reply, '即时更新')
+  const moduleDir = join(dir, 'modules', 'config-external')
+  await mkdir(moduleDir)
+  await writeFile(join(moduleDir, 'module.json'), JSON.stringify({ id: 'config-external', entry: 'index.mjs', config: initial.schema }))
+  await writeFile(join(moduleDir, 'index.mjs'), 'export function setup(api) { if (api.config) throw Error("external config") }')
+  assert.equal((await postJson(fake, '/modules/reload', { id: 'config-external' })).item.status, 'loaded')
+  for (const deniedId of ['config-external', 'absent', '../escape', '/private/path']) {
+    const get = await fake.call(API + '/modules/config?id=' + encodeURIComponent(deniedId), undefined, { method: 'GET' })
+    const post = await fake.call(API + '/modules/config', { id: deniedId, values: {}, revision: 0 }, { method: 'POST' })
+    for (const response of [get, post]) {
+      assert.equal(response.status, 200)
+      assert.equal(response.json.ok, false)
+      assert.equal(response.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+      assert.ok(!JSON.stringify(response.json).includes(deniedId))
+    }
+  }
+  const config = await getJson(fake, '/modules/config?id=' + id)
+  assert.equal(config.revision, 2)
+  assert.equal(config.values.message, '即时更新')
+  for (const response of [initial, saved, stale.json, config, await getJson(fake, '/modules')]) assert.ok(!JSON.stringify(response).includes(dir))
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'modules', '.builtin', id, 'config.json'), 'utf8')), { version: 1, revision: 2, values: config.values })
+  const unsupported = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'DELETE' })
+  assert.equal(unsupported.status, 405)
+  assert.equal(unsupported.json.code, 'MODULE_CONFIG_INVALID')
+})
+
+test('e2e: typing uses builtin lifecycle, legacy config and toggle; external turn/status denied', async (t) => {
+  const { fake, handle, mock, dir } = await boot(t, { rowConfig: (mock) => endpointConfig(mock, {
+    access: { ownerQQ: '10001' }, cognition: { enabled: true, dryRun: false },
+  }) })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-typing'
+  const unavailable = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'GET' })
+  assert.equal(unavailable.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+  const pipeline = handle.cognition.services.pipeline
+  let index = 0
+  const makeTurn = (chatType = 'private', text = '/status') => ({
+    id: `typing-${++index}`, chatType, chatId: '10001', senderId: '10001', selfId: MOCK_SELF_ID,
+    text, addressed: true, messages: [], messageIds: [],
+  })
+  const statusCalls = () => mock.calls.filter(call => call.action === 'set_input_status')
+  assert.equal(handle.getConfig().cognition.typing.enabled, false)
+  assert.equal((await pipeline.handleTurn(makeTurn())).command, true)
+  assert.equal(statusCalls().length, 0)
+  await patchConfig(fake, { cognition: { typing: { enabled: true } } })
+  const before = mock.calls.length
+  assert.equal((await pipeline.handleTurn(makeTurn())).command, true)
+  assert.deepEqual(statusCalls().map(call => call.params), [{ user_id: '10001', event_type: 1 }, { user_id: '10001', event_type: 2 }])
+  const turnCalls = mock.calls.slice(before).filter(call => ['set_input_status', 'send_private_msg'].includes(call.action))
+  assert.deepEqual(turnCalls.map(call => call.action), ['set_input_status', 'send_private_msg', 'set_input_status'])
+  await pipeline.handleTurn(makeTurn('group'))
+  assert.equal(statusCalls().length, 2)
+  await postJson(fake, '/modules/toggle', { id, enabled: false })
+  await pipeline.handleTurn(makeTurn())
+  assert.equal(statusCalls().length, 2, 'module disabled suppresses typing with config still on')
+  await postJson(fake, '/modules/toggle', { id, enabled: true })
+  await pipeline.handleTurn(makeTurn())
+  assert.equal(statusCalls().length, 4)
+
+  for (const [suffix, code] of [['turn', "api.turn.register({ id: 'external', onStart() {} })"], ['status', "api.status.setInputStatus('10001', 1)"]]) {
+    const externalId = `external-${suffix}`, external = join(dir, 'modules', externalId)
+    await mkdir(external, { recursive: true })
+    await writeFile(join(external, 'module.json'), JSON.stringify({ id: externalId, entry: 'index.mjs', permissions: ['turn:lifecycle', 'status:write'], builtin: true, source: 'builtin' }))
+    await writeFile(join(external, 'index.mjs'), `export function setup(api) { ${code} }`)
+    const reloaded = await postJson(fake, '/modules/reload', { id: externalId })
+    assert.equal(reloaded.item.status, 'error')
+    assert.match(reloaded.item.error, /仅允许内置模块/)
+  }
+  assert.equal(statusCalls().length, 4)
+  const original = Error('memory retrieval failed')
+  t.mock.method(handle.cognition.services.memory, 'retrieveAsync', async () => {
+    assert.equal(statusCalls().at(-1).params.event_type, 1)
+    throw original
+  })
+  await assert.rejects(pipeline.handleTurn(makeTurn('private', '你好')), error => error === original)
+  assert.equal(statusCalls().length, 6)
+  assert.equal(statusCalls().at(-1).params.event_type, 2)
+})
+
+test('e2e: default reply module plans splits, disable changes planner fallback, external registration denied', async (t) => {
+  const { fake, handle, mock, dir } = await boot(t, { rowConfig: (mock) => endpointConfig(mock, {
+    cognition: { enabled: true, dryRun: false, reply: { maxChars: 100, maxParts: 2, delayMs: 0, quote: true } },
+  }) })
+  await waitForLoginCheck(fake, 'ok')
+  const id = 'builtin-reply-delivery'
+  const catalog = await getJson(fake, '/modules')
+  const reply = catalog.items.find(item => item.id === id)
+  assert.equal(reply.status, 'loaded')
+  assert.equal(reply.enabled, true)
+  assert.equal(reply.source, 'builtin')
+  assert.equal(reply.hasConfig, false)
+  assert.deepEqual(reply.permissions, ['delivery:plan'])
+  assert.equal(handle.getConfig().cognition.delivery.engine, 'auto')
+  const unavailable = await fake.call(API + '/modules/config?id=' + id, undefined, { method: 'GET' })
+  assert.equal(unavailable.json.code, 'MODULE_CONFIG_UNAVAILABLE')
+
+  const longReply = '回复交付测试。'.repeat(40)
+  t.mock.method(handle.cognition.services.llm, 'complete', async () => ({ ok: true, text: longReply }))
+  t.mock.method(handle.cognition.services.llm, 'completeJson', async () => ({ ok: false }))
+  let turnIndex = 0
+  const send = async (parts, quoted) => {
+    const index = ++turnIndex
+    const before = mock.calls.filter(call => call.action === 'send_private_msg').length
+    const result = await handle.cognition.services.pipeline.handleTurn({
+      id: `delivery-${index}`, chatType: 'private', chatId: String(10000 + index), senderId: String(10000 + index),
+      selfId: MOCK_SELF_ID, text: '你好，请详细说说', addressed: true, completeness: 1,
+      messages: [{ messageId: String(index), text: '你好' }], messageIds: [String(index)],
+    })
+    assert.equal(result.ok, true)
+    const sent = mock.calls.filter(call => call.action === 'send_private_msg').slice(before)
+    assert.equal(sent.length, parts)
+    assert.equal(sent[0].params.message[0].type, quoted ? 'reply' : 'text')
+    assert.equal(sent.map(call => call.params.message.filter(s => s.type === 'text').map(s => s.data.text).join('')).join(''), longReply)
+    if (parts > 1) assert.equal(sent[1].params.message.length, 1)
+  }
+  await send(2, true)
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: false })).item.status, 'disabled')
+  await send(2, true) // auto retains core behavior when disabled
+  await patchConfig(fake, { cognition: { delivery: { engine: 'planner' } } })
+  await send(1, false)
+  assert.equal((await postJson(fake, '/modules/toggle', { id, enabled: true })).item.status, 'loaded')
+  await send(2, true)
+
+  const external = join(dir, 'modules', 'external-planner')
+  await mkdir(external, { recursive: true })
+  await writeFile(join(external, 'module.json'), JSON.stringify({ id: 'external-planner', entry: 'index.mjs', permissions: ['delivery:plan'], builtin: true, source: 'builtin' }))
+  await writeFile(join(external, 'index.mjs'), `export function setup(api) { api.delivery.registerPlanner({ id: 'external', stage: 'format', plan() {} }) }`)
+  const reloaded = await postJson(fake, '/modules/reload', { id: 'external-planner' })
+  assert.equal(reloaded.item.status, 'error')
+  assert.match(reloaded.item.error, /仅允许内置模块/)
+  await send(2, true)
+})
+
+test('builtin reminders catalog, command ownership and disable fallback share reminder data', { timeout: 20000 }, async t => {
+  const { fake, handle } = await boot(t)
+  await handle.ready
+  const modules = await getJson(fake, '/modules')
+  assert.deepEqual(modules.summary, { builtin: 4, external: 0 })
+  const item = modules.items.find(row => row.id === 'builtin-reminders')
+  assert.equal(item.status, 'loaded'); assert.equal(item.enabled, true); assert.equal(item.hasConfig, false)
+  await patchConfig(fake, { access: { ownerQQ: '10001' }, cognition: { dryRun: true, reminders: { enabled: true } } })
+  const command = text => handle.cognition.services.commands.handle({ text, senderId: '10001', chatType: 'private', chatId: '10001' })
+  const coreAdd = t.mock.method(handle.cognition.services.reminders, 'add')
+  assert.match((await command('/remind 60 e2e-reminder')).reply, /已创建提醒/)
+  assert.equal(coreAdd.mock.callCount(), 0)
+  const row = handle.cognition.services.reminders.list({ chatType: 'private', chatId: '10001' })[0]
+  assert.equal((await postJson(fake, '/modules/toggle', { id: item.id, enabled: false })).item.status, 'disabled')
+  await handle.syncReminderOwnership()
+  assert.equal(handle.providerRegistry.get('reminders'), null)
+  assert.match((await command('/reminders')).reply, new RegExp(row.id))
+  assert.equal((await command('/remind 60 e2e-reminder')).reply, '已有相同活跃提醒。')
+  assert.equal(coreAdd.mock.callCount(), 1)
+  assert.equal((await command(`/forgetreminder ${row.id}`)).reply, `已取消提醒 ${row.id}。`)
+  await postJson(fake, '/modules/toggle', { id: item.id, enabled: true })
+  await handle.syncReminderOwnership()
+  assert.ok(handle.providerRegistry.get('reminders'))
+  assert.equal((await command('/reminders')).reply, '当前聊天没有活跃提醒。')
 })

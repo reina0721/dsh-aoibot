@@ -19,8 +19,10 @@ import { loadConfig, saveConfig, defaultConfig, refreshSecrets } from './core/co
 import { dataDir } from './core/store.js'
 import { createGatewayManager } from './gateway/manager.js'
 import { normalizeEvent } from './gateway/normalize.js'
+import { createIngressCoordinator } from './ingress/coordinator.js'
 import { createRoutes } from './http/routes.js'
 import { createCognition } from './cognition/index.js'
+import { createTurnHooks } from './cognition/turn-hooks.js'
 import { createModelGateway } from './model/index.js'
 import { createMediaService } from './media/index.js'
 import { createStickerService } from './media/stickers.js'
@@ -28,6 +30,8 @@ import { createBilibiliService } from './content/bilibili.js'
 import { createBackupService } from './ops/backup.js'
 import { createUpgradeService } from './ops/upgrade.js'
 import { createModuleKernel } from './modules/kernel.js'
+import { createProviderRegistry } from './extensions/providers.js'
+import { createDeliveryRegistry } from './delivery/registry.js'
 import { builtinRegistry } from './modules/registry.js'
 import { personaProfileText } from './cognition/persona.js'
 
@@ -81,7 +85,12 @@ export function apply(ctx, rowConfig) {
   const media = createMediaService({ getConfig, dataDir: dataDir('media'), logger, gateway: mediaGateway })
   const stickers = createStickerService({ getConfig, dataDir: dataDir('media'), logger })
   const bilibili = createBilibiliService({ getConfig, logger })
+  const deliveryRegistry = createDeliveryRegistry()
+  const providerRegistry = createProviderRegistry({ logger: logger.child('providers') })
+  const turnHooks = createTurnHooks({ logger: logger.child('turn-hooks') })
   const cognition = createCognition({
+    turnHooks,
+    deliveryRegistry,
     ctx,
     getConfig,
     models,
@@ -95,6 +104,11 @@ export function apply(ctx, rowConfig) {
     bilibili,
   })
   const modules = createModuleKernel({
+    providerRegistry,
+    access,
+    turnHooks,
+    gateway: { get actions() { return gatewayRef?.actions || null } },
+    deliveryRegistry,
     dataDir: dataDir('modules'),
     registry: builtinRegistry,
     getConfig,
@@ -102,7 +116,9 @@ export function apply(ctx, rowConfig) {
     logger,
     cognition,
     outbound: cognition.services.outbound,
+    delivery: cognition.services.delivery,
     commands: cognition.services.commands,
+    personaStore: cognition.services.personaStore,
   })
   const modulesReady = modules.start().catch((error) => {
     log.warn('本地模块初始化失败：', error.message)
@@ -157,35 +173,11 @@ export function apply(ctx, rowConfig) {
 
   registerPromptVariables()
 
+  const ingress = createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger: log })
+
   /** WS 原始事件 → raw 日志/认知 → 规范化 → 缓冲 → 广播给 DSH 插件事件总线。 */
   function onEvent(raw) {
-    try {
-      // 访问控制先于一切：被拒绝的消息不落 raw、不聚合、不回复。
-      const gate = access.decideRaw(raw)
-      if (!gate.allowed) {
-        log.debug(`访问拒绝：${gate.chatType || '?'}:${gate.chatId || '?'}/${gate.senderId || '?'}（${gate.reason}）`)
-        return
-      }
-      // 过滤前先交给认知：原始事件不能因为过滤规则丢失。
-      try { cognition.ingestRaw(raw) } catch (error) { log.warn('认知 raw 事件失败：', error.message) }
-      const normalized = normalizeEvent(raw, getConfig())
-      if (!normalized) return
-      const pushed = events.push(normalized)
-      try { cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' }) } catch (error) { log.warn('认知 observe 失败：', error.message) }
-      if (!pushed.accepted) {
-        log.debug(`事件被过滤：${pushed.reason}`)
-        return
-      }
-      // 模块事件与宿主广播并行；模块异常由 kernel 隔离，不能阻塞 OneBot 事件循环。
-      modules.dispatch(pushed.record).catch((error) => log.warn('模块事件分发失败：', error.message))
-      try {
-        ctx.emit?.('onebot-qq/event', pushed.record)
-      } catch (error) {
-        log.warn('广播 onebot-qq/event 失败：', error.message)
-      }
-    } catch (error) {
-      log.warn('处理 OneBot 事件失败：', error.message)
-    }
+    ingress.handleRaw(raw)
   }
 
   const gateway = createGatewayManager({
@@ -300,10 +292,74 @@ export function apply(ctx, rowConfig) {
     dataDir: dataDir(),
   })
 
+  let disposed = false
+  let modulesSettled = false
+  let reminderProvider = null
+  let failedProvider = null
+  let providerRevision = 0
+  let ownerRevision = -1
+  let failedRevision = -1
+  let ownership = Promise.resolve()
+  async function stopReminderProvider(provider = reminderProvider) {
+    if (!provider) return
+    try { await provider.stop({ dispose: disposed }) } catch { log.warn('提醒 provider 停止失败') }
+  }
+
+  function syncReminderOwnership() {
+    const work = async () => {
+      if (disposed || !modulesSettled) return
+      for (;;) {
+        const revision = providerRevision
+        const selected = providerRegistry.get('reminders')
+        const desired = selected === failedProvider && revision === failedRevision ? null : selected
+        if (reminderProvider && (reminderProvider !== desired || ownerRevision !== revision)) {
+          const previous = reminderProvider
+          await stopReminderProvider(previous)
+          reminderProvider = null
+          if (disposed) return
+          continue
+        }
+        if (!desired) { cognition.startReminders(); return }
+        if (reminderProvider === desired) return
+        await cognition.stopReminders()
+        if (disposed) return
+        if (providerRevision !== revision) continue
+        reminderProvider = desired
+        ownerRevision = revision
+        try { await desired.start() }
+        catch {
+          log.warn('提醒 provider 启动失败，回退核心提醒')
+          await stopReminderProvider(desired)
+          reminderProvider = null
+          failedProvider = desired
+          failedRevision = revision
+          if (disposed) return
+          continue
+        }
+        // Synchronous teardown can occur during an asynchronous start.
+        if (disposed) { await stopReminderProvider(desired); return }
+        if (providerRevision !== revision) continue
+        return
+      }
+    }
+    ownership = ownership.then(work, work)
+    return ownership
+  }
+  const unsubscribeProviders = providerRegistry.subscribe(() => {
+    providerRevision++
+    failedProvider = null
+    if (modulesSettled && !disposed) syncReminderOwnership().catch(() => log.warn('提醒所有权协调失败'))
+  })
+
   const ready = (async () => {
     try {
       await modulesReady
+      if (disposed) return
+      modulesSettled = true
+      await syncReminderOwnership()
+      if (disposed) return
       await gateway.ready
+      if (disposed) return
       if (configState.current.enabled) await gateway.start()
       else gateway.stop()
     } catch (error) {
@@ -313,6 +369,11 @@ export function apply(ctx, rowConfig) {
   ready.catch(() => {})
 
   function dispose() {
+    if (disposed) return
+    disposed = true
+    unsubscribeProviders()
+    // Invoke stop before cognition closes its store; do not change sync teardown.
+    stopReminderProvider()
     disposeBrand()
     try {
       routes.dispose()
@@ -359,7 +420,9 @@ export function apply(ctx, rowConfig) {
     stickers,
     bilibili,
     modules,
+    providerRegistry,
     modulesReady,
+    syncReminderOwnership,
     backup,
     upgrade,
     access,

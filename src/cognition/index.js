@@ -31,6 +31,7 @@ import { createBeliefService } from './beliefs.js'
 import { createKnowledgeService, defaultSourceRegistry } from './knowledge.js'
 import { createPipeline } from './pipeline.js'
 import { createOutbound } from './outbound.js'
+import { createDeliveryService } from '../delivery/service.js'
 import { createProactivityService } from './proactivity.js'
 import { createAgentRuntime } from '../runtime/agent.js'
 import { createReminderService } from './reminders.js'
@@ -58,6 +59,8 @@ export function createCognition({
   media = null,
   stickers = null,
   bilibili = null,
+  deliveryRegistry = null,
+  turnHooks = null,
 } = {}) {
   const log = logger?.child?.('cognition') || logger || { info() {}, warn() {}, debug() {}, error() {} }
   const baseDir = dataRoot || pluginDataDir('cognition')
@@ -74,6 +77,7 @@ export function createCognition({
   }
   const knowledgeSources = new Map()
   const capabilities = new Map()
+  let remindersStarted = false
   const cfg = () => {
     try { return getConfig()?.cognition || {} } catch (error) { return {} }
   }
@@ -107,6 +111,7 @@ export function createCognition({
         getPersonaId: () => state.services.persona?.activeId?.() || migrationTarget,
       })
       const personaStore = state.scopedStore
+      state.services.personaStore = personaStore
       state.services.emotion = createEmotionService({ store: personaStore, getConfig, clock })
       state.services.person = createPersonService({ store: personaStore, getConfig, clock })
       state.services.relationships = createRelationshipService({ store: personaStore, getConfig, clock })
@@ -137,7 +142,9 @@ export function createCognition({
         logger: log,
         clock,
       })
+      state.services.delivery = createDeliveryService({ outbound: state.services.outbound })
       state.services.runtime = createAgentRuntime({
+        delivery: state.services.delivery,
         ctx,
         getConfig,
         access,
@@ -154,6 +161,7 @@ export function createCognition({
         outbound: state.services.outbound, logger: log,
       })
       state.services.commands = createCommandService({
+        delivery: state.services.delivery,
         getConfig,
         setConfig,
         access,
@@ -179,6 +187,8 @@ export function createCognition({
       state.services.knowledge = createKnowledgeService({ store: personaStore, getConfig, clock, llm: state.services.llm, sources: state.services.sources, log })
       state.services.meta = createMetaService({ store: personaStore, getConfig, clock, log, skills: state.services.skills, knowledge: state.services.knowledge })
       state.services.pipeline = createPipeline({
+        turnHooks,
+        deliveryRegistry,
         store: personaStore,
         getConfig,
         clock,
@@ -221,6 +231,7 @@ export function createCognition({
       // 让 pipeline 能在发送后通知 aggregator 记录 bot message id（避免回复自己/识别回复）。
       state.services.pipeline.setTurnAggregator(state.services.aggregator)
       state.services.proactivity = createProactivityService({
+        delivery: state.services.delivery,
         store: personaStore, getConfig, clock, person: state.services.person, relationships: state.services.relationships,
         memory: state.services.memory, persona: state.services.persona, emotion: state.services.emotion,
         llm: state.services.llm, gateway, policy: state.services.policy, logger: log, outbound: state.services.outbound,
@@ -230,13 +241,24 @@ export function createCognition({
       state.services.aggregator.restore()
       log.info?.(`认知存储就绪：${state.store.info().mode} ${dbFile}`)
       startBackgroundJobs()
-      state.services.reminders.start()
     } catch (error) {
       state.error = String(error?.message || error)
       state.ready = false
       log.warn?.(`认知初始化失败：${state.error}`)
     }
     return state.ready
+  }
+
+  // The host selects the reminder owner after modules have finished setup.
+  function startReminders() {
+    if (!state.ready || remindersStarted) return
+    state.services.reminders.start()
+    remindersStarted = true
+  }
+
+  function stopReminders() {
+    remindersStarted = false
+    return state.services.reminders?.stop()
   }
 
   function startBackgroundJobs() {
@@ -643,6 +665,8 @@ export function createCognition({
 
   return {
     get ready() { return Promise.resolve(state.ready) },
+    startReminders,
+    stopReminders,
     get state() { return state },
     get store() { return state.store },
     get services() { return state.services },

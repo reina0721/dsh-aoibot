@@ -62,7 +62,7 @@ function clampText(text, max = MAX_CONTEXT_CHARS) {
  * @param {object} [o.logger]
  * @param {string} [o.dataRoot] 运行时数据目录（sessions.json/workspace）
  */
-export function createAgentRuntime({ ctx, getConfig, access = null, gateway = null, outbound = null, logger = null, dataRoot } = {}) {
+export function createAgentRuntime({ ctx, getConfig, access = null, gateway = null, outbound = null, delivery = null, logger = null, dataRoot } = {}) {
   const log = logger?.child?.('runtime') || logger || { info() {}, warn() {}, debug() {} }
   const baseDir = dataRoot || join(process.cwd(), '.dsh-bot-runtime')
   const sessionFile = join(baseDir, SESSION_FILE)
@@ -238,7 +238,7 @@ export function createAgentRuntime({ ctx, getConfig, access = null, gateway = nu
       try {
         const registry = agent?.ctx?.tools
         if (typeof registry?.register !== 'function') throw new Error('TOOLS_REGISTER_UNAVAILABLE')
-        for (const tool of createQqTools({ chat: info, gateway, outbound, getConfig, logger: log })) {
+        for (const tool of createQqTools({ chat: info, gateway, outbound, delivery, getConfig, logger: log })) {
           try {
             const off = registry.register(tool)
             if (typeof off === 'function') disposers.push(off)

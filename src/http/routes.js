@@ -184,6 +184,25 @@ export function createRoutes({ ctx, getConfig, setConfig, resetConfig, gateway, 
   }
 
   if (modules) {
+    const configAnswer = async (work) => {
+      try {
+        const { id, schema, values, revision } = await work()
+        return { ok: true, id, schema, values, revision }
+      } catch (error) {
+        const known = ['MODULE_CONFIG_INVALID', 'MODULE_CONFIG_UNAVAILABLE', 'MODULE_CONFIG_CONFLICT', 'MODULE_CONFIG_WRITE_FAILED'].includes(error.code)
+        return { ok: false, code: known ? error.code : 'MODULE_CONFIG_INVALID', message: known ? error.message : '模块配置请求无效' }
+      }
+    }
+    // DSH exact 路由按 path 去重；同一路径的两种 method 必须只注册一次。
+    route(null, '/modules/config', (req, res) => {
+      const method = String(req.method || '').toUpperCase()
+      if (method === 'GET') return configAnswer(() => modules.getModuleConfig(queryOf(req).id))
+      if (method === 'POST') return configAnswer(async () => {
+        const body = await readBody(req)
+        return modules.setModuleConfig(body?.id, body?.values, body?.revision)
+      })
+      send(res, 405, { ok: false, code: 'MODULE_CONFIG_INVALID', message: '只支持 GET 或 POST' })
+    })
     route('GET', '/modules', async () => {
       const items = modules.list()
       return { ok: true, items, summary: { builtin: items.filter((item) => item.builtin).length, external: items.filter((item) => !item.builtin).length } }

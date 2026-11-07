@@ -1,5 +1,37 @@
 # 变更记录
 
+## 未发布
+
+- 架构优化 Phase 15（仅文档）：新增模块架构发布就绪与授权边界，记录 Phase 11–14 精确提交链、离线验收证据、四内置/外部及媒体边界、待授权的推送合并/版本标签 Release/live 安装与 smoke/回滚方案。0.11.8 仅为后续版本提议；本阶段不改生产代码、配置、依赖或版本，未推送、合并、发布或部署，live 操作须用户明确授权。
+
+- 架构优化 Phase 14（最终验收）：固定 11 项外部特权的普通/伪造 builtin 清单双组拒绝测试，验证无注册或宿主副作用；补充无权限调用、媒体资源/路由缺失与媒体权限/provider 槽位拒绝、provider 来源/权限/撤销及生产四内置目录验收。补验 SQLite/JSON 的提醒 all/capture 人格隔离、生命周期撤销与全局五字段配置/无路径秘密；沿用单所有者排空交接/失败回退证据。ADR-013 明确媒体传输/存储/provider/HTTP/文件约束继续属于核心，本程序不提取 builtin-media 服务；未来仅可经宿主 media port 提取功能策略/命令，无数据迁移。增加最终验收说明，更新架构/模块/状态/README，包检查确保文档与四内置独立加载。无生产行为、新模块、配置/UI/依赖/版本变化；仅离线验证，无 live/浏览器，不推送/部署/发布，部署与版本另行授权。
+
+- 架构优化 Phase 13：新增默认启用的 builtin-reminders（内置共四个），沿用 cognition.reminders 只读配置与原 persona-scoped reminder 数据；共用核心/模块规则和精确命令文案，通过 reminders provider、scheduler、仓库与窄 access/delivery API 接管三个提醒命令及单 timer 调度，停用恢复核心。provider subscribe 以安全元数据通知，宿主串行等待旧所有者排空再接管，启动失败清理后回退；核心增加幂等 stopReminders。仓库 capture 固定在途原人格，all 支持完整防重/额度与按聊天限量；取消/删除/替换不被旧结果覆盖，最终同步卸载禁止迟到写库。新 API 仅内置权限开放，外部不可注册 provider。补充注册表、切换/失败/异步清理、命令/数据对等、调度/人格/出站闸门、e2e 与独立包测试及 ADR-012。无数据迁移、配置/UI/媒体/依赖/版本变化；仅本地验证，不推送/部署/发布，未做真实 QQ 验收。
+
+- 架构优化 Phase 12（仅前置端口）：新增仅内置 reminders:service / api.reminderRepository，同步 get/list/findDue/countActive/put/update/remove 固定访问当前人格核心 reminder kind，无迁移或 module_store 副本；严格 ID/目标/状态/时间/行字段验证，list 最多 50、到期先排序后取最多 20，写入/输出复制，补丁仅限投递状态，不暴露 base store/SQL/路径/跨人格参数。独立 config:read / api.legacyConfig.section 仅开放 cognition.reminders 当前规范化五字段深拷贝，无秘密、其它配置、写入或通知。外部声明在导入前拒绝，缺权限无属性，停止/失败/依赖清理/dispose 撤销旧端口；补充双后端、隔离/权限/生命周期/配置与核心互通测试和 ADR-011。现有提醒服务与测试保持，不提取提醒/媒体、无新增生产模块或 provider、配置/UI/REST/依赖或版本变化，仅本地验证，不推送/部署/发布。
+
+- 架构优化 Phase 11（基础设施范围）：新增仅内置可用的 provider 注册表，固定白名单 reminders、单槽唯一注册、身份绑定幂等注销及纯元数据列表；模块 providers:register 权限随 runtime 清理，外部来源或缺权限拒绝。认知保留提醒服务构造/命令/存储/清理，移除 init 自动启动，改为幂等 startReminders；宿主等待 modulesReady 后选择 provider 或核心，provider 启动失败先尽力停止再核心回退，卸载先调用 provider.stop 并防迟到启动。默认没有生产 provider，仍只启动一次原核心提醒调度器，原业务开关与行为保持。新增注册表/权限/生命周期/宿主选择及卸载竞态测试，提醒集成测试显式激活，补充 ADR-010 与模块/架构文档；不提取提醒/媒体、不新增生产模块、配置/UI/REST/依赖或版本，仅本地校验，不推送/部署/发布。
+
+- 架构优化 Phase 10（有限范围）：新增 commands:override 权限与 api.registerCommand 的 overrideBuiltin:false 默认选项，仅同时声明 commands/commands:override 的受信任内置模块可显式覆盖受保护命令；外部伪造来源或缺权限在 setup 中失败。核心 allowProtected 严格 true 才放行，重复模块注册始终拒绝；覆盖优先分发，保留 ownerOnly/deniedCommands，handler 前检查会话访问，回复沿用统一 command 交付路径。身份绑定 disposer 与 runtime 清理在停用、setup/事件失败、依赖禁用/重载、dispose 后恢复原核心分支，旧 API 不可注册；执行/发送失败不重试核心。新增权限/访问/交付/重复/生命周期回归测试、模块/架构文档与 ADR-009；仅为提醒迁移前置 API，不提取提醒/媒体，生产内置仍三个，无新配置/UI/REST/依赖或版本，仅本地校验，不推送/部署/发布。
+
+- 架构优化 Phase 9（有限范围）：新增 persona:store 权限，仅内置模块获得同步 api.personaStore.get/put/remove/list/count；外部声明在导入前拒绝。安全 key、module:<id>:<key> 命名空间与当前人格 facade 隔离，JSON 值进出 structuredClone、每值 UTF-8 JSON 最多 64 KiB、每模块每人格最多 1000 条；事务检查额度、支持满额覆盖，无 raw kind/SQL/底层 store/跨人格参数。生命周期结束撤销旧 API 且保留数据，人格删除清理所有模块记录；复用 cognition SQLite/JSON，无独立持久层。新增仓库/生产接线/重启/清理测试、模块/架构文档与 ADR-008；不是通用 DB，不提取提醒/媒体，不新增生产模块、依赖、配置/UI/REST 或版本，仅本地校验，不推送/部署/发布。
+
+- 架构优化 Phase 8（有限范围）：仅向声明 scheduler 权限的内置模块暴露 api.scheduler.setTimeout(fn,delayMs) → {id,dispose} 与 clearTimeout(id) → boolean；数字整数延迟 0–2,592,000,000 ms、每 runtime 最多 64 个活跃 timer，不透明 ID 按模块/生命周期隔离。按单调截止时间分段避免 Node 32 位 timeout 溢出；停用、失败、依赖重载和 dispose 清空 timer，generation/注册检查阻止迟到回调。同步/异步异常及 logger 错误隔离，固定日志不含聊天 ID/payload。新增调度器测试、模块/架构文档和 ADR-007；不提取提醒/媒体，无 interval/cron/持久化、新生产模块、配置/UI/依赖或版本变更，仅本地校验，不推送/部署/发布。
+
+- 架构优化 Phase 7（有限范围）：DeliveryResult 新增 sent/dry_run/partial/failed/empty 状态；后续分条失败保留 ok:true 和已发消息，显式返回 partial、sentParts、零基 failedPart 与 PARTIAL_SEND，不重试、不回滚。DeliveryService 移除 parts:1 固定覆盖，单条真实成功为 1、失败/dry-run 为 0，保留 outbound 结果字段；pipeline 统计/pending/群聊记账与调用方 ok 分支保持不变。补充执行器、pipeline、服务精确结果测试及 ADR-006；频率账本、传输重试、leak guard 顺序和 shutdown 留待后续，不改 typing/媒体/提醒/模块 API/规划器，无新依赖/配置/UI、版本变更或 live 操作。
+
+- 架构优化 Phase 6：私聊 typing 迁入默认启用的 builtin-typing，通过仅内置可用的 turn:lifecycle/status:write 窄 API 执行轮次开始/结束状态；保留默认关闭的 cognition.typing.enabled 及原 UI/normalizer，无模块配置。核心 turn hooks 顺序开始、逆序结束、逐项错误隔离和固定安全日志；生产空 registry/模块停用不 typing，旧未注入 harness 保留原内联路径。覆盖模块权限/清理、原处理异常、私聊/群聊/配置/错误、宿主目录 builtin=3、面板和独立包加载，新增 ADR-005。无媒体/提醒改造、新依赖、版本变更或 live 操作。
+
+- 架构优化 Phase 5：新增单条 DeliveryService，经既有 DeliveryPlan 执行器与 outbound 闸门统一认知命令、模块 sendText、proactivity 和 Agent qq_send_text；生产共享注入，旧 harness 保留 outbound 兼容。保留 source/decisionId/dryRun 与结果字段，补充 parts:1，无 direct gateway 回退或拒绝后重试。新增服务、生产接线与四类入口回归及 ADR-004；面板人工 /send、媒体/文件、提醒保持原路径，不改 planner/分条或限频/重试/部分成功/leak guard，不新增依赖/配置、不升级版本。
+
+- 架构优化 Phase 4：默认启用 builtin-reply-delivery，通过仅内置可用的 delivery:plan 权限与生命周期 registry 规划回复分条、首条引用/群聊 @、条间等待和末条余文合并；保留 cognition.reply.*，纯 splitter 移至 delivery 并兼容旧导入。内部 engine 默认 auto（无规划器走 core），core 可显式回退，planner 缺失或规划抛错/无效时经原 outbound 安全闸门单条纯文本回退，安全日志不回显异常。pipeline 复用 DeliveryPlan 执行器并保留空白/dryRun/部分成功、统计/pending/归因；补充 registry、权限/生命周期、模块、引擎矩阵、宿主/面板与独立包验证及 ADR-003。回复模块没有独立配置/API/UI，不改全局配置字段、命令、入站、版本或 parity；未推送、发布、部署，未做真实 QQ/浏览器验收。
+
+- 架构优化 Phase 3：仅内置 registry 支持声明式配置 schema（7 种非秘密字段），服务端验证、默认值、独立 64 KiB 原子 config.json 与 revision 冲突控制；setup 前加载，提供深拷贝 api.config.get 和生命周期 onChange，损坏配置安全回退。模块面板复用 FieldRow/FieldControl 行内编辑、保存重读、取消与错误提示；默认关闭的 builtin-sample 回复改读 message 配置。新增模块/HTTP/面板回归测试与配置契约文档；外部模块不开放配置 API/UI，不改全局 /config、入站、交付或回复分条，不升级版本、不推送/发布/部署，未做真实 QQ/浏览器验收。
+
+- 架构优化 Phase 2：将 `host.onEvent` 原始事件编排抽到注入依赖的 ingress coordinator，保持访问闸门 → raw 归档 → 规范化 → 缓冲/过滤 → observe → 非阻塞模块分发 → 同 record 广播的顺序、错误隔离与日志。新增仅内部使用的 v1 OneBot envelope 和既有标识关联值，不扩展公共事件/hook；补充入站行为测试与 ADR-002。无新配置/依赖，不改 UI、认知、模块内核、交付或分条，不升级版本、不发布、不部署，未做真实 QQ/浏览器验收，parity 矩阵不变。
+
+- 架构优化 Phase 0 + Phase 1：刻画既有回复投递语义，新增纯 DeliveryPlan builder、校验/单条纯文本回退与 DeliveryExecutor，pipeline 保留原 core 路径并增加显式启用的 planner 路径。内部 `cognition.delivery.engine=core|planner` 默认 core，可切回；原 `cognition.reply.*`、outbound 安全闸门、统计/pending/逐条归因保持。补充 core/planner 离线行为对等测试与 ADR-001；不新增模块/schema/ingress 改造，不升级版本、不发布、不部署，未做 live/浏览器验证，parity 矩阵不变。
+
 ## 0.11.7（2026-11-06，内置与外部模块架构）
 
 - 模块架构 v2：统一内置/外部目录，静态冻结 registry 与默认关闭的 builtin-sample（主人 `/module-sample` 固定回复）；保留 builtin- 命名空间，关闭时不导入/运行。共享 apiVersion=1、requires 校验和依赖图，拓扑加载、逆序清理、error/blocked 隔离、外部重载级联与内置代码缓存。

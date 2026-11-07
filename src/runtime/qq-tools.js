@@ -25,7 +25,7 @@ function rejectUnknown(args, allowed) {
   if (extra) throw new Error('不能指定其它 QQ 目标')
 }
 
-export function createQqTools({ chat = {}, gateway = null, outbound = null, getConfig = null, logger = null } = {}) {
+export function createQqTools({ chat = {}, gateway = null, outbound = null, delivery = null, getConfig = null, logger = null } = {}) {
   const scope = {
     chatType: chat.chatType === 'group' ? 'group' : 'private',
     chatId: text(chat.chatId),
@@ -52,9 +52,10 @@ export function createQqTools({ chat = {}, gateway = null, outbound = null, getC
         const value = text(args?.text)
         if (!value) fail('文本不能为空')
         if (value.length > 4000) fail('文本最多 4000 字符')
-        if (!outbound?.deliver) fail('QQ 发送服务不可用')
+        const sender = delivery?.deliver ? delivery : outbound
+        if (!sender?.deliver) fail('QQ 发送服务不可用')
         try {
-          const result = await outbound.deliver({
+          const result = await sender.deliver({
             chatType: scope.chatType,
             chatId: scope.chatId,
             segments: [{ type: 'text', data: { text: value } }],

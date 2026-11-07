@@ -31,6 +31,7 @@ dsh-bot/
 │   ├── core/logger.js    # 分级日志 + 环形缓冲（移植自 aurabot MIT）
 │   ├── core/config.js    # DEFAULTS / 读取 / 校验 / 保存
 │   ├── core/events.js    # 规范化事件环形缓冲 + 统计
+│   ├── ingress/coordinator.js # 原始事件入站顺序与异常隔离
 │   ├── onebot/client.js  # OneBot v11 客户端：HTTP+WS、重连、echo（移植自 aurabot MIT）
 │   ├── gateway/
 │   │   ├── normalize.js  # 原始事件 → 规范化事件
@@ -48,6 +49,10 @@ dsh-bot/
 ```
 
 ## 3. 关键契约
+
+Phase 14 完成模块边界验收，生产目录保持 reply delivery、typing、reminders 与 sample 四个内置模块。外部模块不能通过稳定 API 获得 provider/服务所有权、交付规划、turn 生命周期、status 写入、scheduler、persona store、提醒仓库、旧配置、受保护命令覆盖及内部 delivery/access 端口；伪造 source/builtin 无效。媒体传输、存储、provider/HTTP 与文件约束明确保留核心，不在本程序提取 builtin-media，无数据迁移。权限不构成同进程 Node.js 沙箱。最终拒绝阶段、单所有者交接和离线包验收证据见 [MODULE-ACCEPTANCE](architecture/MODULE-ACCEPTANCE.md)，媒体原因与未来宿主窄端口见 [ADR-013](architecture/ADR-013-media-boundary.md)。本阶段无生产行为、配置/UI/依赖或版本变化，部署/发布另行授权。
+
+内部交付 seam（Phase 1 + Phase 4 + Phase 5）：`src/delivery/registry.js` 是宿主在 cognition/modules 之前创建的共享 registry，模块在宿主 ready 前完成启动。默认启用的 `builtin-reply-delivery` 通过仅内置可用的 `delivery:plan` API 注册唯一 format 规划器，布局纯函数位于 `src/delivery/reply-plan.js`，模块入口仅注册它；`src/delivery/plan.js` 保留兼容导出、校验和单条纯文本回退，`src/delivery/executor.js` 顺序执行。outbound 继续持有访问/限频/leak guard，pipeline 保留统计、pending、归因与轮次记录。内部 engine 默认 auto：有 planner 用模块，无 planner 用 core 兼容布局；core 始终绕过注册表，显式 planner 缺失或规划抛错/无效时单条纯文本回退。core 与模块复用纯布局函数和执行器，pipeline 不再构建消息段或计算分条/等待；所有 `cognition.reply.*` 保留。无配置迁移或模块配置 UI，详见 [ADR-001](architecture/ADR-001-delivery-seam.md) 与 [ADR-003](architecture/ADR-003-reply-delivery-module.md)。Phase 2 的入站编排保持不变，详见 [ADR-002](architecture/ADR-002-ingress-coordinator.md)。
 
 ### 3.1 配置（src/core/config.js）
 
@@ -83,7 +88,25 @@ export function createGatewayManager({ getConfig, log, onEvent }) {
 - 重连参数全部来自配置：`reconnect.minDelayMs/maxDelayMs/factor/jitterRatio/enabled`。
 - 所有日志走注入的 `log`，token 必须脱敏。
 
-### 3.3 事件规范化（src/gateway/normalize.js）
+### 3.3 入站协调与事件规范化（src/ingress/coordinator.js、src/gateway/normalize.js）
+
+`host.js` 在 access/cognition/events/modules 就绪后、创建 gateway 前构造 `createIngressCoordinator({ access, cognition, events, modules, ctx, normalizeEvent, getConfig, logger })`，网关的 `onEvent(raw)` 委托其同步 `handleRaw(raw)`。模块启动与 `ready` 等待顺序保持原样。协调器仅拥有调用顺序和异常隔离，不拥有访问规则、规范化、过滤、认知、模块执行或广播实现；无定时器、全局状态、新配置或公开 hook。
+
+每条入站严格保持以下顺序：
+
+1. `access.decideRaw(raw)`；拒绝则 debug 日志并返回，禁止落 raw 或执行后续步骤。
+2. `cognition.ingestRaw(raw)`；同步异常记录 warning，继续。
+3. `normalizeEvent(raw, getConfig())`；返回 null 则停止。
+4. `events.push(normalized)`；过滤、缓冲与统计仍由 event store 拥有。
+5. `cognition.observe(pushed.record || normalized, { accepted: pushed.accepted, reason: pushed.reason || '' })`；同步异常记录 warning，继续。
+6. 未接受则 debug 记录原过滤原因并返回。
+7. 调用 `modules.dispatch(pushed.record).catch(...)`，不等待 Promise；拒绝记录 warning。
+8. `ctx.emit?.('onebot-qq/event', pushed.record)`；保留同一 record 引用，同步异常记录 warning。
+9. 外层同步异常记录 warning 并结束本条处理，不抛入 gateway。dispatch 同步抛错也沿用此路径，跳过广播。
+
+每次调用的内部 envelope 为 `{ version: 1, platform: 'onebot', raw, normalized, accepted, reason, correlationId }`。raw/normalized 只保存引用，不附加到公共事件或 hook。correlationId 仅取现有 `normalized.message.id`、`notice.messageId`、`notice.flag` 或 `request.flag`（按此优先顺序，空值回退），保留字符串/数字原值；无标识时为空，不用时间、seq 或随机值生成。envelope 不持久化、不广播、不记录日志。
+
+`handleRaw` 的内部返回值为 `{ accepted, reason, correlationId }`，host 忽略该值。accepted 表示 event store 是否接受，不代表模块执行完成或广播成功；拒绝/过滤沿用原 reason，无法规范化为 `unrecognized`，接受前外层异常为 `error`。返回值不包含 raw、normalized 或配置；请求 flag 用作内部关联值时不追加到公共事件或日志。原规范化事件的 `raw` 字段仍遵循下方既有契约，本阶段不增加或改变脱敏策略。
 
 ```js
 export function normalizeEvent(raw, cfg) -> null | {
@@ -265,9 +288,11 @@ export function normalizeEvent(raw, cfg) -> null | {
 ### 3.11 访问控制与统一出站
 
 - `src/core/access.js`：`normalizeAccess` / `decideInbound` / `canSend` 纯函数；`createAccess` 负责配置读取、审计环形缓冲与计数。
-- `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 是认知侧唯一自动发送入口；
+- `src/delivery/service.js`：认知命令、模块 `api.sendText`、proactivity、Agent `qq_send_text` 在生产中共享 `services.delivery`；单条 DeliveryPlan → `executeDeliveryPlan` → `outbound.deliver`。segments 优先于 text，无分条/引用/@/等待；保留 outbound 结果字段，透传执行器的状态与实际条数，单条真实成功 `parts:1`，失败/dry-run `parts:0`。详见 [ADR-004](architecture/ADR-004-unified-egress.md) 与 [ADR-006](architecture/ADR-006-delivery-result-status.md)。
+- `src/cognition/outbound.js`：`deliver({ chatType, chatId, segments, decisionId, source, dryRun })` 保持自动文本发送的安全闸门；
   顺序为访问控制 → 频率上限 → leak guard → dryRun → 发送 → `policy.markSent/markFailed`；只发一次，不自动重试。
-- `pipeline.sendDecision`、撤回处理与 `proactivity` 全部走 outbound；面板 `POST /send` 是人工操作，保留独立路径。
+- pipeline 回复仍经原 planner/executor/outbound；Phase 5 的四类入口由 cognition 创建服务并注入，runtime 转给 tools、host 转给 kernel。未注入的旧调用方保留 outbound 兼容路径，proactivity 仅在两者都缺失时保留 legacy 路径。DeliveryService 自身没有 gateway 回退，outbound 不可用时安全失败，拒绝后不绕过或重试。
+- 面板人工 `POST /send` 保留 direct gateway 路径；媒体/文件命令与提醒服务不在本阶段迁移范围内。planner/分条、限频/重试/部分成功/leak guard 语义不变。
 - 默认 `access.mode='open'`，升级后行为不变；`allowlist` 才启用主人 + 白名单规则。
 
 `src/core/leak-guard.js`（M7-i）提供纯函数 `scanText`（clean 为脱敏文本）、`redactText`、`guardSegments`，以及动态读 `security.leakGuard` 的 `createLeakGuard`。默认启用 + redact；文本规则限 OpenAI/GitHub/AWS AKIA/Bearer/PEM 私钥/至少 16 字符的 api_key/apiKey 值；私钥块通过单向游标查找 END，其他模式无嵌套量词，重叠区间合并。每次扫描及一次消息 text 总长度最多 100,000 UTF-16 单元；超限整体脱敏或阻止，畸形 text 段 fail closed。非文本段原样保留，不读取 base64。
@@ -277,7 +302,7 @@ outbound 在限频检查后调用 guard；block 返回 `{ok:false,error:'LEAK_BL
 ### 3.12 DSH Session 运行时（`src/runtime/agent.js`）
 
 ```js
-createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot }) -> {
+createAgentRuntime({ ctx, getConfig, access, gateway, outbound, delivery, logger, dataRoot }) -> {
   available(), active(), engine(),
   levelFor(turn), presetFor(level),
   compose({ turn, system, user }),  // -> { ok, text, sessionId } | { ok:false, error }
@@ -290,7 +315,7 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - `runtime.engine` 默认 `oneshot`；只有 `agent` 且服务齐全时 `active=true`，否则 `compose` 返回 `RUNTIME_INACTIVE`，调用方回退一次性 LLM。
 - 会话映射：`<dataDir>/runtime/sessions.json`，key 为 `chatType:chatId`；preset/level 变化或恢复失败时新建。
 - preset：主人私聊 `dsh-bot-private`（fs/fs-search/web 工具），群聊/他人私聊 `dsh-bot-social`（无本机工具）。
-- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本仍走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
+- QQ 工具：仅 `level=full` 的主人私聊 session 通过 `agent.ctx.tools.register()` 挂载 `qq_send_text`、`qq_like_user`、`qq_poke_user`；定义固定当前聊天/发送者，文本经 DeliveryService/executor 走 outbound 的访问控制与限频。social/group session 注册 0 个；注册失败只记安全日志，dispose 逐项移除。
 - 上下文：`agent.ctx.systemPrompt.context({ name, order, text })` 挂认知 system 文本；没有该 API 时退回把 system 前置到 user 消息。
 - 回合：`agent.followup(UserMessage)`；监听 `session/event`，`assistant/message` 取无 tool-call 的文本，`turn/end` 结算；每聊天串行，超时返回 `TIMEOUT` 不强杀。
 - 显式插话（M7-o）：主人 `/steer 文本` 经命令身份/禁用列表/访问闸门调用 `runtime.steer(turn,text)`；要求 active、private/group 正整数安全数字 ID、非空 1–1000 Unicode 字符。通过 `sessionFor(turn)` 复用或创建 Session，调用 `agent.steer({content:[{type:'text',text}],source:{kind:'user'}})`，不写配置或直接调用模型。Session 解析单独串行以避免与 compose 并发创建；steer 不等待 compose 的 turn/end。
@@ -301,8 +326,9 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 ### 3.13 QQ 命令与按聊天模型
 
 - `src/cognition/commands.js`：`parseCommand(text)` + `createCommandService()`；只处理 `/name args`，非主人静默忽略。
-- 命令在 `pipeline.handleTurn` 的自循环检查之后、分析/策略之前处理；回复走 `outbound.deliver({ source:'command' })`，
+- 命令在 `pipeline.handleTurn` 的自循环检查之后、分析/策略之前处理；回复走 `delivery.deliver({ source:'command' })` → executor → outbound，
   因此同样受访问控制与频率上限约束。
+- Phase 10：命令服务 `registerCommand(name,handler,{ownerOnly=true,allowProtected=false})` 仅在 allowProtected 严格为 true 时接受受保护名称，始终拒绝同名模块注册。分发优先选模块覆盖，再走核心分支；覆盖保留 ownerOnly/deniedCommands，handler 前另检查当前会话 canSend（缺失/异常/拒绝均安全失败），回复沿用上述命令交付路径。disposer 仅删除自身注册，无注册时恢复原核心命令；handler 错误或发送拒绝不会触发核心重试。详见 [ADR-009](architecture/ADR-009-command-override.md)。
 - `/quiet` `/active` 写回 `cognition.turn.groupReplyMode` 与 `cognition.proactivity.enabled`；`/model` 写
   `cognition.modelRouting.routes`（`chatId=provider/model`）；`/remember` `/forget` 调用记忆服务的 `remember` /
   `forgetMatching`，作用域是当前私聊或群。
@@ -312,9 +338,10 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 
 ### 3.14 回复分条、引用/@ 与群聊防刷屏
 
-- `src/cognition/reply-split.js`：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
-- `pipeline.sendDecision`：按 `cognition.reply` 配置分条；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
-- 失败语义：第一条失败 → 整轮失败；后续条失败 → 已发部分保留，记录 `SEND_FAILED`，不回滚、不重发。
+- `src/delivery/text-split.js`（`src/cognition/reply-split.js` 兼容重导出）：`splitReply(text, { maxChars, maxParts })` 纯函数；优先段落/换行/句末标点，找不到才硬切；超过 `maxParts` 的剩余内容并入最后一条。
+- `builtin-reply-delivery` 按核心传入的 `cognition.reply` 配置产生 DeliveryPlan，`pipeline.sendDecision` 选择模块或 core 兼容布局交给 executor；第一条可带 `reply`（引用）与 `at`（群聊 @）；每条都经过 `outbound.deliver`，因此访问控制/限频对每条生效；分条间隔 `delayMs`。
+- DeliveryResult（Phase 7）：执行器正常返回显式 `status:sent|dry_run|partial|failed|empty`，`parts` 为实际成功发送条数。全部成功为 `sent`；首条失败为 `failed`、`ok:false`、`parts:0`，保留原 error/blocked/reason；后续失败保留 `ok:true`、此前 messageId/result 与 parts，同时返回 `status:'partial', partial:true, sentParts, failedPart, error:'PARTIAL_SEND'`，failedPart 从 0 开始。不回滚、不重发、不重试。
+- dry-run 为 `status:'dry_run'`：首条仍返回 `dryRun:true`、空 messageId，新增 `parts:0`；后续 dry-run 保留此前实际条数与结果，不新增 dryRun 标记，统计/pending/群聊记账保持原状。无效计划且回退仍无效为 `status:'empty', error:'EMPTY_MESSAGE', parts:0`。pipeline 自身空正文/纯空白提前返回不变；抛出的传输/回调异常仍传播。完整状态矩阵与兼容边界见 [ADR-006](architecture/ADR-006-delivery-result-status.md)；频率账本、传输重试、leak guard 顺序及 shutdown 留待后续阶段。
 - 防刷屏：`cognition.turn.maxConsecutiveGroupReplies` 限制连续**未点名**接话；`noteGroupReply` 按是否点名维护计数（点名回复清零），`groupReplyAllowed` 超限返回 `consecutive_limit`，与冷却/每分钟上限并存。
 - 边界：合并转发展开、拍一拍/表态、QQ 动作工具仍在 M2-b。
 
@@ -352,17 +379,48 @@ createAgentRuntime({ ctx, getConfig, access, gateway, outbound, logger, dataRoot
 - REST：`GET /media/status`、`POST /media/test {kind:tts|asr|vision}`、`POST /media/tts {text}`；测试接口使用内置最小样本，不接受任意文件路径，TTS 只生成文件、不向 QQ 发送。
 - 边界：M4-a 不含管理 UI、QQ 媒体命令或表情包；这些由 §3.19 的 M4-b 补充。Agent 媒体工具、RVC 仍未实现；受限图片生成/编辑见 §3.19；真实网关/provider 兼容性仍需 M7 实机验证。
 
+### 轮次生命周期（Phase 6）
+
+`src/cognition/turn-hooks.js` 提供内部 `createTurnHooks({logger})`，仅有 `register({id,onStart,onEnd})`、`start(context)`、`end(context)`、`list()`。非空唯一 id、至少一个函数 handler；返回幂等 disposer。start 按注册顺序串行等待，end 逆序等待；单项同步/异步失败隔离，仅固定安全日志，不输出聊天 ID/注册描述符/原始异常；logger 失败也不进入宿主。
+
+host 在 createCognition 前创建 registry，传入 cognition → pipeline，并与 gateway 一起注入模块内核。内核 `turn:lifecycle` / `api.turn.register` 和 `status:write` / `api.status.setInputStatus` 仅内置运行中的模块可用；外部声明权限也拒绝。status 只调用注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留其校验/错误，不开放通用 gateway。hook 随 runtime 停用、失败、依赖清理和 dispose 自动注销。
+
+默认启用的 `builtin-typing` 无配置 schema/API/UI，唯一开关仍为默认关闭的 `cognition.typing.enabled`，UI/normalizer/路径不变。pipeline 构造 `{turn,settings:{typingEnabled:cfg().typing?.enabled===true}}`，await start → try await processTurn → finally await end。模块只在开关严格为 true 且 turn.chatType 为 private 时，分别尽力 await 状态 1/2，吞掉状态异常。保留正常结果、命令提前返回与处理异常，不发送群输入状态。
+
+生产注入 registry 后禁止内联 typing：模块关闭/注册失败/空 registry 都不提示。仅 `turnHooks=null` 的旧 harness/单测保留原内联逻辑；核心不导入 typing 模块。已开始的异步 handler 不强制取消，没有新超时/重试。详见 [ADR-005](architecture/ADR-005-typing-module.md)。
+
+### Provider 与内置提醒（Phase 11–13）
+
+内部 `src/extensions/providers.js` 只开放 reminders 槽位，register/get/list/remove 保持身份绑定、固定白名单和内置来源检查。新增 subscribe(listener) 返回 disposer；成功添加/移除通知冻结的 `{name,moduleId}`，不含服务对象，隔离同步/异步监听异常。模块只获 providers:register 的注册入口，外部不可注册，runtime 自动清理。
+
+默认启用的 builtin-reminders 接管提醒调度与三个受保护命令，无模块配置。宿主等待 modulesReady，通过串行 syncReminderOwnership 和 provider 订阅处理启停、失败和依赖重载：先停止并排空旧所有者，再启动当前 provider；无 provider 则启动核心，provider 启动失败清理后回退核心。失败注册不因重复协调反复启动，重新注册可重试。等待中选择变化则重新协调。核心构造与兼容服务/命令保留，startReminders/stopReminders 幂等；默认空 registry 的安装启动核心一次。认知其它后台任务不变。
+
+`src/reminders/service.js` 和 `commands.js` 共用核心与模块的提醒规则、解析、精确文案与错误映射。模块命令由 command service 保持主人/禁用/访问检查、统一 source:command 回复；模块副作用前再调用 api.access.canSend。停用注销覆盖恢复核心，帮助不重复展示覆盖的核心命令。api.access.canSend 需 access:check，仅内置，既有 access 缺失/异常时拒绝。api.delivery.send 需 delivery:send，仅内置，固定一条 text part 走 DeliveryService/outbound，source 默认 module:<id>，只有 builtin-reminders 允许 reminder，不回退直接网关。外部声明两项新权限在导入前拒绝。
+
+提醒仓库固定核心 persona-scoped reminder kind，get/list/findDue/countActive/put/update/remove 保持验证、投影和安全错误。list 仍最多 50；Phase 13 增加 all(status) 供防重/额度及按聊天过滤，capture() 在端口内绑定当前 scope，返回仓库和 isCurrent，无 kind、persona 或 base 暴露。捕获句柄随 runtime 撤销；tick 在 await 后写回原人格，切换后不继续剩余发送。发送前后比较完整业务快照，取消/删除/替换不被完成结果覆盖。全部数据原地使用 SQLite/JSON、既有备份及人格统计/复制/删除，无 module_store 副本或迁移。
+
+配置仍通过 config:read / legacyConfig.section('cognition.reminders') 只读五个规范化字段；没有其它路径/秘密/写入/订阅。默认 enabled:false 和原 UI 不变。单个自调度 timeout、最早到期 20 条、no overlap、完成后重复推进、至少一分钟失败退避和 dry-run 成功语义保持。
+
+正常生命周期清理在撤销 API 前先 await provider.stop，使在途发送完成写回；stop 同步清 timer、阻止旧回调重排和下一条发送，宿主等待排空后交接。最终同步 dispose 先调用 provider.stop({dispose:true})，内置实现禁止迟到写库；异步 start 在卸载后结束再次停止。停止异常使用固定日志尽力清理，错误 provider 的遗留资源无法保证；已有网络发送不能撤回，进程崩溃/网关超时仍可能重复，无跨进程 exactly-once 保证。生产目录四个内置模块（提醒、回复交付、输入状态默认启用，示例默认关闭），无媒体迁移、配置/UI/REST/依赖/版本变化。详见 [模块契约](MODULES.md)、[ADR-010](architecture/ADR-010-provider-composition.md)、[ADR-011](architecture/ADR-011-reminder-repository.md) 与 [ADR-012](architecture/ADR-012-builtin-reminders.md)。
+
 ### 3.18 统一模块内核（模块架构 v2）
 
+- Phase 10：新增已知权限 `commands:override`，`api.registerCommand(name,handler,{ownerOnly=true,overrideBuiltin=false})` 仅对加载器认定为 builtin 且同时声明 commands/commands:override 的模块开放严格 true 的覆盖选项。外部声明权限/伪造来源无效，外部或缺权限调用在 setup 中抛错进入 error；默认仍拒绝受保护名称，普通外部命令行为不变。内核验证后传 allowProtected:true，disposer 进入 runtime.disposers，在停用、setup/事件失败、依赖禁用/重载及 dispose 时注销；旧 API 不能重新注册，已开始的异步 handler 不强制取消。下一次命令无覆盖即回到核心；Phase 13 已用于提醒接管，目录为四个内置模块，无配置/UI/REST/依赖或版本变化。详见 [模块契约](MODULES.md) 和 [ADR-009](architecture/ADR-009-command-override.md)。
 - `src/modules/registry.js` 为冻结的包内静态注册表，lazy import；内置 ID 保留 `builtin-` 前缀。外部扫描 `<dataDir>/modules/<id>/module.json`，拒绝此前缀并跳过 `.builtin`；entry 词法路径与 realpath 都必须留在模块目录内。
 - `manifest.js` 共享 id/name/version/description/entry/permissions/enabled 校验，apiVersion 默认且仅支持 1，requires 默认 []、最多 16、合法 ID、无重复/自身。来源与 canReload/canToggle 由加载器赋值。
 - `dependencies.js` 先校验完整依赖图再导入：稳定拓扑排序，就绪内置优先再按 ID；缺失/环节点 error，下游 blocked，禁用/失败依赖也阻塞下游，无关模块继续。不会自动启用或下载依赖。
 - 生命周期操作串行；setup 可异步返回 cleanup，按下游到依赖逆序清理命令/事件/知识源/capability。外部 reload 会停止并恢复符合条件的下游；内置禁止直接 reload，协调时只用缓存代码重新 setup。旧 runtime 的迟到事件错误不能污染新状态。
 - `modules/state.json` 原子保存 `{disabled,enabled}`，兼容旧 `{disabled}` 与缺失/损坏状态。外部 `manifestEnabled && !disabled`，清单 false 不能 API/UI 启用；内置 disabled 优先，再 enabled，再 defaultEnabled。先成功写状态再改变 live，失败保持原状。
-- 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。发送仍走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
-- 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后只提供主人 `/module-sample` 固定回复。
+- 权限 API 保持 commands/events/send:text/cognition:read/knowledge/capabilities/storage；新增只读 source/builtin。sendText 经 DeliveryService/executor 走统一 outbound，命令默认 ownerOnly、不能覆盖已有命令。api.dir 对外部为模块目录，对内置为可写数据目录。
+- 外部 `<id>/data.json`，内置 `.builtin/<id>/data.json`；均为原子串行写、最多 1 MiB、校验 realpath 包含关系，不写包内源码。默认关闭的 builtin-sample 不 import/setup，开启后提供主人 `/module-sample`，从 api.config.get().message 读取回复（默认「内置示例模块已启用。」）。
+- Phase 4：`delivery:plan` 仅内置模块可调用 `api.delivery.registerPlanner`，外部声明权限也不能注册；注册项随停用、setup 失败、依赖重载和 dispose 清理。生产 registry 包含默认关闭可配置的 builtin-sample、默认启用无配置的 builtin-reply-delivery，以及 Phase 6 默认启用无配置的 builtin-typing，加上 Phase 13 的 builtin-reminders，共四个内置模块。只有单一 format 阶段，没有外部 planner API。
+- Phase 8：只有 builtin 且声明 `scheduler` 权限才暴露 `api.scheduler`；`setTimeout(fn,delayMs)` 返回冻结的 `{id,dispose}`，`clearTimeout(id)` 存在时返回 true，否则 false。延迟为 0–2,592,000,000 ms 的数字整数，每 runtime 最多 64 个活跃 timer，非法/超限/停止后注册同步拒绝。随机不透明 id 仅本模块/runtime 有效，不是网关/用户 ID。runtime Map 管理全局原生 timer；performance.now() 单调截止时间分段等待，避免 Node 32 位上限溢出。触发前检查 runtime generation 身份与注册存在，先移除再调用；同步/异步异常只记录固定安全警告，不含异常/聊天 ID/payload，logger 失败也隔离。停用、setup/事件失败、依赖重载/禁用或 dispose 先清空 timer，再执行 cleanup；旧回调不执行、不重新调度，已开始异步工作不等待或强制取消。无 interval/cron/持久化，不提取提醒/媒体、不新增生产模块/配置/UI。详见 [ADR-007](architecture/ADR-007-module-scheduler.md)。
+- Phase 9：host 将 `cognition.services.personaStore`（既有 createPersonaScopedStore facade）作为 personaStore 选项注入 kernel；仅声明 `persona:store` 的内置模块得到冻结的 `api.personaStore`，外部声明权限在导入前拒绝。同步 get/put/remove/list/count，安全 key 为 `^[a-z0-9][a-z0-9_-]{0,63}$`；固定内部集合 module_store、记录 ID `module:<moduleId>:<key>`，由 facade 添加当前 `persona_<id>:` 前缀，模块间与核心 kind 均隔离。API 无 raw kind/SQL/原始 store/路径/人格 ID 或跨人格参数；每次调用使用当前人格。所有值进出 structuredClone，仅接受 JSON 值，JSON UTF-8 每值最多 64 KiB、每模块每人格最多 1000 条，put 事务检查额度、满额可覆盖；list 默认 100、上限 1000，仅返回 key/value。停止/失败/依赖清理/dispose 撤销旧 runtime 的全部仓库操作，已提交数据保留；dropPersonaData 额外清理此固定集合，不加入 UI 人格复制/统计组。完全复用 cognition store 的 SQLite/JSON fallback 与事务，没有独立持久层；不是通用 DB 或提醒功能，不迁移提醒/媒体，不新增生产模块/依赖/配置/UI/REST。详见 [模块契约](MODULES.md) 和 [ADR-008](architecture/ADR-008-module-persona-store.md)。
+- Phase 3：仅内置 registry 描述符可声明 `config:{version:1,fields}`；`config.js` 无依赖验证平面唯一键（最多 32）、label、默认值、switch/text/textarea/number/select/string-list/number-list 及边界，拒绝 secret 与未知 values 键，缺失字段填默认值。外部 manifest 和未声明的内置模块无配置 API/UI/runtime config。
+- 配置在发现阶段加载，先于 setup；`.builtin/<id>/config.json` 与 data.json 分离，最多 64 KiB、realpath containment、原子替换。缺失/损坏按默认值与 revision 0 安全警告，不阻止模块运行。`setModuleConfig` 与生命周期串行，revision 匹配后持久化递增（首次为 1），再更新内存/通知；过期为 MODULE_CONFIG_CONFLICT。`getModuleConfig` 深拷贝 schema/values/revision/source，不公开路径。
+- `api.config.get()` 返回已验证值的深拷贝，`onChange(handler)` 返回 disposer；通知独立复制值并隔离同步/异步异常，生命周期结束自动清理。异步 handler 不阻塞操作队列。GET/POST `/modules/config` 返回 `{ok:true,id,schema,values,revision}` 或安全 `{ok:false,code,message}`。ModulesPage 按 hasConfig/内置来源提供行内 FieldRow/FieldControl 草稿、保存重读、取消和冲突提示，不改全局配置页、入站或交付路径。
 - host 显式传入生产 registry，保持 modulesReady/startup 顺序与规范化事件 dispatch。GET /modules 返回 items 和 summary；记录新增来源、API 版本、requires、操作能力及 blocked，不返回绝对路径。面板按能力提供启停/外部重载与刷新。
-- 模块仍与宿主同进程，permissions 不是沙箱；无核心功能迁移、远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
+- 模块仍与宿主同进程，permissions 不是沙箱；回复交付规划和私聊输入状态已迁入内置模块，无远程安装、上传、marketplace、依赖下载、自动更新、文件监视或移除接口。详见 [模块契约](MODULES.md)。
 
 ### 旧档案导入（M7-d）
 
@@ -408,7 +466,7 @@ REST 新增 `GET /media/files` → `{ok:true,items:[{path,name,size,at}],totalBy
 ├── events.jsonl         # 可选：事件持久化（events.persist=true 时）
 ├── logs/                # 可选：日志文件（logging.persist=true 时）
 ├── media/               # 可选：inbound/、outbound/、generated/、files/、stickers/ 与 stickers.json
-├── modules/             # 外部模块、state.json、各模块 data.json 与 .builtin/<id>/data.json
+├── modules/             # 外部模块、state.json、各模块 data.json 与 .builtin/<id>/{data,config}.json
 └── cognition/
     ├── cognition.sqlite # 认知长期状态（WAL + FTS5；JSON fallback 为 cognition.json）
     └── raw-events.jsonl # 过滤前原始事件镜像（可关/可限制保留）
@@ -490,9 +548,9 @@ commands 注入 requests 服务，三个内置命令不能被模块覆盖；命�
 
 ### 3.26 主人本地提醒（M7-l）
 
-`cognition/reminders.js` 的 `createReminderService({store,getConfig,access,clock,scheduler,outbound,logger})` 在 outbound 之后、commands 之前构建，init 完成后 start，dispose 在关闭 store 前清理定时器。只接收当前私聊/群聊、正安全整数 ID、主人、1–500 Unicode 字符和唯一的一次/重复时间；默认关闭。`add/list/cancel` 使用当前人格 store；`reminder` 归入 reminders/提醒数据组，支持统计/复制/删除。公开投影只含提醒字段，不暴露存储 kind。
+`cognition/reminders.js` 的 `createReminderService({store,getConfig,access,clock,scheduler,outbound,logger})` 在 outbound 之后、commands 之前构建，由宿主在模块就绪后选择所有者并 start，默认使用 builtin-reminders，核心保留回退；dispose 在关闭 store 前清理定时器。只接收当前私聊/群聊、正安全整数 ID、主人、1–500 Unicode 字符和唯一的一次/重复时间；默认关闭。`add/list/cancel` 使用当前人格 store；`reminder` 归入 reminders/提醒数据组，支持统计/复制/删除。公开投影只含提醒字段，不暴露存储 kind。
 
-`start()` 用注入 scheduler 的单次 setTimeout 自调度，await tick 完成后才排下一次；tick 的进程内 running 标记也阻止手动重叠。禁用时不读写提醒或发送，只保留配置轮询，便于热启用。每次按 nextAt 排序取最早到期的 20 条；固定 text 段传给 `outbound.deliver(...,source:'reminder')`，复用 access → rate → leak guard → dryRun → gateway。服务没有任意代码、命令、LLM 或额外文件/网络执行入口；持久化只经 store，发送只经 outbound。
+`start()` 用注入 scheduler 的单次 setTimeout 自调度，await tick 完成后才排下一次；tick 的进程内 running 标记也阻止手动重叠。禁用时不读写提醒或发送，只保留配置轮询，便于热启用。每次按 nextAt 排序取最早到期的 20 条；模块将固定 text 交给 `api.delivery.send(...,source:'reminder')` → DeliveryService → outbound（核心回退保留 outbound 入口），复用 access → rate → leak guard → dryRun → gateway。服务没有任意代码、命令、LLM 或额外文件/网络执行入口；持久化只经 store，发送只经 outbound。
 
 成功把一次提醒标 sent、重复提醒设 `nextAt=完成时刻+everySeconds`、计数加一并清空错误；错过的次数不回补。失败保持 active，仅允许固定公共错误码，其余归为 SEND_FAILED，`nextAt=now+max(60,minIntervalSeconds)`，避免紧循环。dryRun 视作成功。dispose 后不再写 store；await 前固定原人格 kind，完成时重读记录，已取消/删除不覆盖；切换人格后停止旧批次余项。不是分布式 exactly-once，网关超时或进程在发送/记账之间崩溃可能重复。
 

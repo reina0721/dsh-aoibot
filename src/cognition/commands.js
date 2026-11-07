@@ -3,6 +3,7 @@
 // 只处理文本命令，不做自然语言解析；主人全量、操作员固定只读集，其余静默（公开模块命令除外）。
 // 命令回复也走 outbound，因此受访问控制与频率上限约束。
 
+import { reminderCommand } from '../reminders/commands.js'
 import { isOwner, isOperator } from '../core/access.js'
 import { ADMIN_APPROVAL_ACTIONS } from '../core/approvals.js'
 import { redactText } from '../core/leak-guard.js'
@@ -89,15 +90,15 @@ const HELP_TEXT = [
  * @param {object} [o.qqActions] createQqActions()
  * @param {object} [o.logger]
  */
-export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
+export function createCommandService({ getConfig, setConfig = null, access = null, outbound = null, delivery = null, llm = null, memory = null, runtime = null, qqActions = null, requests = null, approvals = null, clock = { now: Date.now }, reminders = null, purpose = null, identities = null, media = null, stickers = null, bilibili = null, logger = null } = {}) {
   const log = logger?.child?.('commands') || logger || { debug() {}, warn() {} }
   const externalCommands = new Map()
 
-  function registerCommand(name, handler, { ownerOnly = true } = {}) {
+  function registerCommand(name, handler, { ownerOnly = true, allowProtected = false } = {}) {
     const normalized = String(name || '').toLowerCase()
     if (!EXTERNAL_COMMAND_RE.test(normalized)) throw new Error('命令名必须匹配 ^[a-z][a-z0-9_-]{0,31}$')
     if (typeof handler !== 'function') throw new Error('命令 handler 必须是函数')
-    if (COMMANDS.includes(normalized) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
+    if ((COMMANDS.includes(normalized) && allowProtected !== true) || externalCommands.has(normalized)) throw new Error(`命令 /${normalized} 已注册`)
     const registration = { handler, ownerOnly: ownerOnly !== false }
     externalCommands.set(normalized, registration)
     return () => {
@@ -149,11 +150,12 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
   async function send(turn, text) {
     const value = String(text || '').trim()
     if (!value) return { handled: true, reply: '' }
-    if (!outbound || typeof outbound.deliver !== 'function') {
+    const sender = delivery?.deliver ? delivery : outbound
+    if (!sender || typeof sender.deliver !== 'function') {
       return { handled: true, reply: value }
     }
     try {
-      const result = await outbound.deliver({
+      const result = await sender.deliver({
         chatType: turn.chatType,
         chatId: turn.chatId,
         segments: [{ type: 'text', data: { text: value } }],
@@ -344,6 +346,8 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (operatorSafe && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
 
     if (external) {
+      // 受保护命令的覆盖也必须先通过会话访问闸门，再执行模块副作用。
+      if (COMMANDS.includes(parsed.name) && !canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
       try {
         const result = await external.handler({ turn, parsed, args: parsed.args })
         const reply = typeof result === 'string' ? result : result?.reply
@@ -404,7 +408,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
 
     if (parsed.name === 'help') {
       const names = [...externalCommands.entries()]
-        .filter(([, item]) => owner || !item.ownerOnly)
+        .filter(([name, item]) => !COMMANDS.includes(name) && (owner || !item.ownerOnly))
         .map(([name]) => `/${name}`)
         .sort()
       const help = owner ? HELP_TEXT : HELP_TEXT.split('\n').filter((line) => {
@@ -485,9 +489,10 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
     if (parsed.name === 'say') {
       if (!parsed.args) return send(turn, '用法：/say 要发送的文本')
       if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
-      if (!outbound?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
+      const sender = delivery?.deliver ? delivery : outbound
+      if (!sender?.deliver) return { handled: true, reply: '', error: 'OUTBOUND_UNAVAILABLE' }
       try {
-        const result = await outbound.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
+        const result = await sender.deliver({ chatType: turn.chatType, chatId: turn.chatId, segments: [{ type: 'text', data: { text: parsed.args } }], source: 'command' })
         return { handled: true, reply: '', error: result?.ok ? '' : (result?.error || 'SEND_FAILED') }
       } catch (error) { return { handled: true, reply: '', error: String(error?.message || error) } }
     }
@@ -566,30 +571,7 @@ export function createCommandService({ getConfig, setConfig = null, access = nul
       if (!canSendTo(turn)) return { handled: true, reply: '', error: 'ACCESS_DENIED' }
       if (currentConfig().cognition?.reminders?.enabled !== true) return send(turn, '提醒未启用（cognition.reminders.enabled）。')
       if (!reminders) return send(turn, '提醒服务不可用。')
-      const target = { chatType: turn.chatType, chatId: turn.chatId }
-      const usage = () => send(turn, parsed.name === 'remind' ? '用法：/remind <整数秒（重复）|未来ISO时间（一次）> <1–500字文本>' : parsed.name === 'reminders' ? '用法：/reminders' : '用法：/forgetreminder rem_ID')
-      try {
-        if (parsed.name === 'remind') {
-          const match = /^(\S+)\s+([\s\S]+)$/.exec(parsed.args)
-          if (!match) return usage()
-          const time = match[1]
-          if (!/^\d+$/.test(time) && !/^\d{4}-\d{2}-\d{2}T/.test(time)) return usage()
-          const item = reminders.add({ ...target, text: match[2], createdBy: turn.senderId,
-            ...(/^\d+$/.test(time) ? { everySeconds: Number(time) } : { at: time }) })
-          return send(turn, `已创建提醒 ${item.id}；下次 ${new Date(item.nextAt).toISOString()}。`)
-        }
-        if (parsed.name === 'reminders') {
-          if (parsed.args) return usage()
-          const items = reminders.list({ ...target, status: 'active', limit: 10 })
-          return send(turn, items.length ? ['当前聊天提醒：', ...items.map((item) => `${item.id} · ${new Date(item.nextAt).toISOString()} · ${item.text}`)].join('\n') : '当前聊天没有活跃提醒。')
-        }
-        if (!/^rem_[a-f0-9]+$/.test(parsed.args)) return usage()
-        reminders.cancel(parsed.args, { ...target, operatorId: turn.senderId })
-        return send(turn, `已取消提醒 ${parsed.args}。`)
-      } catch (error) {
-        const messages = { REMINDERS_DISABLED: '提醒未启用。', OWNER_ONLY: '仅主人可操作提醒。', INVALID_TARGET: '当前会话无效。', INVALID_TEXT: '提醒文本须为 1–500 个 Unicode 字符。', INVALID_SCHEDULE: '须选择一种提醒时间。', INVALID_AT: '一次提醒须使用未来 ISO 时间。', INVALID_INTERVAL: '重复间隔超出配置范围（硬限制 60–2592000 秒）。', REMINDER_DUPLICATE: '已有相同活跃提醒。', MAX_ACTIVE: '活跃提醒已达上限。', REMINDER_NOT_FOUND: '当前聊天没有这个活跃提醒。' }
-        return send(turn, messages[error?.message] || '提醒操作失败。')
-      }
+      return send(turn, reminderCommand({ turn, parsed, reminders }))
     }
 
     if (parsed.name === 'model') return send(turn, await handleModel(turn, parsed.args))

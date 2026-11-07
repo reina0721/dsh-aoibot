@@ -36,6 +36,7 @@
     "docs/visuals",
     "docs/design",
     "docs/ARCHITECTURE.md",
+    "docs/architecture/*.md",
     "docs/RELEASING.md",
     "docs/RELEASE.md",
     "docs/PARITY-AUDIT.md",

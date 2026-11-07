@@ -1,11 +1,15 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, open, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
+import { createDeliveryRegistry } from '../src/delivery/registry.js'
+import { createTurnHooks } from '../src/cognition/turn-hooks.js'
+import { builtinRegistry } from '../src/modules/registry.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
 import { createCommandService } from '../src/cognition/commands.js'
+import { MAX_CONFIG_BYTES, validateConfigSchema, validateConfigValues } from '../src/modules/config.js'
 
 async function moduleDir(root, id, manifest, source) {
   const dir = join(root, id)
@@ -15,8 +19,10 @@ async function moduleDir(root, id, manifest, source) {
   return dir
 }
 
-async function harness(registry = []) {
+async function harness(registry = [], logger = null, delivery = null, gateway = null) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-modules-'))
+  const deliveryRegistry = createDeliveryRegistry()
+  const turnHooks = createTurnHooks({ logger })
   const sent = []
   const commandReplies = []
   const commands = createCommandService({
@@ -27,6 +33,11 @@ async function harness(registry = []) {
   const kernel = createModuleKernel({
     dataDir: root,
     registry,
+    deliveryRegistry,
+    turnHooks,
+    gateway,
+    delivery,
+    logger,
     getConfig: () => ({}),
     commands,
     outbound: { async deliver(payload) { sent.push(payload); return { ok: true } } },
@@ -37,7 +48,7 @@ async function harness(registry = []) {
     },
   })
   const turn = (text, senderId = 'owner') => ({ text, senderId, chatType: 'private', chatId: senderId })
-  return { root, sent, commandReplies, commands, kernel, turn }
+  return { root, sent, commandReplies, commands, kernel, turn, deliveryRegistry, turnHooks }
 }
 
 test('modules：加载、稳定 API、存储、事件与命令可用，列表不泄露路径', async (t) => {
@@ -166,6 +177,329 @@ function builtin(id, load, extra = {}, defaultEnabled = false) {
   return { manifest: { id, name: id, version: '1', ...extra }, defaultEnabled, load }
 }
 const row = (kernel, id) => kernel.list().find((item) => item.id === id)
+
+test('typing module: default enabled, legacy config, private-only, awaited status and isolated errors', async (t) => {
+  const calls = [], logs = []
+  let failure = null
+  const logger = { warn: (...args) => logs.push(args) }
+  const h = await harness(builtinRegistry, logger, null, { actions: { async setInputStatus(id, event) {
+    await new Promise(setImmediate)
+    calls.push([id, event])
+    if (failure) throw failure
+  } } })
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const item = row(h.kernel, 'builtin-typing')
+  assert.equal(item.enabled, true)
+  assert.equal(item.status, 'loaded')
+  assert.equal(item.hasConfig, false)
+  assert.deepEqual(item.permissions, ['turn:lifecycle', 'status:write'])
+  assert.deepEqual(h.turnHooks.list().map(hook => hook.id), ['builtin-typing'])
+  await assert.rejects(h.kernel.getModuleConfig(item.id), /配置/)
+  const context = (typingEnabled, chatType = 'private') => ({ turn: { chatType, chatId: 1000199876543 }, settings: { typingEnabled } })
+  for (const value of [undefined, false, 'true', 1]) {
+    await h.turnHooks.start(context(value)); await h.turnHooks.end(context(value))
+  }
+  await h.turnHooks.start(context(true, 'group')); await h.turnHooks.end(context(true, 'group'))
+  assert.deepEqual(calls, [])
+  await h.turnHooks.start(context(true))
+  assert.deepEqual(calls, [['1000199876543', 1]])
+  await h.turnHooks.end(context(true))
+  assert.deepEqual(calls, [['1000199876543', 1], ['1000199876543', 2]])
+  failure = Error('raw gateway error for 1000199876543')
+  await h.turnHooks.start(context(true)); await h.turnHooks.end(context(true))
+  assert.equal(calls.length, 4)
+  assert.equal(row(h.kernel, item.id).status, 'loaded')
+  assert.doesNotMatch(JSON.stringify(logs), /1000199876543|raw gateway/)
+  await h.kernel.setEnabled(item.id, false)
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start(context(true)); await h.turnHooks.end(context(true))
+  assert.equal(calls.length, 4)
+  await h.kernel.setEnabled(item.id, true)
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.dispose()
+  assert.deepEqual(h.turnHooks.list(), [])
+})
+
+test('typing module: missing action and synchronous gateway failure are best effort', async (t) => {
+  for (const gateway of [null, { actions: {} }, { actions: { setInputStatus() { throw Error('private gateway failure') } } }]) {
+    const h = await harness(builtinRegistry, null, null, gateway)
+    t.after(() => h.kernel.dispose())
+    await h.kernel.start()
+    const context = { turn: { chatType: 'private', chatId: '123' }, settings: { typingEnabled: true } }
+    await h.turnHooks.start(context); await h.turnHooks.end(context)
+    assert.equal(row(h.kernel, 'builtin-typing').status, 'loaded')
+  }
+})
+
+test('turn/status API: permissions, active runtime, gateway validation and errors preserved', async (t) => {
+  let api, error = null
+  const calls = [], result = { ok: true }
+  const h = await harness([
+    builtin('builtin-no-turn', () => ({ setup(api) { api.turn.register({ id: 'denied', onStart() {} }) } }), {}, true),
+    builtin('builtin-no-status', () => ({ setup(api) { api.status.setInputStatus('1', 1) } }), {}, true),
+    builtin('builtin-status', () => ({ setup(value) { api = value } }), { permissions: ['turn:lifecycle', 'status:write'] }, true),
+  ], null, null, { actions: { setInputStatus(id, event) { calls.push([id, event]); if (error) throw error; return result } } })
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  assert.match(row(h.kernel, 'builtin-no-turn').error, /permission: turn:lifecycle/)
+  assert.match(row(h.kernel, 'builtin-no-status').error, /permission: status:write/)
+  assert.equal(api.config, undefined)
+  assert.equal(api.status.setInputStatus(123, 1), result)
+  assert.deepEqual(calls, [['123', 1]])
+  error = Error('gateway validation error')
+  assert.throws(() => api.status.setInputStatus(' invalid ', 3), value => value === error)
+  assert.deepEqual(calls.at(-1), [' invalid ', 3])
+  error = null
+  await h.kernel.setEnabled(api.id, false)
+  assert.throws(() => api.turn.register({ id: 'stopped', onEnd() {} }), /模块已停止/)
+  assert.throws(() => api.status.setInputStatus('123', 2), /模块已停止/)
+  assert.equal(calls.length, 2)
+})
+
+test('turn/status API: external rejected even with permissions and forged source', async (t) => {
+  const h = await harness()
+  t.after(() => h.kernel.dispose())
+  for (const [id, code] of [['external-turn', "api.turn.register({ id: 'external', onStart() {} })"], ['external-status', "api.status.setInputStatus('123', 1)"]]) {
+    await moduleDir(h.root, id, { permissions: ['turn:lifecycle', 'status:write'], builtin: true, source: 'builtin' }, `export function setup(api) { ${code} }`)
+  }
+  await h.kernel.start()
+  for (const id of ['external-turn', 'external-status']) {
+    assert.equal(row(h.kernel, id).status, 'error')
+    assert.match(row(h.kernel, id).error, /仅允许内置模块/)
+  }
+  assert.deepEqual(h.turnHooks.list(), [])
+})
+
+test('turn API: setup failure, dependency reload/disable and dispose remove hooks and listeners', async (t) => {
+  let starts = 0, events = 0
+  const h = await harness([
+    builtin('builtin-failed-turn', () => ({ setup(api) {
+      api.turn.register({ id: 'failed', onStart() { starts++ } })
+      api.on('message', () => events++)
+      throw Error('setup failed')
+    } }), { permissions: ['turn:lifecycle', 'events'] }, true),
+    builtin('builtin-dependent-turn', () => ({ setup(api) {
+      api.turn.register({ id: 'dependent', onStart() { starts++ } })
+      api.on('message', () => events++)
+    } }), { permissions: ['turn:lifecycle', 'events'], requires: ['dependency'] }, true),
+  ])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'dependency', {}, 'export function setup() {}')
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'builtin-failed-turn').status, 'error')
+  assert.deepEqual(h.turnHooks.list().map(hook => hook.id), ['dependent'])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+  await h.kernel.reload('dependency')
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.setEnabled('dependency', false)
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+  await h.kernel.setEnabled('dependency', true)
+  assert.equal(h.turnHooks.list().length, 1)
+  await h.kernel.dispose()
+  assert.deepEqual(h.turnHooks.list(), [])
+  await h.turnHooks.start({}); await h.kernel.dispatch({ kind: 'message' })
+  assert.equal(starts, 1); assert.equal(events, 1)
+})
+
+const configSchema = { version: 1, fields: [
+  { path: 'message', type: 'text', label: '回复', default: '默认', maxChars: 4 },
+  { path: 'enabled', type: 'switch', label: '开关' },
+  { path: 'details', type: 'textarea', label: '说明' },
+  { path: 'count', type: 'number', label: '数量', default: 2, min: 1, max: 3 },
+  { path: 'mode', type: 'select', label: '模式', options: [{ value: 'a', label: 'A' }, { value: 'b' }] },
+  { path: 'names', type: 'string-list', label: '名称', default: ['a'], maxChars: 3, maxItems: 2 },
+  { path: 'numbers', type: 'number-list', label: '数字', default: [1], min: 0, max: 10, minItems: 1, maxItems: 2 },
+] }
+
+test('modules config：schema 类型、默认、平面键、边界、未知字段与总大小验证', () => {
+  const schema = validateConfigSchema(configSchema)
+  const defaults = validateConfigValues(schema, {})
+  assert.deepEqual(defaults, { message: '默认', enabled: false, details: '', count: 2, mode: 'a', names: ['a'], numbers: [1] })
+  for (const fields of [
+    [{ path: 'a.b', type: 'text', label: 'x' }],
+    [{ path: 'A', type: 'text', label: 'x' }],
+    [{ path: 'a'.repeat(65), type: 'text', label: 'x' }],
+    [{ path: 'secret', type: 'secret', label: 'x' }],
+    [{ path: 'test', type: 'text', label: ' ' }],
+    [{ path: 'test', type: 'text', label: 'x', default: false }],
+    [{ path: 'test', type: 'number', label: 'x', min: 1 }],
+    [{ path: 'test', type: 'number', label: 'x', default: NaN }],
+    [{ path: 'test', type: 'number', label: 'x', min: 3, max: 1 }],
+    [{ path: 'test', type: 'select', label: 'x', options: [] }],
+    [{ path: 'test', type: 'select', label: 'x', options: [{ value: 'a' }, { value: 'a' }] }],
+    [{ path: 'test', type: 'text', label: 'x', maxChars: -1 }],
+    [{ path: 'test', type: 'string-list', label: 'x', maxItems: 1001 }],
+    [configSchema.fields[0], configSchema.fields[0]],
+    Array.from({ length: 33 }, (_, i) => ({ path: 'field' + i, label: 'x', type: 'text' })),
+  ]) assert.throws(() => validateConfigSchema({ version: 1, fields }), { code: 'MODULE_CONFIG_INVALID' })
+  assert.throws(() => validateConfigSchema({ ...configSchema, version: 2 }))
+  for (const values of [null, [], { extra: 'x' }, { message: '12345' }, { enabled: 1 }, { details: false },
+    { count: '2' }, { count: Infinity }, { count: 0 }, { count: 4 }, { mode: 'c' },
+    { names: ['abcd'] }, { names: [1] }, { names: ['a', 'b', 'c'] },
+    { numbers: [] }, { numbers: ['1'] }, { numbers: [NaN] }, { numbers: [11] }, { numbers: [1, 2, 3] },
+  ]) assert.throws(() => validateConfigValues(schema, values), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal(validateConfigValues(schema, { message: '😀😀😀😀' }).message, '😀😀😀😀')
+  defaults.names.push('mutate')
+  assert.deepEqual(validateConfigValues(schema, {}).names, ['a'])
+  assert.throws(() => validateConfigSchema({ version: 1, fields: [{ path: 'large', label: '大', type: 'text', maxChars: MAX_CONFIG_BYTES, default: '中'.repeat(30000) }] }))
+})
+
+test('modules config：setup 前加载、clone、监听隔离/注销、revision、原子保存与重启', async (t) => {
+  const apis = [], changes = [], warnings = []
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup(api) {
+    apis.push(api)
+    assert.ok(api.config.get().message)
+    api.config.onChange((values) => { changes.push(values); values.names.push('local') })
+    api.config.onChange(() => { throw Error('/private/path secret') })
+    api.config.onChange(async () => { throw Error('async secret') })
+  } })), config: configSchema }
+  const h = await harness([descriptor], { warn: (message) => warnings.push(message) }); t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const first = await h.kernel.getModuleConfig(descriptor.manifest.id)
+  assert.equal(first.source, 'builtin'); assert.equal(first.revision, 0)
+  assert.equal(row(h.kernel, first.id).hasConfig, true)
+  assert.match(row(h.kernel, first.id).configWarning, /默认值/)
+  assert.ok(!JSON.stringify(first).includes(h.root))
+  first.values.message = 'bad'; first.schema.fields[0].maxChars = 99
+  assert.equal((await h.kernel.getModuleConfig(first.id)).schema.fields[0].maxChars, 4)
+  await h.kernel.setEnabled(first.id, true)
+  const api = apis[0]
+  assert.equal(api.config.get().message, '默认')
+  api.config.get().names.push('mutate')
+  assert.deepEqual(api.config.get().names, ['a'])
+  assert.throws(() => api.config.onChange(null))
+  let disposedCalls = 0
+  const off = api.config.onChange(() => disposedCalls++)
+  off(); off()
+  const dir = join(h.root, '.builtin', first.id), file = join(dir, 'config.json')
+  await writeFile(join(dir, 'data.json'), '{"untouched":true}')
+  const saved = await h.kernel.setModuleConfig(first.id, { message: '新回复' }, 0)
+  assert.equal(saved.revision, 1)
+  assert.equal(api.config.get().message, '新回复')
+  assert.deepEqual(api.config.get().names, ['a']); assert.equal(changes.length, 1); assert.equal(disposedCalls, 0)
+  assert.equal(row(h.kernel, first.id).configWarning, '')
+  assert.equal(row(h.kernel, first.id).status, 'loaded')
+  assert.ok(warnings.some((message) => message.includes('监听器失败')))
+  assert.ok(!warnings.join().includes('secret'))
+  assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), { version: 1, revision: 1, values: saved.values })
+  assert.deepEqual(JSON.parse(await readFile(join(dir, 'data.json'), 'utf8')), { untouched: true })
+  assert.deepEqual((await readdir(dir)).sort(), ['config.json', 'data.json'])
+  await assert.rejects(h.kernel.setModuleConfig(first.id, { message: '旧' }, 0), { code: 'MODULE_CONFIG_CONFLICT' })
+  await assert.rejects(h.kernel.setModuleConfig(first.id, { unknown: true }, 1), { code: 'MODULE_CONFIG_INVALID' })
+  await assert.rejects(h.kernel.setModuleConfig(first.id, {}, undefined), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal((await h.kernel.getModuleConfig(first.id)).revision, 1)
+  const oldFile = await open(file, 'r')
+  try {
+    const raced = await Promise.allSettled([h.kernel.setModuleConfig(first.id, {}, 1), h.kernel.setModuleConfig(first.id, {}, 1)])
+    assert.equal(raced[0].value.revision, 2); assert.equal(raced[1].reason.code, 'MODULE_CONFIG_CONFLICT')
+    // 已打开的旧文件保持完整 revision 1；路径已原子替换为完整 revision 2。
+    assert.equal(JSON.parse(await oldFile.readFile('utf8')).revision, 1)
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).revision, 2)
+  } finally { await oldFile.close() }
+  await h.kernel.setEnabled(first.id, false)
+  await h.kernel.setModuleConfig(first.id, { message: '关闭时' }, 2)
+  assert.equal(changes.length, 2)
+  assert.throws(() => api.config.onChange(() => {}), /停止/)
+  await h.kernel.setEnabled(first.id, true)
+  assert.equal(apis[1].config.get().message, '关闭时')
+  await h.kernel.setModuleConfig(first.id, {}, 3)
+  assert.equal(changes.length, 3)
+  await h.kernel.dispose()
+  await assert.rejects(h.kernel.setModuleConfig(first.id, {}, 4), { code: 'MODULE_CONFIG_UNAVAILABLE' })
+  const restarted = createModuleKernel({ dataDir: h.root, registry: [descriptor] }); t.after(() => restarted.dispose())
+  await restarted.start()
+  assert.equal((await restarted.getModuleConfig(first.id)).revision, 4)
+  assert.equal(apis.at(-1).config.get().message, '默认')
+})
+
+test('modules config：损坏/超限回退、符号链接 containment、写失败保持内存与文件', async (t) => {
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup() {} }), {}, true), config: configSchema }
+  const root = await mkdtemp(join(tmpdir(), 'dsh-config-'))
+  const dir = join(root, '.builtin', descriptor.manifest.id), file = join(dir, 'config.json')
+  await mkdir(dir, { recursive: true })
+  const warnings = []
+  for (const content of ['{bad', JSON.stringify({ version: 1, revision: 8, values: { count: 10 } }), JSON.stringify({ version: 1, revision: -1, values: {} }), ' '.repeat(MAX_CONFIG_BYTES + 1)]) {
+    await writeFile(file, content)
+    const kernel = createModuleKernel({ dataDir: root, registry: [descriptor], logger: { warn: (message) => warnings.push(message) } })
+    try {
+      await kernel.start()
+      assert.equal(row(kernel, descriptor.manifest.id).status, 'loaded')
+      assert.match(row(kernel, descriptor.manifest.id).configWarning, /默认值/)
+      assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).values.message, '默认')
+      assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+    } finally { await kernel.dispose() }
+  }
+  assert.ok(warnings.length >= 4); assert.ok(!warnings.join().includes(root))
+  await rm(file)
+  const outside = join(root, 'outside.json')
+  await writeFile(outside, '{"private":true}')
+  await symlink(outside, file)
+  const kernel = createModuleKernel({ dataDir: root, registry: [descriptor] }); t.after(() => kernel.dispose())
+  await kernel.start()
+  assert.equal(row(kernel, descriptor.manifest.id).status, 'loaded')
+  await assert.rejects(kernel.setModuleConfig(descriptor.manifest.id, {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  assert.equal(await readFile(outside, 'utf8'), '{"private":true}')
+  assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  await rm(file); await mkdir(file)
+  await assert.rejects(kernel.setModuleConfig(descriptor.manifest.id, {}, 0), { code: 'MODULE_CONFIG_WRITE_FAILED' })
+  assert.equal((await kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  assert.deepEqual(await readdir(dir), ['config.json'])
+  await rm(file, { recursive: true })
+  assert.equal((await kernel.setModuleConfig(descriptor.manifest.id, {}, 0)).revision, 1)
+})
+
+test('modules config：仅 registry 内置描述符生效；外部/未声明/未知拒绝且无路径泄露', async (t) => {
+  let plainApi
+  const h = await harness([builtin('builtin-plain', async () => ({ setup(api) { plainApi = api } }), { config: configSchema }, true)])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'external', { config: configSchema }, `export function setup(api) { if (api.config !== undefined) throw Error('external config exposed') }`)
+  await h.kernel.start()
+  assert.equal(plainApi.config, undefined)
+  assert.equal(row(h.kernel, 'external').status, 'loaded')
+  for (const id of ['external', 'builtin-plain', 'absent', '/absolute/private/path', '../escape']) {
+    assert.equal(row(h.kernel, id)?.hasConfig || false, false)
+    await assert.rejects(h.kernel.getModuleConfig(id), { code: 'MODULE_CONFIG_UNAVAILABLE' })
+    await assert.rejects(h.kernel.setModuleConfig(id, {}, 0), (error) => error.code === 'MODULE_CONFIG_UNAVAILABLE' && !error.message.includes(id))
+  }
+})
+
+test('modules config：依赖 reload 会清理内置下游监听器，dispose 清理当前注册', async (t) => {
+  let calls = 0, setups = 0, cleanups = 0
+  const descriptor = { ...builtin('builtin-config', async () => ({ setup(api) {
+    setups++
+    api.config.onChange(() => calls++)
+    return () => { cleanups++ }
+  } }), { requires: ['base'] }, true), config: configSchema }
+  const h = await harness([descriptor]); t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'base', {}, 'export function setup() {}')
+  await h.kernel.start()
+  await h.kernel.reload('base')
+  assert.equal(setups, 2); assert.equal(cleanups, 1)
+  await h.kernel.setModuleConfig(descriptor.manifest.id, {}, 0)
+  assert.equal(calls, 1)
+  await h.kernel.dispose()
+  assert.equal(cleanups, 2)
+})
+
+test('modules config：保存限制包含文件 envelope，超限不写入或通知', async (t) => {
+  let notified = 0
+  const descriptor = { ...builtin('builtin-large', async () => ({ setup(api) { api.config.onChange(() => notified++) } }), {}, true), config: {
+    version: 1, fields: [{ path: 'large', type: 'textarea', label: '内容', maxChars: MAX_CONFIG_BYTES }],
+  } }
+  const h = await harness([descriptor]); t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  const values = { large: 'x'.repeat(MAX_CONFIG_BYTES - 40) }
+  assert.ok(Buffer.byteLength(JSON.stringify(values, null, 2)) < MAX_CONFIG_BYTES)
+  await assert.rejects(h.kernel.setModuleConfig(descriptor.manifest.id, values, 0), { code: 'MODULE_CONFIG_INVALID' })
+  await assert.rejects(h.kernel.setModuleConfig(descriptor.manifest.id, { large: '中'.repeat(30000) }, 0), { code: 'MODULE_CONFIG_INVALID' })
+  assert.equal(notified, 0)
+  assert.equal((await h.kernel.getModuleConfig(descriptor.manifest.id)).revision, 0)
+  assert.deepEqual(await readdir(join(h.root, '.builtin', descriptor.manifest.id)), [])
+})
 
 test('modules v2：内置默认不导入，来源只读，启停持久化，独立存储与保留目录', async (t) => {
   let imports = 0, setups = 0
@@ -386,4 +720,107 @@ test('modules v2：清理排空存储写入后重新读取磁盘，修复内置�
   assert.equal(imports, 1)
   assert.equal(row(h.kernel, 'builtin-storage').status, 'loaded')
   assert.deepEqual(JSON.parse(await readFile(join(dir, 'data.json'), 'utf8')), { value: 'edited', a: 1, b: 2 })
+})
+
+test('delivery module API: builtin permission, duplicate rejection and setup-error cleanup', async (t) => {
+  let savedApi
+  const planner = { id: 'test-planner', stage: 'format', order: 0, plan: () => ({}) }
+  const h = await harness([
+    builtin('builtin-no-permission', () => ({ setup(api) { api.delivery.registerPlanner(planner) } }), {}, true),
+    builtin('builtin-first', () => ({ setup(api) { savedApi = api; api.delivery.registerPlanner(planner) } }), { permissions: ['delivery:plan'] }, true),
+    builtin('builtin-second', () => ({ setup(api) { api.delivery.registerPlanner({ ...planner, id: 'another' }) } }), { permissions: ['delivery:plan'] }, true),
+  ])
+  t.after(() => h.kernel.dispose())
+  await h.kernel.start()
+  assert.match(row(h.kernel, 'builtin-no-permission').error, /permission: delivery:plan/)
+  assert.equal(row(h.kernel, 'builtin-first').status, 'loaded')
+  assert.match(row(h.kernel, 'builtin-second').error, /stage 已注册/)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.setEnabled('builtin-first', false)
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  assert.throws(() => savedApi.delivery.registerPlanner(planner), /模块已停止/)
+  // The previously failed module can register once its stage becomes available.
+  assert.equal((await h.kernel.setEnabled('builtin-second', true)).status, 'loaded')
+  await h.kernel.dispose()
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+
+  const failed = await harness([builtin('builtin-throws', () => ({ setup(api) {
+    api.delivery.registerPlanner(planner)
+    throw Error('setup failed')
+  } }), { permissions: ['delivery:plan'] }, true)])
+  t.after(() => failed.kernel.dispose())
+  await failed.kernel.start()
+  assert.equal(row(failed.kernel, 'builtin-throws').status, 'error')
+  assert.deepEqual(failed.deliveryRegistry.list(), [])
+})
+
+test('delivery module API: external cannot register even with permission and forged source', async (t) => {
+  const h = await harness()
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'external-planner', { permissions: ['delivery:plan'], source: 'builtin', builtin: true }, `
+    export function setup(api) {
+      api.delivery.registerPlanner({ id: 'external', stage: 'format', order: 0, plan() {} })
+    }
+  `)
+  await h.kernel.start()
+  assert.equal(row(h.kernel, 'external-planner').status, 'error')
+  assert.match(row(h.kernel, 'external-planner').error, /仅允许内置模块/)
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+  assert.equal((await h.kernel.reload('external-planner')).status, 'error')
+  assert.deepEqual(h.deliveryRegistry.list(), [])
+})
+
+test('delivery module API: dependency reload/disable, builtin re-enable and dispose clean registration', async (t) => {
+  let setups = 0, imports = 0
+  const h = await harness([builtin('builtin-dependent-planner', () => {
+    imports++
+    return { setup(api) {
+      setups++
+      api.delivery.registerPlanner({ id: 'dependent', stage: 'format', plan() {} })
+    } }
+  }, { permissions: ['delivery:plan'], requires: ['dependency'] }, true)])
+  t.after(() => h.kernel.dispose())
+  await moduleDir(h.root, 'dependency', {}, 'export function setup() {}')
+  await h.kernel.start()
+  assert.equal(h.deliveryRegistry.resolve().id, 'dependent')
+  await h.kernel.reload('dependency')
+  assert.equal(setups, 2)
+  assert.equal(imports, 1)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.setEnabled('dependency', false)
+  assert.equal(row(h.kernel, 'builtin-dependent-planner').status, 'blocked')
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  await h.kernel.setEnabled('dependency', true)
+  assert.equal(h.deliveryRegistry.resolve().id, 'dependent')
+  await h.kernel.setEnabled('builtin-dependent-planner', false)
+  assert.equal(h.deliveryRegistry.resolve(), null)
+  await h.kernel.setEnabled('builtin-dependent-planner', true)
+  assert.equal(h.deliveryRegistry.list().length, 1)
+  await h.kernel.dispose()
+  assert.equal(h.deliveryRegistry.resolve(), null)
+})
+
+
+test('modules：sendText 优先 delivery，保留结果/来源与旧 outbound harness', async (t) => {
+  for (const injected of [false, true]) {
+    const calls = []
+    const result = { ok: false, error: 'RATE_LIMITED', parts: 1 }
+    const delivery = { async deliver(intent) { calls.push(intent); return result } }
+    const h = await harness([], null, injected ? delivery : null)
+    t.after(() => h.kernel.dispose())
+    await moduleDir(h.root, 'sender', { permissions: ['send:text', 'storage'] }, `
+      export async function setup(api) {
+        await api.storage.set('result', await api.sendText({ chatType: 'group', chatId: ' 20001 ', text: ' hello ' }))
+      }
+    `)
+    await h.kernel.start()
+    assert.equal(h.kernel.list()[0].status, 'loaded')
+    const expected = { chatType: 'group', chatId: '20001', segments: [{ type: 'text', data: { text: 'hello' } }], source: 'module:sender' }
+    assert.deepEqual(injected ? calls : h.sent, [expected])
+    if (injected) {
+      assert.equal(h.sent.length, 0)
+      const stored = JSON.parse(await readFile(join(h.root, 'sender', 'data.json'), 'utf8'))
+      assert.deepEqual(stored.result, result)
+    }
+  }
 })
