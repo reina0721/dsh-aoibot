@@ -9,7 +9,7 @@ import { createCommandService } from '../src/cognition/commands.js'
 import { createDeliveryService } from '../src/delivery/service.js'
 import { createModuleKernel } from '../src/modules/kernel.js'
 
-// 只注入测试描述符，生产 registry 保持三个内置模块。
+// 只注入测试描述符，生产 registry 使用四个内置模块。
 function builtin(id, setup, manifest = {}) {
   return {
     manifest: { id, permissions: ['commands', 'commands:override'], ...manifest },

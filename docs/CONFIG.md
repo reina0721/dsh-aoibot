@@ -668,7 +668,7 @@ OpenRouter、OpenCode Go（OpenAI/Anthropic）、Command Code（OpenAI/Anthropic
 
 ## 主人本地提醒（M7-l）
 
-`cognition.reminders` 默认关闭。需配置 `access.ownerQQ`；只有主人能在当前聊天创建、列出或取消提醒。这里的配置字段沿用通用配置编辑器，没有提醒管理面板或提醒 REST API。
+`cognition.reminders` 默认关闭。默认启用的 `builtin-reminders` 通过只读绑定沿用此配置，无独立模块配置；停用模块自动回退核心，提醒行与命令保持兼容，启用时交回模块，交接先停止旧调度器。模块 loaded 不代表提醒业务已开启。需配置 `access.ownerQQ`；只有主人能在当前聊天创建、列出或取消提醒。这里的配置字段沿用通用配置编辑器，没有提醒管理面板或提醒 REST API。
 
 | 字段 | 默认值 | 范围/含义 |
 |---|---|---|

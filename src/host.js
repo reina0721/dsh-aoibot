@@ -105,6 +105,7 @@ export function apply(ctx, rowConfig) {
   })
   const modules = createModuleKernel({
     providerRegistry,
+    access,
     turnHooks,
     gateway: { get actions() { return gatewayRef?.actions || null } },
     deliveryRegistry,
@@ -292,39 +293,71 @@ export function apply(ctx, rowConfig) {
   })
 
   let disposed = false
+  let modulesSettled = false
   let reminderProvider = null
-  function stopReminderProvider() {
-    if (!reminderProvider) return Promise.resolve()
-    try {
-      return Promise.resolve(reminderProvider.stop()).catch(() => {
-        log.warn('提醒 provider 停止失败')
-      })
-    } catch (error) {
-      log.warn('提醒 provider 停止失败')
-      return Promise.resolve()
-    }
+  let failedProvider = null
+  let providerRevision = 0
+  let ownerRevision = -1
+  let failedRevision = -1
+  let ownership = Promise.resolve()
+  async function stopReminderProvider(provider = reminderProvider) {
+    if (!provider) return
+    try { await provider.stop({ dispose: disposed }) } catch { log.warn('提醒 provider 停止失败') }
   }
+
+  function syncReminderOwnership() {
+    const work = async () => {
+      if (disposed || !modulesSettled) return
+      for (;;) {
+        const revision = providerRevision
+        const selected = providerRegistry.get('reminders')
+        const desired = selected === failedProvider && revision === failedRevision ? null : selected
+        if (reminderProvider && (reminderProvider !== desired || ownerRevision !== revision)) {
+          const previous = reminderProvider
+          await stopReminderProvider(previous)
+          reminderProvider = null
+          if (disposed) return
+          continue
+        }
+        if (!desired) { cognition.startReminders(); return }
+        if (reminderProvider === desired) return
+        await cognition.stopReminders()
+        if (disposed) return
+        if (providerRevision !== revision) continue
+        reminderProvider = desired
+        ownerRevision = revision
+        try { await desired.start() }
+        catch {
+          log.warn('提醒 provider 启动失败，回退核心提醒')
+          await stopReminderProvider(desired)
+          reminderProvider = null
+          failedProvider = desired
+          failedRevision = revision
+          if (disposed) return
+          continue
+        }
+        // Synchronous teardown can occur during an asynchronous start.
+        if (disposed) { await stopReminderProvider(desired); return }
+        if (providerRevision !== revision) continue
+        return
+      }
+    }
+    ownership = ownership.then(work, work)
+    return ownership
+  }
+  const unsubscribeProviders = providerRegistry.subscribe(() => {
+    providerRevision++
+    failedProvider = null
+    if (modulesSettled && !disposed) syncReminderOwnership().catch(() => log.warn('提醒所有权协调失败'))
+  })
 
   const ready = (async () => {
     try {
       await modulesReady
       if (disposed) return
-      reminderProvider = providerRegistry.get('reminders')
-      if (reminderProvider) {
-        try {
-          await reminderProvider.start()
-        } catch (error) {
-          log.warn('提醒 provider 启动失败，回退核心提醒')
-          // A failed start may already have allocated a timer.
-          await stopReminderProvider()
-          if (!disposed) {
-            reminderProvider = null
-            cognition.startReminders()
-          }
-        }
-        // dispose is synchronous; a late start must also be stopped.
-        if (disposed) { await stopReminderProvider(); return }
-      } else cognition.startReminders()
+      modulesSettled = true
+      await syncReminderOwnership()
+      if (disposed) return
       await gateway.ready
       if (disposed) return
       if (configState.current.enabled) await gateway.start()
@@ -338,6 +371,7 @@ export function apply(ctx, rowConfig) {
   function dispose() {
     if (disposed) return
     disposed = true
+    unsubscribeProviders()
     // Invoke stop before cognition closes its store; do not change sync teardown.
     stopReminderProvider()
     disposeBrand()
@@ -388,6 +422,7 @@ export function apply(ctx, rowConfig) {
     modules,
     providerRegistry,
     modulesReady,
+    syncReminderOwnership,
     backup,
     upgrade,
     access,

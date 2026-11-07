@@ -7,7 +7,7 @@
 | 内置（builtin） | 随 dsh-bot 发布的静态受信任注册表，不扫描包内目录 | 可以 | 不可以 | `<数据目录>/modules/.builtin/<id>/` |
 | 外部（external） | 操作员安装到 `<数据目录>/modules/<id>/` 的本地 JS | 清单允许时可以 | 可以 | 模块目录 |
 
-内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。Phase 4 已把回复交付规划迁入内置模块，Phase 6 把私聊输入状态迁入内置模块；没有远程安装、上传、marketplace 或网络下载模块代码。
+内置 ID 必须以 `builtin-` 开头，外部模块禁止使用此前缀。内核扫描外部目录时跳过 `.builtin`。Phase 4 已把回复交付规划迁入内置模块，Phase 6 把私聊输入状态迁入内置模块，Phase 13 把提醒调度与命令迁入 builtin-reminders；没有远程安装、上传、marketplace 或网络下载模块代码。
 
 > **安全警告：模块是与 dsh-bot 同进程运行的任意本地代码。** `permissions` 只限制下面这套稳定 API，不是操作系统沙箱；模块仍可能直接使用 Node.js 能力。只安装你已经审查并信任的代码，模块目录的写权限也应只给受信任的操作员。
 
@@ -46,7 +46,7 @@
 
 另外随包提供默认启用的 `builtin-reply-delivery`（回复交付，1.0.0），仅申请 `delivery:plan`，没有模块配置 schema、`api.config` 或面板「配置」按钮。它通过核心传入的 `replyCfg` 读取现有 `cognition.reply.*`，保留分条、首条引用、群聊 @、条间等待与末条合并余文。
 
-默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。新安装 `/modules` 有三个内置模块：私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
+默认启用的 `builtin-typing`（私聊输入状态，1.0.0）仅申请 `turn:lifecycle`、`status:write`，没有模块配置 schema、`api.config` 或面板「配置」按钮。行为仍由默认关闭的 `cognition.typing.enabled` 控制，沿用原全局设置 UI/路径/规范化。新安装 `/modules` 有四个内置模块：提醒、私聊输入状态和回复交付 loaded，示例 disabled；模块启用不等于 typing 开启。
 
 `<数据目录>/modules/state.json` 的原子持久化格式：
 
@@ -80,6 +80,8 @@ export async function setup(api) {
 | `cognition:read` | `api.cognition` | 只读暴露 `snapshot`、`overview`、`memories`、`personDetail`、`relationshipsList`、`timeline` |
 | `knowledge` | `api.registerKnowledgeSource(source)` | 注册认知知识源，重载/停用时自动移除 |
 | `capabilities` | `api.registerCapability(name, impl)` | 注册认知 capability，重载/停用时自动移除 |
+| `access:check` | `api.access.canSend({chatType,chatId})` | 仅内置模块，使用宿主既有 access，返回 `{allowed}`；服务缺失/异常时拒绝；外部声明即拒绝 |
+| `delivery:send` | `api.delivery.send({chatType,chatId,text,source?})` | 仅内置模块，一条原文 text part 经 DeliveryService；source 默认 module:<id>，只有 builtin-reminders 可使用 reminder；外部声明即拒绝 |
 | `delivery:plan` | `api.delivery.registerPlanner(descriptor)` | 仅内置模块；注册唯一 format 规划器，返回生命周期 disposer；外部或缺权限调用抛错 |
 | `turn:lifecycle` | `api.turn.register({id,onStart,onEnd})` | 仅内置模块；注册顺序开始、逆序结束，返回生命周期 disposer；外部、缺权限或已停止调用抛错 |
 | `status:write` | `api.status.setInputStatus(userId,eventType)` | 仅内置且运行中的模块；仅转交注入的 `gateway.actions.setInputStatus(String(userId),eventType)`，保留网关校验、结果与异常 |
@@ -92,21 +94,27 @@ export async function setup(api) {
 
 外部存储写入模块目录的 `data.json`；内置存储写入 `<数据目录>/modules/.builtin/<id>/data.json`，从不写包内源码。两者都校验目录与文件的 realpath 包含关系，写操作串行且使用原子替换，序列化后最多 1 MiB。模块应 `await` 所有存储写入。备份包含 modules/state.json 与 .builtin 数据；恢复后应重启插件。
 
-生产 host 向模块内核注入 `cognition.services.delivery`，`api.sendText` 将文本交给单条 DeliveryPlan 执行，不拆分、不添加引用/@、不等待。权限、输入修整和返回语义保持，结果保留 outbound 字段并补充 `parts:1`。旧 harness 未注入 delivery 时仍可使用 outbound；DeliveryService 本身缺少 outbound 则安全失败，不直连 gateway，也不对拒绝回退或重试。面板人工 `/send` 保留独立 gateway 路径，媒体/文件和提醒留待后续阶段，详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
+生产 host 向模块内核注入 `cognition.services.delivery`，`api.sendText` 将文本交给单条 DeliveryPlan 执行，不拆分、不添加引用/@、不等待。权限、输入修整和返回语义保持，结果保留 outbound 字段并补充 `parts:1`。旧 harness 未注入 delivery 时仍可使用 outbound；DeliveryService 本身缺少 outbound 则安全失败，不直连 gateway，也不对拒绝回退或重试。面板人工 `/send` 保留独立 gateway 路径，媒体/文件保持原路径，提醒从 Phase 13 起使用独立 delivery.send 窄入口，详见 [ADR-004](architecture/ADR-004-unified-egress.md)。
 
-## Provider 与提醒启动权（Phase 11）
+## Provider 与提醒所有权（Phase 13）
 
-`api.providers.register('reminders', provider)` 要求 `providers:register` 权限和加载器确认的 builtin 来源。provider 必须是对象，有 `start()`、`stop()` 函数，允许可选 `status()` 函数。名称白名单固定为 reminders；同名或同 moduleId 重复注册均拒绝，不支持覆盖栈。moduleId/source 由内核填写，模块不能通过额外参数伪造；外部即使声明此已知权限，也不能调用注册 API。权限不是同进程 Node.js 沙箱。
+`api.providers.register('reminders', provider)` 要求 `providers:register` 权限和加载器确认的 builtin 来源。provider 是带 start/stop 函数的对象，可选 status 函数。名称白名单只有 reminders，同名/同 moduleId 重复拒绝，无覆盖栈；内核填写身份，外部不能注册。注册只登记对象；幂等 disposer 绑定注册身份，停止、失败、依赖清理和 dispose 自动注销。模块拿不到注册表或其它 provider。
 
-注册只登记对象，不调用 start/stop/status。返回的幂等 disposer 仅移除自身注册；停用、setup/事件失败、依赖清理和 dispose 自动注销，旧 runtime 不能重新注册。模块拿不到整个注册表、其它 provider 或底层认知服务。
+内部注册表新增 `subscribe(listener)` → disposer。每次成功添加/移除通知冻结的 `{name,moduleId}`，不含 source/provider/错误详情；同步异常与异步拒绝逐监听器隔离，未知 remove/重复 disposer 不通知。
 
-宿主等待 modulesReady 后只选择一次提醒所有者，再继续 gateway ready/start。存在 provider 就 await start，不启动核心提醒；不存在或 start 抛错/拒绝时启动核心 `cognition.startReminders()`，该入口幂等。启动失败时先尽力 await stop，日志不输出原始错误。卸载先调用选中 provider 的 stop，再关闭 cognition；同步 dispose 不等待异步 stop，吞掉同步/异步清理错误。若 start 在卸载后才结束，再次 stop，provider 应能安全重复停止并取消自身在途工作。
+宿主等待 modulesReady 后，通过串行 `syncReminderOwnership()` 以及注册表订阅协调运行期变化。有 provider 时先 await 核心 stopReminders，再 await provider.start；没有时先 await 旧 provider.stop，再 startReminders。启动失败先停止可能已分配资源的 provider，回退核心；同一次注册失败不会因重复协调无限重启，重新注册可再尝试。等待期间注册变化会重新读取当前选择，避免迟到启动取得所有权。核心 start/stop 均幂等，空注册表的安装仍只启动一次核心；独立 cognition 调用者需要显式启动提醒。
 
-当前没有生产 provider，默认安装仍只启动一次原核心提醒调度器，原默认关闭的 reminders.enabled、提醒命令、存储和出站规则不变。独立创建 cognition 不再自动启动提醒，需显式调用 startReminders。注册表移除和运行期启停不触发宿主重新选择或自动切换核心；未来迁移需定义热切换及在途停止约束。此阶段不提取提醒/媒体、不新增配置/UI/REST/依赖或版本。详见 [ADR-010](architecture/ADR-010-provider-composition.md)。
+默认启用的 `builtin-reminders` 无模块配置 schema，申请 providers:register、scheduler、reminders:service、config:read、commands、commands:override、access:check、delivery:send，声明提供 reminders。它覆盖 `/remind`、`/reminders`、`/forgetreminder`，沿用核心命令的解析、文案、错误映射、ownerOnly、deniedCommands 与 command 回复交付；副作用前另调用 api.access.canSend。覆盖不在 `/help` 重复列为模块命令。停用注销覆盖，下一条命令回到核心，启用恢复覆盖。业务开关仍是默认 false 的 cognition.reminders.enabled；模块 loaded 不表示提醒功能开启。
+
+模块和核心回退共用 `src/reminders/service.js` 的业务规则及 `commands.js` 的纯命令解析/文案。模块仅通过 reminderRepository 操作原人格 reminder 数据；发送一条固定 text，经 api.delivery.send → DeliveryService → outbound 的 access/rate/leak/dryRun，source 为 reminder。无直接网关、媒体、LLM 或独立提醒存储。最早到期最多 20 条，单一自调度 timeout，不重叠，完成时刻推进重复时间，失败安全错误/延迟，dry-run 计成功。
+
+正常停用/依赖重载时，内核先调用 provider.stop 等待在途发送写回，再撤销 API/注销 provider；核心 stop 同样等待在途发送，交接完成前不启动新调度器。stop 同步清 timer、阻止下一条发送与旧回调重排，返回排空 Promise，可重新 start。最终卸载可传内部 `{dispose:true}`，内置实现立即封闭写回，宿主同步 dispose 不等待网络；迟到 start 完成后再 stop，关闭数据库后不写回。第三方内置 provider 的正确停止仍依赖其实现，停止异常仅固定日志尽力清理，不能证明错误 provider 无遗留资源。
+
+同一进程内交接避免双调度器；不提供跨进程 exactly-once、外部网关幂等或崩溃恢复保证。正常交接等待当前发送，耗时取决于已有发送超时。无数据迁移、配置/UI/REST/依赖/版本变化。详见 [ADR-012](architecture/ADR-012-builtin-reminders.md)。
 
 ## 内置模块受保护命令覆盖（Phase 10）
 
-这是未来提醒命令迁出的前置契约，本阶段不迁移提醒/媒体，不增加生产模块，生产目录仍为三个内置模块；没有新配置、UI、REST、依赖或版本变化。
+Phase 10 建立此覆盖契约；Phase 13 的 builtin-reminders 已使用它接管提醒命令。没有新配置、UI、REST、依赖或版本变化。
 
 ```js
 // 仅测试内置描述符：manifest.permissions: ['commands', 'commands:override']
@@ -200,7 +208,7 @@ timer.dispose() // 同一取消操作，幂等；已取消/触发/停止后返�
 - 停用、setup 失败、事件错误隔离、依赖重载/禁用和内核 dispose 都先标记 runtime 无效并清空原生 timer 与注册，再执行模块 cleanup。回调同时检查当前 runtime 身份和注册仍存在；已取消或旧 generation 的迟到回调不会执行用户函数，也不会重新调度。内置仍不能直接 reload，依赖重载后的 setup 创建新 runtime。
 - 同步抛错与异步拒绝都独立捕获，仅记录固定文案及模块 ID，不读取/输出异常、stack、聊天 ID 或 payload；logger 失败也隔离，不把模块置为 error。已开始的异步回调不会被强制取消或在停用时等待，模块须自行管理在途工作；停止后不能用旧 scheduler 注册新任务。
 
-本阶段只建立未来提醒/媒体工作的前置 API 契约，**不提取或迁移现有提醒/媒体功能**；没有 interval、cron、持久化、重启恢复、重试、发送保证或新增内置模块，生产目录仍为三个内置模块。没有配置、REST 或面板入口。详见 [ADR-007](architecture/ADR-007-module-scheduler.md)。
+本阶段只建立未来提醒/媒体工作的前置 API 契约，**不提取或迁移现有提醒/媒体功能**；没有 interval、cron、持久化、重启恢复、重试、发送保证或新增内置模块，Phase 13 已用此调度器运行 builtin-reminders，生产目录共四个内置模块。没有新增配置、REST 或面板入口。详见 [ADR-007](architecture/ADR-007-module-scheduler.md)。
 
 ## 内置模块人格作用域仓库（Phase 9）
 
@@ -238,10 +246,12 @@ api.personaStore.remove('draft_1')
 
 仅加载器确认 builtin 且声明 `reminders:service` 的模块得到冻结的 `api.reminderRepository`；`config:read` 独立控制冻结的 `api.legacyConfig`。缺权限时对应属性不存在，外部清单声明任一权限在导入前拒绝，伪造 source/builtin 无效。权限约束稳定 API，不是 Node.js 沙箱。
 
-提醒仓库由内核复用宿主已注入的 `cognition.services.personaStore`，仅调用其同步 get/put/list/count/remove/tx，固定访问核心 `reminder` kind。没有原始 base store、SQL、路径、kind 或人格参数/句柄。所有方法检查参数数量；list 仅接受 status/limit，行和 patch 拒绝未知字段（包括 kind/personaId/path）。无 store 时所有方法报服务不可用，底层错误不回显原始路径、SQL 或正文。
+提醒仓库由内核复用宿主已注入的 `cognition.services.personaStore`，通过其同步方法固定访问核心 `reminder` kind；Phase 13 的 capture 在端口内部绑定当前 scope，不向模块暴露底层 facade。没有原始 base store、SQL、路径、kind 或可指定的人格参数。所有方法检查参数数量；list 仅接受 status/limit，行和 patch 拒绝未知字段（包括 kind/personaId/path）。无 store 时所有方法报服务不可用，底层错误不回显原始路径、SQL 或正文。
 
 | 方法 | 返回与限制 |
 |---|---|
+| `all(status='active')` | 指定状态的全部提醒（扫描上限 100 万），供防重/额度和过滤当前聊天后限量；不接受 predicate/kind/persona |
+| `capture()` | 返回固定调用时人格的冻结仓库与 isCurrent()；同一 runtime 撤销规则，无人格标识或跨人格参数 |
 | `get(id)` | 核心业务行的深拷贝，不存在返回 null |
 | `list({status='active',limit=50}={})` | 当前人格指定状态的行；limit 为 1–50 整数，最新创建优先，同创建时间顺序未定义 |
 | `findDue(now,limit=20)` | active 且 nextAt ≤ now；先按 nextAt 升序、同时间按 id 排序，再截取；limit 为 1–20 整数 |
@@ -254,11 +264,11 @@ api.personaStore.remove('draft_1')
 
 put 是创建/完整替换入口，update 刻意只提供取消和投递结果所需字段，remove 用于显式删除；没有批量操作、任意 predicate/事务回调或通用数据库入口。业务开关、主人校验、防重、maxActive 和配置中的间隔策略仍由提醒服务负责，仓库不调度/发送或调用 LLM。findDue 目前在进程内读取当前人格全部到期候选后排序，返回上限不是扫描上限。
 
-每次同步调用访问**调用当时的当前人格**；人格切换后同一端口访问新人格，不支持跨人格操作或为异步 await 固定原人格。未来 provider 必须先解决在途操作的人格归属，不能直接依赖旧快照向新人格写回。两种 API 均绑定 setup runtime；停用、setup/事件失败、依赖禁用/重载及 dispose 撤销旧方法，cleanup 中也不能调用。提交数据和已返回快照保留。
+每次同步调用访问**调用当时的当前人格**；人格切换后同一主端口访问新人格。Phase 13 增加 capture()：仅内部捕获调用时的作用域，返回相同固定 reminder 方法与 isCurrent()，不暴露人格标识，也不能指定其它人格；tick 的等待后写回原人格，检测切换后停止处理剩余候选。两种 API 均绑定 setup runtime；停用、setup/事件失败、依赖禁用/重载及 dispose 撤销旧方法，cleanup 中也不能调用。提交数据和已返回快照保留。
 
 `api.legacyConfig.section(path)` 只接受单个严格等于 `cognition.reminders` 的字符串，每次调用重新获取当前配置并复用核心 normalizeConfig，只返回 enabled/maxActive/minIntervalSeconds/maxIntervalSeconds/tickMs 五个字段的深拷贝。拒绝父路径、子路径、其它路径和额外参数；未知字段、秘密和其它配置不会出现在结果。缺少配置使用现有默认值；没有写入、onChange 或订阅，已返回快照不会自动更新；不影响独立的 api.config 声明式模块配置。
 
-数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。当前核心提醒仍拥有命令、调度与出站逻辑，没有 builtin-reminders 或生产 provider，不改变未使用端口时的行为。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
+数据继续留在核心人格作用域的 reminder kind，使用现有 SQLite/JSON、备份及人格复制/删除/统计语义，无迁移、无 module_store 副本。Phase 13 的 builtin-reminders 已使用此端口接管调度与命令，核心保留兼容回退；仓库读写前后快照比较防止取消、删除或替换被旧发送结果覆盖。本阶段无配置字段/UI/REST/依赖或版本变化。详见 [ADR-011](architecture/ADR-011-reminder-repository.md)。
 
 ## 内置模块声明式配置（Phase 3）
 

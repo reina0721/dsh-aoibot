@@ -65,6 +65,35 @@ export function createReminderRepository({ store, assertActive }) {
     try { return work() } catch { throw new Error('提醒仓库操作失败') }
   }
   return Object.freeze({
+    // Fixed-kind full scan for duplicate/limit checks and scoped command listing.
+    all(status = 'active') {
+      ready(arguments.length, 0, 1)
+      statusOf(status)
+      return access(() => store.list('reminder', { where: row => row.status === status, limit: 1000000 }).map(project))
+    },
+    capture() {
+      ready(arguments.length, 0)
+      return access(() => {
+        const kind = store.scopedKind?.('reminder') || 'reminder'
+        const target = store.base || store
+        const bound = createReminderRepository({ assertActive, store: {
+          get: (_, id) => target.get(kind, id),
+          put: (_, ...args) => target.put(kind, ...args),
+          list: (_, options) => target.list(kind, options),
+          count: (_, where) => target.count(kind, where),
+          remove: (_, id) => target.remove(kind, id),
+          tx: work => target.tx(work),
+        } })
+        const captured = Object.freeze({ ...bound, capture() {
+          ready(arguments.length, 0)
+          return captured
+        }, isCurrent() {
+          ready(arguments.length, 0)
+          return access(() => !store.scopedKind || store.scopedKind('reminder') === kind)
+        } })
+        return captured
+      })
+    },
     get(id) {
       ready(arguments.length, 1)
       idOf(id)

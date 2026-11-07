@@ -17,7 +17,7 @@ try {
     else execFileSync('tar',['-xf',archive,'-C',work]);
     const base = join(work,folder), pkg = JSON.parse(readFileSync(join(base,'package.json'),'utf8'));
     assert.equal(pkg.name,'dsh-bot'); assert.equal(pkg.version, JSON.parse(readFileSync('package.json')).version);
-    for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
+    for(const file of ['src/host.js','src/cognition/turn-hooks.js','src/modules/manifest.js','src/modules/dependencies.js','src/modules/registry.js','src/modules/builtin/reminders.js','src/reminders/service.js','src/reminders/commands.js','src/modules/builtin/typing.js','src/modules/builtin/sample.js','src/modules/builtin/reply-delivery.js','src/modules/builtin/reply-delivery-plan.js','src/delivery/registry.js','src/delivery/text-split.js','client.js','cordis.patch.yml','locale/zh.json','locale/en.json','icon.svg','README.md','LICENSE','THIRD_PARTY_NOTICES.md']) readFileSync(join(base,file));
     function scan(dir) { for(const entry of readdirSync(dir,{withFileTypes:true})) {
       const file = join(dir,entry.name);
       assert.ok(!/^(node_modules|test|verification|verify-out|\.git|\.env|dist)$/.test(entry.name),file);
@@ -44,16 +44,23 @@ try {
       const turnHooks = createTurnHooks();
       const statuses = [];
       const gateway = { actions: { setInputStatus: (id, event) => statuses.push([id, event]) } };
+      const { createProviderRegistry } = await import(${JSON.stringify(pathToFileURL(join(base,'src/extensions/providers.js')).href)});
+      const providerRegistry = createProviderRegistry();
       let calls = 0;
-      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, deliveryRegistry, turnHooks, gateway, commands: {
+      const kernel = createModuleKernel({ dataDir: root, registry: builtinRegistry, providerRegistry, deliveryRegistry, turnHooks, gateway, commands: {
         registerCommand(name, handler, options) {
+          if (['remind', 'reminders', 'forgetreminder'].includes(name)) { assert.equal(options.allowProtected, true); assert.equal(options.ownerOnly, true); return () => {}; }
           assert.equal(name, 'module-sample'); assert.equal(options.ownerOnly, true);
           assert.equal(handler(), '内置示例模块已启用。'); calls++; return () => {};
         }
       } });
       try {
         const items = await kernel.start();
-        assert.equal(items.length, 3); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        assert.equal(items.length, 4); assert.equal(items.find(item => item.id === 'builtin-sample').status, 'disabled'); assert.equal(calls, 0);
+        const reminders = items.find(item => item.id === 'builtin-reminders');
+        assert.equal(reminders.status, 'loaded'); assert.equal(reminders.enabled, true); assert.equal(reminders.hasConfig, false);
+        assert.ok(providerRegistry.get('reminders'));
+        await kernel.setEnabled(reminders.id, false); assert.equal(providerRegistry.get('reminders'), null);
         const typing = items.find(item => item.id === 'builtin-typing');
         assert.equal(typing.status, 'loaded'); assert.equal(typing.enabled, true); assert.equal(typing.hasConfig, false);
         const context = { turn: { chatType: 'private', chatId: '123' }, settings: { typingEnabled: true } };

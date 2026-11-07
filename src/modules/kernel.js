@@ -74,7 +74,7 @@ function publicRecord(record) {
  * @param {object} options
  * @param {string} options.dataDir `<plugin data>/modules`
  */
-export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null } = {}) {
+export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = null, cognition = null, outbound = null, delivery = null, commands = null, registry = builtinRegistry, deliveryRegistry = null, turnHooks = null, gateway = null, personaStore = null, providerRegistry = null, access: accessControl = null } = {}) {
   if (!dataDir) throw new Error('module kernel 需要 dataDir')
   const root = resolve(dataDir)
   const stateFile = join(root, 'state.json')
@@ -199,6 +199,10 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   async function disposeRuntime(record) {
     const runtime = record?.runtime
     if (!runtime) return
+    // Drain provider sends while repository leases are still valid, then revoke APIs.
+    for (const stop of runtime.providerStops) {
+      try { await stop() } catch { log.warn?.(`模块 ${record.id} provider 停止失败`) }
+    }
     runtime.active = false
     record.runtime = null
     for (const timer of runtime.timers.values()) globalThis.clearTimeout(timer.native)
@@ -326,6 +330,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           if (!record.builtin) throw new Error('provider 仅允许内置模块注册')
           if (!providerRegistry?.register) throw new Error('provider 注册表不可用')
           const dispose = providerRegistry.register(name, provider, { moduleId: record.id, source: record.source })
+          runtime.providerStops.push(() => provider.stop({ dispose: disposed }))
           runtime.disposers.push(dispose)
           return dispose
         },
@@ -350,7 +355,26 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
           return gateway.actions.setInputStatus(String(userId), eventType)
         },
       }),
+      access: Object.freeze({
+        canSend({ chatType, chatId } = {}) {
+          requireActive(runtime)
+          requirePermission(record, 'access:check')
+          if (!record.builtin) throw new Error('访问检查仅允许内置模块使用')
+          try { return { allowed: accessControl?.canSend?.({ chatType, chatId })?.allowed === true } }
+          catch { return { allowed: false } }
+        },
+      }),
       delivery: Object.freeze({
+        send({ chatType, chatId, text, source } = {}) {
+          requireActive(runtime)
+          requirePermission(record, 'delivery:send')
+          if (!record.builtin) throw new Error('交付发送仅允许内置模块使用')
+          if (!delivery?.deliver) throw new Error('交付服务不可用')
+          const moduleSource = `module:${record.id}`
+          if (source !== undefined && source !== moduleSource && !(record.id === 'builtin-reminders' && source === 'reminder')) throw new Error('交付 source 不合法')
+          if (!['private', 'group'].includes(chatType) || !/^[1-9]\d*$/.test(String(chatId ?? '')) || !Number.isSafeInteger(Number(chatId)) || typeof text !== 'string' || !text.trim()) throw new Error('交付需要 chatType、chatId、text')
+          return delivery.deliver({ chatType, chatId, segments: [{ type: 'text', data: { text } }], source: source || moduleSource })
+        },
         registerPlanner(descriptor) {
           requireActive(runtime)
           requirePermission(record, 'delivery:plan')
@@ -479,7 +503,7 @@ export function createModuleKernel({ dataDir, getConfig, ctx = null, logger = nu
   }
 
   async function loadRecord(record) {
-    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], storage: null }
+    const runtime = { active: true, handlers: new Set(), configListeners: new Set(), timers: new Map(), disposers: [], providerStops: [], storage: null }
     record.runtime = runtime
     record.status = 'loading'
     try {

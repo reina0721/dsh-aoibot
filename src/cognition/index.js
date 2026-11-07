@@ -256,6 +256,11 @@ export function createCognition({
     remindersStarted = true
   }
 
+  function stopReminders() {
+    remindersStarted = false
+    return state.services.reminders?.stop()
+  }
+
   function startBackgroundJobs() {
     let stopped = false
     const tick = async () => {
@@ -661,6 +666,7 @@ export function createCognition({
   return {
     get ready() { return Promise.resolve(state.ready) },
     startReminders,
+    stopReminders,
     get state() { return state },
     get store() { return state.store },
     get services() { return state.services },

@@ -2,6 +2,18 @@
 export const builtinRegistry = Object.freeze([
   Object.freeze({
     manifest: Object.freeze({
+      id: 'builtin-reminders', name: '本地提醒', version: '1.0.0',
+      description: '沿用 cognition.reminders 配置与原人格提醒数据，接管提醒调度与命令',
+      entry: 'builtin/reminders.js', apiVersion: 1,
+      permissions: Object.freeze(['providers:register', 'scheduler', 'reminders:service', 'config:read', 'commands', 'commands:override', 'access:check', 'delivery:send']),
+      requires: Object.freeze([]),
+    }),
+    provides: Object.freeze(['reminders']),
+    defaultEnabled: true,
+    load: () => import('./builtin/reminders.js'),
+  }),
+  Object.freeze({
+    manifest: Object.freeze({
       id: 'builtin-typing', name: '私聊输入状态', version: '1.0.0',
       description: '使用 cognition.typing.enabled 在私聊轮次开始和结束时提示输入状态',
       entry: 'builtin/typing.js', apiVersion: 1,

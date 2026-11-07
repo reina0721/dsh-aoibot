@@ -3,6 +3,17 @@ const ALLOWED_NAMES = new Set(['reminders'])
 
 export function createProviderRegistry({ logger } = {}) {
   const registrations = new Map()
+  const listeners = new Set()
+  function notify({ name, moduleId }) {
+    for (const listener of [...listeners]) {
+      try { Promise.resolve(listener(Object.freeze({ name, moduleId }))).catch(() => {}) } catch {}
+    }
+  }
+  function subscribe(listener) {
+    if (typeof listener !== 'function') throw new Error('provider listener 必须是函数')
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
 
   function register(name, provider, { moduleId, source = 'builtin' } = {}) {
     if (!ALLOWED_NAMES.has(name)) throw new Error('未知 provider 名称')
@@ -17,9 +28,10 @@ export function createProviderRegistry({ logger } = {}) {
     if ([...registrations.values()].some((entry) => entry.moduleId === moduleId)) throw new Error('provider moduleId 已注册')
     const entry = { name, moduleId, source, provider }
     registrations.set(name, entry)
+    notify(entry)
     // A stale disposer cannot remove a later registration in the same slot.
     return () => {
-      if (registrations.get(name) === entry) registrations.delete(name)
+      if (registrations.get(name) === entry) { registrations.delete(name); notify(entry) }
     }
   }
 
@@ -29,10 +41,10 @@ export function createProviderRegistry({ logger } = {}) {
   }
   function remove(moduleId) {
     for (const [name, entry] of registrations) {
-      if (entry.moduleId === moduleId) return registrations.delete(name)
+      if (entry.moduleId === moduleId) { registrations.delete(name); notify(entry); return true }
     }
     return false
   }
 
-  return Object.freeze({ register, get, list, remove })
+  return Object.freeze({ register, get, list, remove, subscribe })
 }
